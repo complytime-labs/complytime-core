@@ -15,10 +15,18 @@ import (
 )
 
 // toEvidenceRecords converts ingest EvidenceRows to store EvidenceRecords.
+// Deprecated: use toEvidenceRecordsWithLogIndex instead. This function is kept for
+// backward compatibility and will be removed in a future version.
 func toEvidenceRecords(rows []ingest.EvidenceRow) []EvidenceRecord {
+	return toEvidenceRecordsWithLogIndex(rows, 0)
+}
+
+// toEvidenceRecordsWithLogIndex converts ingest EvidenceRows to store EvidenceRecords,
+// optionally setting a log_index for all records (for Tessera transparency log tracking).
+func toEvidenceRecordsWithLogIndex(rows []ingest.EvidenceRow, logIndex uint64) []EvidenceRecord {
 	records := make([]EvidenceRecord, len(rows))
 	for i, row := range rows {
-		records[i] = EvidenceRecord{
+		rec := EvidenceRecord{
 			EvidenceID:           row.EvidenceID,
 			PolicyID:             derefStr(row.PolicyID),
 			TargetID:             row.TargetID,
@@ -56,6 +64,13 @@ func toEvidenceRecords(rows []ingest.EvidenceRow) []EvidenceRecord {
 			Certified:            row.Certified,
 			CollectedAt:          row.CollectedAt,
 		}
+		// Set log_index if provided (from IngestRawEvent)
+		if row.LogIndex != nil {
+			rec.LogIndex = row.LogIndex
+		} else if logIndex > 0 {
+			rec.LogIndex = &logIndex
+		}
+		records[i] = rec
 	}
 	return records
 }

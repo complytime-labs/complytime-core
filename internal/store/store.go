@@ -790,6 +790,7 @@ type EvidenceRecord struct {
 	Owner          string    `json:"owner,omitempty"`
 	CollectedAt    time.Time `json:"collected_at"`
 	Classification string    `json:"classification,omitempty"`
+	LogIndex       *uint64   `json:"log_index,omitempty"` // Tessera transparency log position
 }
 
 // nullStr returns nil for empty strings, pointer otherwise.
@@ -868,8 +869,8 @@ func (s *Store) InsertEvidence(ctx context.Context, records []EvidenceRecord) (i
 		exception_id, exception_active,
 		enrichment_status,
 		attestation_ref, source_registry, blob_ref,
-		owner, collected_at
-	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
+		owner, collected_at, log_index
+	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
 	ON CONFLICT (evidence_id, control_id, requirement_id) DO UPDATE SET
 		target_name = EXCLUDED.target_name,
 		target_type = EXCLUDED.target_type,
@@ -880,7 +881,8 @@ func (s *Store) InsertEvidence(ctx context.Context, records []EvidenceRecord) (i
 		eval_message = EXCLUDED.eval_message,
 		compliance_status = EXCLUDED.compliance_status,
 		owner = EXCLUDED.owner,
-		collected_at = EXCLUDED.collected_at`
+		collected_at = EXCLUDED.collected_at,
+		log_index = EXCLUDED.log_index`
 
 	count := 0
 	for _, r := range records {
@@ -899,7 +901,7 @@ func (s *Store) InsertEvidence(ctx context.Context, records []EvidenceRecord) (i
 			nullStr(r.ExceptionID), r.ExceptionActive,
 			r.EnrichmentStatus,
 			nullStr(r.AttestationRef), nullStr(r.SourceRegistry), nullStr(r.BlobRef),
-			nullStr(r.Owner), r.CollectedAt,
+			nullStr(r.Owner), r.CollectedAt, r.LogIndex,
 		); err != nil {
 			return count, fmt.Errorf("insert evidence row: %w", err)
 		}

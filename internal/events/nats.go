@@ -110,11 +110,21 @@ func (b *Bus) PublishDraftAuditLog(draftID, policyID, summary string) {
 	}
 }
 
+// PublisherIdentity contains JWT-verified publisher information.
+type PublisherIdentity struct {
+	Sub      string `json:"sub"`      // JWT sub claim
+	Issuer   string `json:"issuer"`   // JWT iss claim
+	Type     string `json:"type"`     // "pipeline" or "service"
+	Verified bool   `json:"verified"` // Always true after JWT verification
+}
+
 // IngestRawEvent carries a raw Gemara artifact for async processing.
 type IngestRawEvent struct {
-	JobID     string    `json:"job_id"`
-	YAML      []byte    `json:"yaml"`
-	Timestamp time.Time `json:"timestamp"`
+	JobID             string            `json:"job_id"`
+	LogIndex          uint64            `json:"log_index"`          // Tessera transparency log position
+	YAML              []byte            `json:"yaml"`
+	PublisherIdentity PublisherIdentity `json:"publisher_identity"`
+	Timestamp         time.Time         `json:"timestamp"`
 }
 
 // PublishIngestRaw publishes a raw artifact for async ingest. Returns an

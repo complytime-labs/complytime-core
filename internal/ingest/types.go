@@ -54,6 +54,7 @@ type EvidenceRow struct {
 	Owner     *string
 
 	CollectedAt time.Time
+	LogIndex    *uint64 // Tessera transparency log position (optional)
 }
 
 func strPtr(s string) *string {
