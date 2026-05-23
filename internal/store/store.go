@@ -956,6 +956,7 @@ func (s *Store) QueryEvidence(ctx context.Context, f EvidenceFilter) ([]Evidence
 		"COALESCE(e.blob_ref, '') AS blob_ref",
 		"e.certified",
 		"e.collected_at",
+		"e.log_index",
 		"COALESCE(ea_latest.classification, '') AS classification",
 	).From(`evidence e
 		LEFT JOIN LATERAL (
@@ -1030,6 +1031,7 @@ func (s *Store) QueryEvidence(ctx context.Context, f EvidenceFilter) ([]Evidence
 			&r.AttestationRef, &r.SourceRegistry, &r.BlobRef,
 			&r.Certified,
 			&r.CollectedAt,
+			&r.LogIndex,
 			&r.Classification,
 		); err != nil {
 			return nil, fmt.Errorf("scan evidence: %w", err)

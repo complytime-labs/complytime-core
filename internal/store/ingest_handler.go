@@ -68,7 +68,8 @@ func toEvidenceRecordsWithLogIndex(rows []ingest.EvidenceRow, logIndex uint64) [
 		if row.LogIndex != nil {
 			rec.LogIndex = row.LogIndex
 		} else if logIndex > 0 {
-			rec.LogIndex = &logIndex
+			v := logIndex
+			rec.LogIndex = &v
 		}
 		records[i] = rec
 	}

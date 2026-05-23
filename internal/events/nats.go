@@ -129,6 +129,8 @@ type IngestRawEvent struct {
 
 // PublishIngestRaw publishes a raw artifact for async ingest. Returns an
 // error so the HTTP handler can fail the job immediately on NATS issues.
+// Note: LogIndex and PublisherIdentity are scaffolded in IngestRawEvent but not
+// populated here. Task 5 (Gateway Ingestion) will update callers to provide these values.
 func (b *Bus) PublishIngestRaw(jobID string, yaml []byte) error {
 	if b == nil || b.conn == nil {
 		return fmt.Errorf("nats not connected")
