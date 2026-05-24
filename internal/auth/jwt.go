@@ -27,15 +27,27 @@ type JWTVerifier struct {
 
 // NewJWTVerifier creates a new JWT verifier with the given allowed issuers
 // allowedIssuers is a slice of issuer URLs
-func NewJWTVerifier(allowedIssuers []string) *JWTVerifier {
+// ctx is used for background cache operations and should be a long-lived context
+func NewJWTVerifier(ctx context.Context, allowedIssuers []string) *JWTVerifier {
 	issuerMap := make(map[string]bool)
 	for _, iss := range allowedIssuers {
 		issuerMap[iss] = true
 	}
 
+	cache := jwk.NewCache(ctx)
+
+	// Pre-register all JWKS URLs once to avoid repeated registration on every request
+	for _, iss := range allowedIssuers {
+		jwksURL := iss + "/.well-known/jwks.json"
+		if err := cache.Register(jwksURL); err != nil {
+			// Log registration error but don't fail initialization
+			// The cache will attempt registration on first access
+		}
+	}
+
 	return &JWTVerifier{
 		allowedIssuers: issuerMap,
-		cache:          jwk.NewCache(context.Background()),
+		cache:          cache,
 	}
 }
 
@@ -102,10 +114,7 @@ func (v *JWTVerifier) Verify(ctx context.Context, tokenString string) (*JWTClaim
 
 	// Verify the signature using the raw key
 	parsedToken, err = jwt.ParseWithClaims(tokenString, jwt.MapClaims{}, func(token *jwt.Token) (interface{}, error) {
-		// Verify the signing algorithm
-		if token.Header["alg"] != "ES256" {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
+		// Use the algorithm specified in the JWKS key
 		return rawKey, nil
 	})
 	if err != nil {

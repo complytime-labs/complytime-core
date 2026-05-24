@@ -313,3 +313,34 @@ func TestContract_POST_api_ingest_InsertFailure(t *testing.T) {
 		t.Fatalf("expected insert failure, got %+v", st)
 	}
 }
+
+func TestContract_POST_api_ingest_MissingAuthorizationHeader(t *testing.T) {
+	t.Parallel()
+	e := echo.New()
+	g := e.Group("/api")
+	Register(g, Stores{
+		Evidence:        &fakeEvidenceStore{},
+		IngestTracker:   NewIngestTracker(),
+		IngestPublisher: &immediateIngestPublisher{},
+		TesseraAppender: &mockTesseraAppender{},
+		JWTVerifier:     &mockJWTVerifier{},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/ingest", strings.NewReader(minimalEvalLog))
+	req.Header.Set("Content-Type", "application/x-yaml")
+	// Deliberately omit Authorization header
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	errors, ok := resp["errors"].([]interface{})
+	if !ok || len(errors) == 0 {
+		t.Fatalf("expected errors array in response, got %v", resp)
+	}
+}

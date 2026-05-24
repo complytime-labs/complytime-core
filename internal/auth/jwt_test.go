@@ -77,10 +77,10 @@ func TestJWTVerifierValidToken(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create JWT verifier with allowed issuer
-	verifier := NewJWTVerifier([]string{issuer})
+	ctx := context.Background()
+	verifier := NewJWTVerifier(ctx, []string{issuer})
 
 	// Verify token
-	ctx := context.Background()
 	jwtClaims, err := verifier.Verify(ctx, tokenString)
 	require.NoError(t, err)
 	require.NotNil(t, jwtClaims)
@@ -148,10 +148,10 @@ func TestJWTVerifierExpiredToken(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create JWT verifier with allowed issuer
-	verifier := NewJWTVerifier([]string{issuer})
+	ctx := context.Background()
+	verifier := NewJWTVerifier(ctx, []string{issuer})
 
 	// Verify token should fail
-	ctx := context.Background()
 	jwtClaims, err := verifier.Verify(ctx, tokenString)
 	require.Error(t, err)
 	require.Nil(t, jwtClaims)
@@ -218,10 +218,10 @@ func TestJWTVerifierUnknownIssuer(t *testing.T) {
 
 	// Create JWT verifier with only one allowed issuer (not the unknown one)
 	allowedIssuer := "https://allowed.com"
-	verifier := NewJWTVerifier([]string{allowedIssuer})
+	ctx := context.Background()
+	verifier := NewJWTVerifier(ctx, []string{allowedIssuer})
 
 	// Verify token should fail
-	ctx := context.Background()
 	jwtClaims, err := verifier.Verify(ctx, tokenString)
 	require.Error(t, err)
 	require.Nil(t, jwtClaims)

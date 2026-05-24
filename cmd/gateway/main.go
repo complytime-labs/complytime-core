@@ -114,7 +114,7 @@ func main() {
 
 	// Initialize Tessera client for transparency log
 	tesseraPath := httputil.EnvOr("TESSERA_PATH", "/data/tessera")
-	tesseraClient, err := tessera.NewClient(ctx, tesseraPath, tessera.Options{})
+	tesseraClient, err := tessera.NewClient(ctx, tesseraPath, tessera.DefaultOptions())
 	if err != nil {
 		slog.Error("tessera client init failed", "error", err)
 		os.Exit(1)
@@ -131,7 +131,7 @@ func main() {
 	if len(allowedIssuers) == 0 {
 		slog.Warn("JWT_ISSUERS not configured — trusted publisher ingestion will be unavailable")
 	}
-	jwtVerifier := auth.NewJWTVerifier(allowedIssuers)
+	jwtVerifier := auth.NewJWTVerifier(ctx, allowedIssuers)
 	slog.Info("jwt verifier ready", "allowed_issuers", len(allowedIssuers))
 
 	stores := store.Stores{

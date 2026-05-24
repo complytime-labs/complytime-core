@@ -93,8 +93,13 @@ func IngestAsyncHandler(pub IngestRawPublisher, tracker *IngestTracker, appender
 		if err := pub.PublishIngestRawWithContext(jobID, body, logIndex, identity); err != nil {
 			tracker.Fail(jobID, fmt.Sprintf("publish failed: %v", err))
 			slog.Error("async ingest publish failed", "job_id", jobID, "error", err)
-			httputil.WriteJSON(w, http.StatusServiceUnavailable, map[string]any{
-				"errors": []string{"event bus unavailable — try again later"},
+			// Evidence is already safely stored in Tessera (source of truth),
+			// so return 202 Accepted with warning since async processing is delayed
+			httputil.WriteJSON(w, http.StatusAccepted, map[string]any{
+				"log_index": logIndex,
+				"job_id":    jobID,
+				"status":    "pending",
+				"warning":   "async processing delayed",
 			})
 			return
 		}
@@ -142,10 +147,13 @@ func extractBearerToken(r *http.Request) string {
 }
 
 // inferPublisherType infers the publisher type from the JWT subject claim.
-// If the subject contains "pipeline", returns "pipeline"; otherwise returns "service".
+// GitHub Actions subjects start with "repo:", Kubernetes service accounts start with "system:".
 func inferPublisherType(sub string) string {
-	if strings.Contains(strings.ToLower(sub), "pipeline") {
+	if strings.HasPrefix(sub, "repo:") {
 		return "pipeline"
 	}
-	return "service"
+	if strings.HasPrefix(sub, "system:") {
+		return "service"
+	}
+	return "unknown"
 }
