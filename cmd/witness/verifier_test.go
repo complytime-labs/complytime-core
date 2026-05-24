@@ -31,7 +31,8 @@ type evidenceRow struct {
 }
 
 type mockPostgres struct {
-	evidenceRows map[uint64]evidenceRow
+	evidenceRows     map[uint64]evidenceRow
+	witnessedIndices map[uint64]bool
 }
 
 func (m *mockPostgres) QueryEvidenceByLogIndex(ctx context.Context, logIndex uint64) (*EvidenceRow, error) {
@@ -44,6 +45,10 @@ func (m *mockPostgres) QueryEvidenceByLogIndex(ctx context.Context, logIndex uin
 		PublisherIssuer: row.publisherIssuer,
 		SubmittedBy:     row.submittedBy,
 	}, nil
+}
+
+func (m *mockPostgres) IsIndexWitnessed(ctx context.Context, index uint64) bool {
+	return m.witnessedIndices[index]
 }
 
 func TestVerifier_VerifyEntry_AllChecksPass(t *testing.T) {
@@ -182,6 +187,113 @@ func TestVerifier_VerifyEntry_MalformedYAML(t *testing.T) {
 
 	result := verifier.VerifyEntry(context.Background(), 42)
 	assert.False(t, result, "Entry should fail with malformed YAML")
+}
+
+func TestVerifier_VerifyEntry_PolicyReferenceExists(t *testing.T) {
+	// Setup: Policy artifact at log_index=0
+	policyYAML := `metadata:
+  type: Policy
+requirements:
+  - control-id: CC6.1
+    title: Encryption at Rest
+`
+
+	// Setup: EvaluationLog references policy at log_index=0
+	evaluationYAML := `metadata:
+  type: EvaluationLog
+  mapping-references:
+    - id: soc2-policy
+      tessera-log-index: 0
+target:
+  id: production
+results:
+  - control-id: CC6.1
+    eval-result: pass
+`
+
+	mockTessera := &mockTesseraReader{
+		entries: map[uint64][]byte{
+			0:  []byte(policyYAML),
+			42: []byte(evaluationYAML),
+		},
+	}
+
+	mockDB := &mockPostgres{
+		evidenceRows: map[uint64]evidenceRow{
+			0: {
+				certified:       true,
+				publisherIssuer: "https://kubernetes.default.svc",
+				submittedBy:     "system:serviceaccount:complytime:admin",
+			},
+			42: {
+				certified:       true,
+				publisherIssuer: "https://token.actions.githubusercontent.com",
+				submittedBy:     "repo:complytime/scanner:ref:refs/heads/main",
+			},
+		},
+		witnessedIndices: map[uint64]bool{
+			0: true, // Policy is witnessed
+		},
+	}
+
+	config := &Config{
+		TrustedPublishers: []TrustedPublisher{
+			{
+				Issuer:       "https://token.actions.githubusercontent.com",
+				Sub:          "repo:complytime/*",
+				AllowedTypes: []string{"EvaluationLog"},
+			},
+		},
+	}
+
+	verifier := NewVerifier(mockTessera, mockDB, config)
+
+	// Verify entry (should check policy reference)
+	result := verifier.VerifyEntry(context.Background(), 42)
+	assert.True(t, result, "Entry should pass when policy reference exists and is witnessed")
+}
+
+func TestVerifier_VerifyEntry_PolicyReferenceNotWitnessed(t *testing.T) {
+	policyYAML := `metadata:
+  type: Policy
+`
+	evaluationYAML := `metadata:
+  type: EvaluationLog
+  mapping-references:
+    - id: soc2-policy
+      tessera-log-index: 0
+target:
+  id: production
+`
+
+	mockTessera := &mockTesseraReader{
+		entries: map[uint64][]byte{
+			0:  []byte(policyYAML),
+			42: []byte(evaluationYAML),
+		},
+	}
+
+	mockDB := &mockPostgres{
+		evidenceRows: map[uint64]evidenceRow{
+			0:  {certified: true, publisherIssuer: "https://kubernetes.default.svc", submittedBy: "system:serviceaccount:complytime:admin"},
+			42: {certified: true, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/scanner:ref:refs/heads/main"},
+		},
+		witnessedIndices: map[uint64]bool{
+			// Policy NOT witnessed
+		},
+	}
+
+	config := &Config{
+		TrustedPublishers: []TrustedPublisher{
+			{Issuer: "https://token.actions.githubusercontent.com", Sub: "repo:complytime/*", AllowedTypes: []string{"EvaluationLog"}},
+			{Issuer: "https://kubernetes.default.svc", Sub: "system:serviceaccount:complytime:*", AllowedTypes: []string{"Policy"}},
+		},
+	}
+
+	verifier := NewVerifier(mockTessera, mockDB, config)
+
+	result := verifier.VerifyEntry(context.Background(), 42)
+	assert.False(t, result, "Entry should fail when policy reference is not witnessed")
 }
 
 func TestGlobMatch(t *testing.T) {
