@@ -1,0 +1,158 @@
+package auth
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/lestrrat-go/jwx/v2/jwk"
+)
+
+// JWTClaims represents the standard JWT claims we extract and validate
+type JWTClaims struct {
+	Iss string   // Issuer
+	Sub string   // Subject
+	Aud string   // Audience (first one if multiple)
+	Exp int64   // Expiration time (Unix timestamp)
+	Iat int64   // Issued at (Unix timestamp)
+}
+
+// JWTVerifier handles JWT verification with JWKS discovery and caching
+type JWTVerifier struct {
+	// allowedIssuers maps issuer URLs to their JWKS endpoints
+	allowedIssuers map[string]string
+	// cache is the JWK cache for JWKS sets
+	cache *jwk.Cache
+}
+
+// NewJWTVerifier creates a new JWT verifier with the given allowed issuers
+// allowedIssuers is a map of issuer URL to JWKS endpoint URL
+func NewJWTVerifier(allowedIssuers map[string]string) *JWTVerifier {
+	return &JWTVerifier{
+		allowedIssuers: allowedIssuers,
+		cache:          jwk.NewCache(context.Background()),
+	}
+}
+
+// Verify verifies a JWT token and returns the extracted claims
+// It performs the following checks:
+// 1. Validates the JWT signature using JWKS from the issuer
+// 2. Checks that the issuer is in the allowlist
+// 3. Verifies expiration and issued-at times
+// 4. Returns the claims if valid, or an error describing the failure
+func (v *JWTVerifier) Verify(ctx context.Context, tokenString string) (*JWTClaims, error) {
+	// Parse the token to get the header (without verification yet)
+	parsedToken, _, err := new(jwt.Parser).ParseUnverified(tokenString, jwt.MapClaims{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse token: %w", err)
+	}
+
+	// Extract claims
+	claims, ok := parsedToken.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, fmt.Errorf("invalid token claims format")
+	}
+
+	// Get issuer from claims
+	issStr, ok := claims["iss"].(string)
+	if !ok {
+		return nil, fmt.Errorf("issuer claim missing or invalid")
+	}
+
+	// Check if issuer is in allowlist
+	jwksURL, isAllowed := v.allowedIssuers[issStr]
+	if !isAllowed {
+		return nil, fmt.Errorf("issuer not allowed: %s", issStr)
+	}
+
+	// Get the kid (key ID) from token header
+	kid, ok := parsedToken.Header["kid"].(string)
+	if !ok {
+		return nil, fmt.Errorf("kid header missing or invalid")
+	}
+
+	// Register and fetch JWKS set from the issuer
+	if err := v.cache.Register(jwksURL); err != nil {
+		return nil, fmt.Errorf("failed to register JWKS URL: %w", err)
+	}
+
+	jwkSet, err := v.cache.Get(ctx, jwksURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch JWKS: %w", err)
+	}
+
+	// Find the key by kid
+	key, ok := jwkSet.LookupKeyID(kid)
+	if !ok {
+		return nil, fmt.Errorf("key with kid %s not found in JWKS", kid)
+	}
+
+	// Convert JWK to raw key
+	var rawKey interface{}
+	if err := key.Raw(&rawKey); err != nil {
+		return nil, fmt.Errorf("failed to extract raw key: %w", err)
+	}
+
+	// Verify the signature using the raw key
+	parsedToken, err = jwt.ParseWithClaims(tokenString, jwt.MapClaims{}, func(token *jwt.Token) (interface{}, error) {
+		// Verify the signing algorithm
+		if token.Header["alg"] != "ES256" {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return rawKey, nil
+	})
+	if err != nil {
+		if err.Error() == "token is expired" {
+			return nil, fmt.Errorf("token is expired: %w", err)
+		}
+		return nil, fmt.Errorf("failed to verify token signature: %w", err)
+	}
+
+	// Extract and validate the claims again from the verified token
+	claims, ok = parsedToken.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, fmt.Errorf("invalid token claims format")
+	}
+
+	// Extract audience (use first one if multiple)
+	aud := ""
+	if audClaim, ok := claims["aud"]; ok {
+		switch audVal := audClaim.(type) {
+		case string:
+			aud = audVal
+		case []interface{}:
+			if len(audVal) > 0 {
+				aud, _ = audVal[0].(string)
+			}
+		}
+	}
+
+	// Extract subject
+	sub, _ := claims["sub"].(string)
+
+	// Extract expiration (in seconds since Unix epoch)
+	var exp int64
+	if expClaim, ok := claims["exp"]; ok {
+		switch expVal := expClaim.(type) {
+		case float64:
+			exp = int64(expVal)
+		}
+	}
+
+	// Extract issued-at (in seconds since Unix epoch)
+	var iat int64
+	if iatClaim, ok := claims["iat"]; ok {
+		switch iatVal := iatClaim.(type) {
+		case float64:
+			iat = int64(iatVal)
+		}
+	}
+
+	return &JWTClaims{
+		Iss: issStr,
+		Sub: sub,
+		Aud: aud,
+		Exp: exp,
+		Iat: iat,
+	}, nil
+}
