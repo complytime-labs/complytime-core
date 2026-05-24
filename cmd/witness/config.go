@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -41,6 +42,21 @@ func (c *Config) Validate() error {
 	if len(c.TrustedPublishers) == 0 {
 		return fmt.Errorf("at least one trusted publisher is required")
 	}
+
+	// Validate trusted publishers
+	for i, pub := range c.TrustedPublishers {
+		if len(pub.AllowedTypes) == 0 {
+			return fmt.Errorf("publisher %d (%s): at least one allowed_type is required", i, pub.Name)
+		}
+
+		if pub.Sub != "" {
+			// Check for unsupported wildcard positions (wildcard must be at end)
+			if strings.Contains(pub.Sub, "*") && !strings.HasSuffix(pub.Sub, "*") {
+				return fmt.Errorf("publisher %d (%s): wildcard (*) must be at end of pattern, got: %s", i, pub.Name, pub.Sub)
+			}
+		}
+	}
+
 	return nil
 }
 

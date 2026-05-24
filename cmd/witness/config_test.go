@@ -68,7 +68,7 @@ func TestConfig_Validate_MissingWitnessName(t *testing.T) {
 			VerificationTimeout: 5 * time.Minute,
 		},
 		TrustedPublishers: []TrustedPublisher{
-			{Name: "test", Issuer: "https://example.com"},
+			{Name: "test", Issuer: "https://example.com", AllowedTypes: []string{"EvaluationLog"}},
 		},
 	}
 	err := config.Validate()
@@ -84,7 +84,7 @@ func TestConfig_Validate_InvalidPollInterval(t *testing.T) {
 			VerificationTimeout: 5 * time.Minute,
 		},
 		TrustedPublishers: []TrustedPublisher{
-			{Name: "test", Issuer: "https://example.com"},
+			{Name: "test", Issuer: "https://example.com", AllowedTypes: []string{"EvaluationLog"}},
 		},
 	}
 	err := config.Validate()
@@ -100,7 +100,7 @@ func TestConfig_Validate_NegativePollInterval(t *testing.T) {
 			VerificationTimeout: 5 * time.Minute,
 		},
 		TrustedPublishers: []TrustedPublisher{
-			{Name: "test", Issuer: "https://example.com"},
+			{Name: "test", Issuer: "https://example.com", AllowedTypes: []string{"EvaluationLog"}},
 		},
 	}
 	err := config.Validate()
@@ -116,7 +116,7 @@ func TestConfig_Validate_TimeoutNotGreaterThanInterval(t *testing.T) {
 			VerificationTimeout: 30 * time.Second,
 		},
 		TrustedPublishers: []TrustedPublisher{
-			{Name: "test", Issuer: "https://example.com"},
+			{Name: "test", Issuer: "https://example.com", AllowedTypes: []string{"EvaluationLog"}},
 		},
 	}
 	err := config.Validate()
@@ -146,7 +146,64 @@ func TestConfig_Validate_Valid(t *testing.T) {
 			VerificationTimeout: 5 * time.Minute,
 		},
 		TrustedPublishers: []TrustedPublisher{
-			{Name: "test", Issuer: "https://example.com"},
+			{Name: "test", Issuer: "https://example.com", AllowedTypes: []string{"EvaluationLog"}},
+		},
+	}
+	err := config.Validate()
+	assert.NoError(t, err)
+}
+
+func TestConfig_Validate_EmptyAllowedTypes(t *testing.T) {
+	config := &Config{
+		Witness: WitnessConfig{
+			Name:                "test-witness",
+			PollInterval:        30 * time.Second,
+			VerificationTimeout: 5 * time.Minute,
+		},
+		TrustedPublishers: []TrustedPublisher{
+			{Name: "test-publisher", Issuer: "https://example.com", AllowedTypes: []string{}},
+		},
+	}
+	err := config.Validate()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "at least one allowed_type is required")
+}
+
+func TestConfig_Validate_InvalidWildcardPosition(t *testing.T) {
+	config := &Config{
+		Witness: WitnessConfig{
+			Name:                "test-witness",
+			PollInterval:        30 * time.Second,
+			VerificationTimeout: 5 * time.Minute,
+		},
+		TrustedPublishers: []TrustedPublisher{
+			{
+				Name:         "test-publisher",
+				Issuer:       "https://example.com",
+				Sub:          "repo:*/scanner",
+				AllowedTypes: []string{"EvaluationLog"},
+			},
+		},
+	}
+	err := config.Validate()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "wildcard (*) must be at end of pattern")
+}
+
+func TestConfig_Validate_ValidWildcardAtEnd(t *testing.T) {
+	config := &Config{
+		Witness: WitnessConfig{
+			Name:                "test-witness",
+			PollInterval:        30 * time.Second,
+			VerificationTimeout: 5 * time.Minute,
+		},
+		TrustedPublishers: []TrustedPublisher{
+			{
+				Name:         "test-publisher",
+				Issuer:       "https://example.com",
+				Sub:          "repo:complytime/*",
+				AllowedTypes: []string{"EvaluationLog"},
+			},
 		},
 	}
 	err := config.Validate()

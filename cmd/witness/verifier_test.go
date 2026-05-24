@@ -4,7 +4,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -15,7 +17,11 @@ type mockTesseraReader struct {
 }
 
 func (m *mockTesseraReader) Read(ctx context.Context, index uint64) ([]byte, error) {
-	return m.entries[index], nil
+	entry, ok := m.entries[index]
+	if !ok {
+		return nil, fmt.Errorf("entry not found at index %d", index)
+	}
+	return entry, nil
 }
 
 type evidenceRow struct {
@@ -132,4 +138,71 @@ func TestVerifier_VerifyEntry_PublisherNotTrusted(t *testing.T) {
 
 	result := verifier.VerifyEntry(context.Background(), 42)
 	assert.False(t, result, "Entry should fail due to untrusted publisher")
+}
+
+func TestVerifier_VerifyEntry_TesseraReadFails(t *testing.T) {
+	mockTessera := &mockTesseraReader{
+		entries: map[uint64][]byte{}, // Empty - no entries
+	}
+	mockDB := &mockPostgres{}
+	config := &Config{
+		Witness: WitnessConfig{
+			Name:                "test-witness",
+			PollInterval:        30 * time.Second,
+			VerificationTimeout: 5 * time.Minute,
+		},
+		TrustedPublishers: []TrustedPublisher{
+			{Name: "test", Issuer: "https://example.com"},
+		},
+	}
+	verifier := NewVerifier(mockTessera, mockDB, config)
+
+	result := verifier.VerifyEntry(context.Background(), 999)
+	assert.False(t, result, "Entry should fail when Tessera read fails")
+}
+
+func TestVerifier_VerifyEntry_MalformedYAML(t *testing.T) {
+	mockTessera := &mockTesseraReader{
+		entries: map[uint64][]byte{
+			42: []byte("{{invalid yaml}}"),
+		},
+	}
+	mockDB := &mockPostgres{}
+	config := &Config{
+		Witness: WitnessConfig{
+			Name:                "test-witness",
+			PollInterval:        30 * time.Second,
+			VerificationTimeout: 5 * time.Minute,
+		},
+		TrustedPublishers: []TrustedPublisher{
+			{Name: "test", Issuer: "https://example.com"},
+		},
+	}
+	verifier := NewVerifier(mockTessera, mockDB, config)
+
+	result := verifier.VerifyEntry(context.Background(), 42)
+	assert.False(t, result, "Entry should fail with malformed YAML")
+}
+
+func TestGlobMatch(t *testing.T) {
+	tests := []struct {
+		pattern string
+		text    string
+		want    bool
+	}{
+		{"repo:complytime/*", "repo:complytime/scanner:ref:refs/heads/main", true},
+		{"repo:complytime/*", "repo:other/scanner", false},
+		{"exact-match", "exact-match", true},
+		{"exact-match", "different", false},
+		{"*", "anything", true},
+		{"", "", true},
+		{"pattern", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%s_%s", tt.pattern, tt.text), func(t *testing.T) {
+			got := globMatch(tt.pattern, tt.text)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
