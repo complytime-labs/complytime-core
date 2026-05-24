@@ -19,6 +19,7 @@ import (
 
 	"github.com/complytime-labs/complytime-core/internal/auth"
 	"github.com/complytime-labs/complytime-core/internal/config"
+	"github.com/complytime-labs/complytime-core/internal/events"
 	"github.com/complytime-labs/complytime-core/internal/gemara"
 	"github.com/complytime-labs/complytime-core/internal/store"
 )
@@ -114,6 +115,8 @@ func buildRouter(t *testing.T) *echo.Echo {
 		Users:               &nopUserStore{},
 		IngestTracker:       store.NewIngestTracker(),
 		IngestPublisher:     &nopIngestPublisher{},
+		TesseraAppender:     &nopTesseraAppender{},
+		JWTVerifier:         &nopJWTVerifier{},
 	}
 	store.Register(apiGroup, s)
 
@@ -369,6 +372,10 @@ type nopIngestPublisher struct{}
 
 func (*nopIngestPublisher) PublishIngestRaw(string, []byte) error { return nil }
 
+func (*nopIngestPublisher) PublishIngestRawWithContext(string, []byte, uint64, events.PublisherIdentity) error {
+	return nil
+}
+
 type nopHealthChecker struct{}
 
 func (*nopHealthChecker) Ping(context.Context) error { return nil }
@@ -403,3 +410,19 @@ func (*nopUserStore) CountAdmins(context.Context) (int, error)               { r
 func (*nopUserStore) InsertRoleChange(context.Context, auth.RoleChange) error { return nil }
 func (*nopUserStore) ListRoleChanges(context.Context) ([]auth.RoleChange, error) { return nil, nil }
 func (*nopUserStore) BootstrapAdmin(context.Context, string) (string, error)  { return "", nil }
+
+type nopTesseraAppender struct{}
+
+func (*nopTesseraAppender) Add(context.Context, []byte) (uint64, error) { return 0, nil }
+
+type nopJWTVerifier struct{}
+
+func (*nopJWTVerifier) Verify(context.Context, string) (*auth.JWTClaims, error) {
+	return &auth.JWTClaims{
+		Iss: "https://example.com",
+		Sub: "test-subject",
+		Aud: "https://example.com",
+		Exp: int64(time.Now().Add(time.Hour).Unix()),
+		Iat: int64(time.Now().Unix()),
+	}, nil
+}
