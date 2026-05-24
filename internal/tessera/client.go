@@ -8,6 +8,8 @@ import (
 	"time"
 
 	tesserapkg "github.com/transparency-dev/tessera"
+	"github.com/transparency-dev/tessera/api"
+	"github.com/transparency-dev/tessera/api/layout"
 	"github.com/transparency-dev/tessera/storage/posix"
 	"golang.org/x/mod/sumdb/note"
 )
@@ -20,6 +22,10 @@ type Client struct {
 	cancel     context.CancelFunc
 }
 
+// NewClient creates a new Tessera client.
+// Note: A new ephemeral signer key is generated for each client instance.
+// Checkpoint signatures cannot be verified across process restarts.
+// This is acceptable for local-only transparency logs.
 func NewClient(ctx context.Context, storagePath string, opts Options) (*Client, error) {
 	// Create a cancellable context for the client's background tasks
 	clientCtx, cancel := context.WithCancel(context.Background())
@@ -82,77 +88,53 @@ func (c *Client) Add(ctx context.Context, entry []byte) (uint64, error) {
 }
 
 func (c *Client) Read(ctx context.Context, index uint64) ([]byte, error) {
-	// Get the integrated size to verify the entry has been sequenced
-	integratedSize, err := c.reader.IntegratedSize(ctx)
+	// Get current integrated size
+	size, err := c.reader.IntegratedSize(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("tessera get integrated size: %w", err)
+		return nil, fmt.Errorf("get integrated size: %w", err)
 	}
 
-	if index >= integratedSize {
-		return nil, fmt.Errorf("index %d not yet integrated (log size: %d)", index, integratedSize)
+	if index >= size {
+		return nil, fmt.Errorf("index %d not yet integrated (log size: %d)", index, size)
 	}
 
-	// Determine which entry bundle contains this index
-	// Entry bundles are stored in groups (default 256 entries per bundle)
-	bundleIndex := index / 256
-	bundleOffset := index % 256
+	// Calculate bundle index and position within bundle
+	bundleIndex := index / uint64(layout.EntryBundleWidth)
+	entryIndex := index % uint64(layout.EntryBundleWidth)
 
-	// Read the entry bundle
-	// Try reading with partial flag 0 first, then try higher values if it fails
-	var bundleData []byte
-	for p := uint8(0); p < 10; p++ {
-		data, err := c.reader.ReadEntryBundle(ctx, bundleIndex, p)
-		if err == nil && len(data) > 0 {
-			bundleData = data
-			break
-		}
+	// Determine partial tile size if needed
+	p := layout.PartialTileSize(0, bundleIndex, size)
+
+	// Read entry bundle
+	bundleData, err := c.reader.ReadEntryBundle(ctx, bundleIndex, p)
+	if err != nil {
+		return nil, fmt.Errorf("read entry bundle: %w", err)
 	}
 
-	if bundleData == nil || len(bundleData) == 0 {
-		return nil, fmt.Errorf("entry bundle %d not found or empty", bundleIndex)
+	// Parse bundle using library's parser
+	var bundle api.EntryBundle
+	if err := bundle.UnmarshalText(bundleData); err != nil {
+		return nil, fmt.Errorf("parse entry bundle: %w", err)
 	}
 
-	// Parse the bundle to extract the entry
-	// The bundle format is: each entry is prefixed with uint16 big-endian length, then data
-	var offset int
-	var entry []byte
-	for i := uint64(0); i <= bundleOffset; i++ {
-		if offset+2 > len(bundleData) {
-			return nil, fmt.Errorf("malformed entry bundle: unexpected EOF at offset %d (need 2 bytes for length)", offset)
-		}
-
-		// Read uint16 big-endian length
-		length := int(bundleData[offset])<<8 | int(bundleData[offset+1])
-		offset += 2
-
-		if offset+length > len(bundleData) {
-			return nil, fmt.Errorf("malformed entry bundle: entry data exceeds bundle size (offset=%d, length=%d, total=%d)", offset, length, len(bundleData))
-		}
-
-		if i == bundleOffset {
-			entry = bundleData[offset : offset+length]
-			break
-		}
-		offset += length
+	// Return the specific entry
+	if int(entryIndex) >= len(bundle.Entries) {
+		return nil, fmt.Errorf("entry index %d out of range (bundle has %d entries)", entryIndex, len(bundle.Entries))
 	}
 
-	return entry, nil
+	return bundle.Entries[entryIndex], nil
 }
 
 func (c *Client) Close() error {
-	// Call the shutdown function with a reasonable timeout
-	// The shutdown function needs to see the background tasks in the appenderCtx
-	if c.shutdown != nil {
-		shutdownCtx, cancel := context.WithTimeout(c.appenderCtx, 5*time.Second)
-		defer cancel()
-		if err := c.shutdown(shutdownCtx); err != nil {
-			// Shutdown timeout is acceptable - we'll cancel the context next
-		}
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Shutdown appender
+	if err := c.shutdown(shutdownCtx); err != nil {
+		c.cancel() // Still cancel context even if shutdown fails
+		return fmt.Errorf("shutdown appender: %w", err)
 	}
 
-	// Cancel the appender context to stop any background tasks
-	if c.cancel != nil {
-		c.cancel()
-	}
+	c.cancel()
 	return nil
 }
