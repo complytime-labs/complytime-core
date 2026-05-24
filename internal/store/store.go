@@ -42,6 +42,11 @@ type GuidanceStore interface {
 	InsertGuidanceEntries(ctx context.Context, rows []gemara.GuidanceEntryRow) error
 }
 
+// TesseraAppender defines operations for appending entries to a transparency log.
+type TesseraAppender interface {
+	Add(ctx context.Context, entry []byte) (uint64, error)
+}
+
 // ControlStore defines read/write operations for parsed control catalog entries.
 type ControlStore interface {
 	InsertControls(ctx context.Context, rows []gemara.ControlRow) error

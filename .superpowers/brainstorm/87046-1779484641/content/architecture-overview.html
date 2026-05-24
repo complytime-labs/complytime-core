@@ -1,0 +1,94 @@
+<h2>Architecture Overview: Tessera-Based Evidence Ingestion</h2>
+<p class="subtitle">Tamper-evident log with witness verification</p>
+
+<div class="mockup" style="background: #fff; padding: 24px; border-radius: 8px; margin: 24px 0;">
+  <div style="font-family: monospace; font-size: 0.85em; line-height: 1.8;">
+    <div style="text-align: center; font-weight: bold; margin-bottom: 20px; color: #2563eb;">┌─── Evidence Submission ───┐</div>
+
+    <div style="margin-left: 40px;">
+      <div style="color: #059669;">CI/CD Pipeline or K8s Service</div>
+      <div style="margin-left: 20px; color: #666;">↓ JWT token (OIDC)</div>
+      <div style="margin-left: 20px; color: #666;">↓</div>
+    </div>
+
+    <div style="margin: 16px 0; border: 2px solid #3b82f6; padding: 12px; border-radius: 6px; background: #eff6ff;">
+      <div style="font-weight: bold; color: #1e40af;">Gateway: POST /api/ingest</div>
+      <div style="margin-left: 20px; color: #666;">1. Verify JWT signature (JWKS discovery)</div>
+      <div style="margin-left: 20px; color: #666;">2. Extract (issuer, sub) from claims</div>
+      <div style="margin-left: 20px; color: #666;">3. Append to Tessera log → {log_index}</div>
+      <div style="margin-left: 20px; color: #666;">4. Publish to NATS: {log_index, yaml, publisher_identity}</div>
+      <div style="margin-left: 20px; color: #666;">5. Return 202 Accepted {log_index, job_id}</div>
+    </div>
+
+    <div style="margin-top: 20px; text-align: center; font-weight: bold; color: #dc2626;">┌─── Async Processing ───┐</div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+      <div style="border: 2px solid #059669; padding: 12px; border-radius: 6px; background: #f0fdf4;">
+        <div style="font-weight: bold; color: #065f46;">IngestWorker (NATS subscriber)</div>
+        <div style="margin-left: 12px; margin-top: 8px; color: #666; font-size: 0.9em;">
+          1. Receive: {log_index, yaml}<br>
+          2. Parse YAML (Gemara)<br>
+          3. Flatten to evidence rows<br>
+          4. INSERT to PostgreSQL<br>
+          &nbsp;&nbsp;&nbsp;- Add log_index column<br>
+          &nbsp;&nbsp;&nbsp;- Store publisher identity<br>
+          5. Publish evidence event<br>
+        </div>
+      </div>
+
+      <div style="border: 2px solid #7c3aed; padding: 12px; border-radius: 6px; background: #faf5ff;">
+        <div style="font-weight: bold; color: #5b21b6;">Certifier Pipeline</div>
+        <div style="margin-left: 12px; margin-top: 8px; color: #666; font-size: 0.9em;">
+          1. Schema validation<br>
+          2. Provenance check<br>
+          3. Executor verification<br>
+          4. Publisher identity check<br>
+          5. Write certification result<br>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top: 20px; text-align: center; font-weight: bold; color: #ea580c;">┌─── Witness Verification ───┐</div>
+
+    <div style="border: 2px solid #ea580c; padding: 12px; border-radius: 6px; background: #fff7ed; margin: 16px 40px;">
+      <div style="font-weight: bold; color: #9a3412;">Witness Service (internal)</div>
+      <div style="margin-left: 12px; margin-top: 8px; color: #666; font-size: 0.9em;">
+        1. Poll Tessera for new checkpoints<br>
+        2. For each entry in checkpoint:<br>
+        &nbsp;&nbsp;&nbsp;a. Verify append-only (Tessera SDK)<br>
+        &nbsp;&nbsp;&nbsp;b. Check certification result (PostgreSQL)<br>
+        &nbsp;&nbsp;&nbsp;c. Verify publisher identity matches config<br>
+        3. If all entries pass → countersign checkpoint<br>
+        4. Publish countersignature to Tessera<br>
+      </div>
+    </div>
+
+    <div style="margin-top: 24px; padding: 16px; background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px;">
+      <div style="font-weight: bold; color: #92400e; margin-bottom: 8px;">Key Properties:</div>
+      <div style="color: #666; font-size: 0.9em;">
+        ✓ <strong>Source of Truth:</strong> Tessera log (append-only, tamper-evident)<br>
+        ✓ <strong>Query Layer:</strong> PostgreSQL (rebuilt from Tessera if lost)<br>
+        ✓ <strong>Trust Signal:</strong> Witness countersignatures on checkpoints<br>
+        ✓ <strong>Audit Trail:</strong> Every evidence submission has immutable log_index<br>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 24px;">
+  <h3>Storage Backends</h3>
+  <ul>
+    <li><strong>Tessera:</strong> POSIX driver on Kubernetes PersistentVolume (cloud-agnostic)</li>
+    <li><strong>PostgreSQL:</strong> Evidence, certifications, users, policies (query layer)</li>
+    <li><strong>NATS:</strong> Event bus for async processing (existing infrastructure)</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h3>New Components</h3>
+  <ul>
+    <li><strong>Tessera Appender:</strong> Library integrated into gateway process</li>
+    <li><strong>Witness Service:</strong> New Go service, runs as K8s Deployment</li>
+    <li><strong>JWT Verifier:</strong> OIDC token validation (adapted from current branch)</li>
+  </ul>
+</div>

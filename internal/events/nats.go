@@ -150,6 +150,30 @@ func (b *Bus) PublishIngestRaw(jobID string, yaml []byte) error {
 	return nil
 }
 
+// PublishIngestRawWithContext publishes a raw artifact for async ingest with
+// JWT-verified publisher identity and Tessera log_index. Returns an error so
+// the HTTP handler can fail the job immediately on NATS issues.
+func (b *Bus) PublishIngestRawWithContext(jobID string, yaml []byte, logIndex uint64, identity PublisherIdentity) error {
+	if b == nil || b.conn == nil {
+		return fmt.Errorf("nats not connected")
+	}
+	evt := IngestRawEvent{
+		JobID:             jobID,
+		LogIndex:          logIndex,
+		YAML:              yaml,
+		PublisherIdentity: identity,
+		Timestamp:         time.Now().UTC(),
+	}
+	data, err := json.Marshal(evt)
+	if err != nil {
+		return fmt.Errorf("marshal ingest event: %w", err)
+	}
+	if err := b.conn.Publish(SubjectIngestRaw, data); err != nil {
+		return fmt.Errorf("nats publish %s: %w", SubjectIngestRaw, err)
+	}
+	return nil
+}
+
 // SubscribeIngestRaw subscribes to raw ingest events for async processing.
 func (b *Bus) SubscribeIngestRaw(handler func(IngestRawEvent)) (*nats.Subscription, error) {
 	if b == nil || b.conn == nil {

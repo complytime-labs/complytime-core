@@ -1,0 +1,93 @@
+<h2>PostgreSQL Sync: Tessera Events vs NATS</h2>
+<p class="subtitle">Both are async, different integration points</p>
+
+<div class="options">
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Tessera Integration Events</h3>
+      <div class="mockup" style="margin: 16px 0; background: #f8f9fa; padding: 16px; border-radius: 8px; font-family: monospace; font-size: 0.9em;">
+        <div style="margin-bottom: 8px;">POST /api/ingest</div>
+        <div style="margin-left: 20px; color: #666;">↓ tessera.Add(yaml)</div>
+        <div style="margin-left: 20px; color: #666;">↓ returns {log_index, future}</div>
+        <div style="margin-left: 20px; color: #666;">↓ 202 Accepted {log_index}</div>
+        <div style="margin: 12px 0; border-top: 2px dashed #ccc; padding-top: 12px;">Background:</div>
+        <div style="margin-left: 20px; color: #666;">Tessera integration → entry readable</div>
+        <div style="margin-left: 20px; color: #666;">↓ Poll/callback mechanism</div>
+        <div style="margin-left: 20px; color: #666;">↓ Read entry from Tessera by index</div>
+        <div style="margin-left: 20px; color: #666;">↓ Parse YAML → Flatten → PostgreSQL</div>
+        <div style="margin-left: 20px; color: #666;">↓ Trigger certification pipeline</div>
+      </div>
+
+      <div class="pros-cons" style="margin-top: 16px;">
+        <div class="pros">
+          <h4>Pros</h4>
+          <ul>
+            <li>Simpler: one less component (no NATS)</li>
+            <li>Tessera is single source of truth</li>
+            <li>Can rebuild PostgreSQL from Tessera anytime</li>
+            <li>Direct dependency chain</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>Cons</h4>
+          <ul>
+            <li>Tessera has no built-in event notifications</li>
+            <li>Must implement polling or callback mechanism</li>
+            <li>Tighter coupling to Tessera integration timing</li>
+            <li>No built-in retry/backpressure/DLQ</li>
+            <li>Need to build queue semantics yourself</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>NATS Queue (Current Pipeline)</h3>
+      <div class="mockup" style="margin: 16px 0; background: #f8f9fa; padding: 16px; border-radius: 8px; font-family: monospace; font-size: 0.9em;">
+        <div style="margin-bottom: 8px;">POST /api/ingest</div>
+        <div style="margin-left: 20px; color: #666;">↓ tessera.Add(yaml)</div>
+        <div style="margin-left: 20px; color: #666;">↓ returns {log_index}</div>
+        <div style="margin-left: 20px; color: #666;">↓ NATS publish: {log_index, yaml, publisher_id}</div>
+        <div style="margin-left: 20px; color: #666;">↓ 202 Accepted {log_index, job_id}</div>
+        <div style="margin: 12px 0; border-top: 2px dashed #ccc; padding-top: 12px;">Background:</div>
+        <div style="margin-left: 20px; color: #666;">IngestWorker ← NATS subscribe</div>
+        <div style="margin-left: 20px; color: #666;">↓ Parse YAML → Flatten → PostgreSQL</div>
+        <div style="margin-left: 20px; color: #666;">↓ Store log_index with evidence</div>
+        <div style="margin-left: 20px; color: #666;">↓ Trigger certification pipeline</div>
+        <div style="margin: 12px 0; border-top: 2px dashed #ccc; padding-top: 12px;">Recovery:</div>
+        <div style="margin-left: 20px; color: #666;">PostgreSQL lost → Read Tessera log from 0</div>
+        <div style="margin-left: 20px; color: #666;">↓ Republish to NATS → Rebuild DB</div>
+      </div>
+
+      <div class="pros-cons" style="margin-top: 16px;">
+        <div class="pros">
+          <h4>Pros</h4>
+          <ul>
+            <li>Reuses existing NATS infrastructure</li>
+            <li>Reuses existing IngestWorker logic</li>
+            <li>NATS provides retry, backpressure, DLQ</li>
+            <li>Decouples Tessera from PostgreSQL sync</li>
+            <li>Existing certification pipeline unchanged</li>
+            <li>Job tracking already built (IngestTracker)</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>Cons</h4>
+          <ul>
+            <li>One more component to operate (NATS)</li>
+            <li>Evidence YAML briefly duplicated (Tessera + NATS)</li>
+            <li>Slightly more complex architecture</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 24px; padding: 16px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+  <strong>Key Insight:</strong> NATS is already required for your certification pipeline (CertificationHandler subscribes to evidence events). Option C keeps that infrastructure and adds Tessera on top. Option B would need to replace NATS with custom polling/notification, which is harder to operate.
+</div>

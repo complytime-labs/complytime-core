@@ -1,0 +1,4 @@
+{"type":"server-started","port":53934,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:53934","screen_dir":"/home/jpower/Documents/upstream-repos/complytime-core/.superpowers/brainstorm/87046-1779484641/content","state_dir":"/home/jpower/Documents/upstream-repos/complytime-core/.superpowers/brainstorm/87046-1779484641/state"}
+{"type":"screen-added","file":"/home/jpower/Documents/upstream-repos/complytime-core/.superpowers/brainstorm/87046-1779484641/content/sync-approaches.html"}
+{"type":"screen-added","file":"/home/jpower/Documents/upstream-repos/complytime-core/.superpowers/brainstorm/87046-1779484641/content/waiting.html"}
+{"type":"server-stopped","reason":"idle timeout"}
