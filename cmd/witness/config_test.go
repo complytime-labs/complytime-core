@@ -59,3 +59,96 @@ func TestLoadConfig_InvalidPath(t *testing.T) {
 	_, err := LoadConfig("/nonexistent/config.yaml")
 	assert.Error(t, err)
 }
+
+func TestConfig_Validate_MissingWitnessName(t *testing.T) {
+	config := &Config{
+		Witness: WitnessConfig{
+			Name:                "",
+			PollInterval:        30 * time.Second,
+			VerificationTimeout: 5 * time.Minute,
+		},
+		TrustedPublishers: []TrustedPublisher{
+			{Name: "test", Issuer: "https://example.com"},
+		},
+	}
+	err := config.Validate()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "witness name is required")
+}
+
+func TestConfig_Validate_InvalidPollInterval(t *testing.T) {
+	config := &Config{
+		Witness: WitnessConfig{
+			Name:                "test-witness",
+			PollInterval:        0,
+			VerificationTimeout: 5 * time.Minute,
+		},
+		TrustedPublishers: []TrustedPublisher{
+			{Name: "test", Issuer: "https://example.com"},
+		},
+	}
+	err := config.Validate()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "poll_interval must be positive")
+}
+
+func TestConfig_Validate_NegativePollInterval(t *testing.T) {
+	config := &Config{
+		Witness: WitnessConfig{
+			Name:                "test-witness",
+			PollInterval:        -1 * time.Second,
+			VerificationTimeout: 5 * time.Minute,
+		},
+		TrustedPublishers: []TrustedPublisher{
+			{Name: "test", Issuer: "https://example.com"},
+		},
+	}
+	err := config.Validate()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "poll_interval must be positive")
+}
+
+func TestConfig_Validate_TimeoutNotGreaterThanInterval(t *testing.T) {
+	config := &Config{
+		Witness: WitnessConfig{
+			Name:                "test-witness",
+			PollInterval:        30 * time.Second,
+			VerificationTimeout: 30 * time.Second,
+		},
+		TrustedPublishers: []TrustedPublisher{
+			{Name: "test", Issuer: "https://example.com"},
+		},
+	}
+	err := config.Validate()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "verification_timeout must be greater than poll_interval")
+}
+
+func TestConfig_Validate_EmptyPublishers(t *testing.T) {
+	config := &Config{
+		Witness: WitnessConfig{
+			Name:                "test-witness",
+			PollInterval:        30 * time.Second,
+			VerificationTimeout: 5 * time.Minute,
+		},
+		TrustedPublishers: []TrustedPublisher{},
+	}
+	err := config.Validate()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "at least one trusted publisher is required")
+}
+
+func TestConfig_Validate_Valid(t *testing.T) {
+	config := &Config{
+		Witness: WitnessConfig{
+			Name:                "test-witness",
+			PollInterval:        30 * time.Second,
+			VerificationTimeout: 5 * time.Minute,
+		},
+		TrustedPublishers: []TrustedPublisher{
+			{Name: "test", Issuer: "https://example.com"},
+		},
+	}
+	err := config.Validate()
+	assert.NoError(t, err)
+}

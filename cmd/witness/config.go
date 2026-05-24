@@ -28,6 +28,22 @@ type TrustedPublisher struct {
 	AllowedTypes []string `yaml:"allowed_types"` // [EvaluationLog, EnforcementLog, Policy, AuditLog]
 }
 
+func (c *Config) Validate() error {
+	if c.Witness.Name == "" {
+		return fmt.Errorf("witness name is required")
+	}
+	if c.Witness.PollInterval <= 0 {
+		return fmt.Errorf("poll_interval must be positive")
+	}
+	if c.Witness.VerificationTimeout <= c.Witness.PollInterval {
+		return fmt.Errorf("verification_timeout must be greater than poll_interval")
+	}
+	if len(c.TrustedPublishers) == 0 {
+		return fmt.Errorf("at least one trusted publisher is required")
+	}
+	return nil
+}
+
 func LoadConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -37,6 +53,10 @@ func LoadConfig(path string) (*Config, error) {
 	var config Config
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("parse config YAML: %w", err)
+	}
+
+	if err := config.Validate(); err != nil {
+		return nil, fmt.Errorf("validate config: %w", err)
 	}
 
 	return &config, nil

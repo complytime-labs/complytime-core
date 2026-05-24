@@ -21,8 +21,15 @@ func SaveState(path string, state *State) error {
 		return fmt.Errorf("marshal state: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		return fmt.Errorf("write state file: %w", err)
+	// Write to temp file first for atomicity
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0600); err != nil {
+		return fmt.Errorf("write temp state file: %w", err)
+	}
+
+	// Atomic rename ensures state file is never corrupted
+	if err := os.Rename(tmp, path); err != nil {
+		return fmt.Errorf("rename state file: %w", err)
 	}
 
 	return nil
