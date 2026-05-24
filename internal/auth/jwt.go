@@ -19,17 +19,22 @@ type JWTClaims struct {
 
 // JWTVerifier handles JWT verification with JWKS discovery and caching
 type JWTVerifier struct {
-	// allowedIssuers maps issuer URLs to their JWKS endpoints
-	allowedIssuers map[string]string
+	// allowedIssuers maps issuer URLs to true for quick lookup
+	allowedIssuers map[string]bool
 	// cache is the JWK cache for JWKS sets
 	cache *jwk.Cache
 }
 
 // NewJWTVerifier creates a new JWT verifier with the given allowed issuers
-// allowedIssuers is a map of issuer URL to JWKS endpoint URL
-func NewJWTVerifier(allowedIssuers map[string]string) *JWTVerifier {
+// allowedIssuers is a slice of issuer URLs
+func NewJWTVerifier(allowedIssuers []string) *JWTVerifier {
+	issuerMap := make(map[string]bool)
+	for _, iss := range allowedIssuers {
+		issuerMap[iss] = true
+	}
+
 	return &JWTVerifier{
-		allowedIssuers: allowedIssuers,
+		allowedIssuers: issuerMap,
 		cache:          jwk.NewCache(context.Background()),
 	}
 }
@@ -60,8 +65,7 @@ func (v *JWTVerifier) Verify(ctx context.Context, tokenString string) (*JWTClaim
 	}
 
 	// Check if issuer is in allowlist
-	jwksURL, isAllowed := v.allowedIssuers[issStr]
-	if !isAllowed {
+	if !v.allowedIssuers[issStr] {
 		return nil, fmt.Errorf("issuer not allowed: %s", issStr)
 	}
 
@@ -70,6 +74,9 @@ func (v *JWTVerifier) Verify(ctx context.Context, tokenString string) (*JWTClaim
 	if !ok {
 		return nil, fmt.Errorf("kid header missing or invalid")
 	}
+
+	// Construct JWKS endpoint from issuer
+	jwksURL := issStr + "/.well-known/jwks"
 
 	// Register and fetch JWKS set from the issuer
 	if err := v.cache.Register(jwksURL); err != nil {

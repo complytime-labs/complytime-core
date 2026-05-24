@@ -56,8 +56,8 @@ func TestJWTVerifierValidToken(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Create JWT claims
-	issuer := "https://example.com"
+	// Use test server as issuer
+	issuer := server.URL
 	subject := "test-user"
 	audience := "test-service"
 	now := time.Now()
@@ -76,13 +76,8 @@ func TestJWTVerifierValidToken(t *testing.T) {
 	tokenString, err := token.SignedString(privateKey)
 	require.NoError(t, err)
 
-	// Create JWT verifier with mocked JWKS URL
-	verifier := &JWTVerifier{
-		allowedIssuers: map[string]string{
-			issuer: server.URL + "/.well-known/jwks.json",
-		},
-		cache: jwk.NewCache(context.Background()),
-	}
+	// Create JWT verifier with allowed issuer
+	verifier := NewJWTVerifier([]string{issuer})
 
 	// Verify token
 	ctx := context.Background()
@@ -133,7 +128,7 @@ func TestJWTVerifierExpiredToken(t *testing.T) {
 	defer server.Close()
 
 	// Create JWT claims with expiration in the past
-	issuer := "https://example.com"
+	issuer := server.URL
 	subject := "test-user"
 	audience := "test-service"
 	now := time.Now()
@@ -152,13 +147,8 @@ func TestJWTVerifierExpiredToken(t *testing.T) {
 	tokenString, err := token.SignedString(privateKey)
 	require.NoError(t, err)
 
-	// Create JWT verifier with mocked JWKS URL
-	verifier := &JWTVerifier{
-		allowedIssuers: map[string]string{
-			issuer: server.URL + "/.well-known/jwks.json",
-		},
-		cache: jwk.NewCache(context.Background()),
-	}
+	// Create JWT verifier with allowed issuer
+	verifier := NewJWTVerifier([]string{issuer})
 
 	// Verify token should fail
 	ctx := context.Background()
@@ -226,14 +216,9 @@ func TestJWTVerifierUnknownIssuer(t *testing.T) {
 	tokenString, err := token.SignedString(privateKey)
 	require.NoError(t, err)
 
-	// Create JWT verifier with only one allowed issuer
+	// Create JWT verifier with only one allowed issuer (not the unknown one)
 	allowedIssuer := "https://allowed.com"
-	verifier := &JWTVerifier{
-		allowedIssuers: map[string]string{
-			allowedIssuer: server.URL + "/.well-known/jwks.json",
-		},
-		cache: jwk.NewCache(context.Background()),
-	}
+	verifier := NewJWTVerifier([]string{allowedIssuer})
 
 	// Verify token should fail
 	ctx := context.Background()
