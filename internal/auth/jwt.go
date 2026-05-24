@@ -76,7 +76,7 @@ func (v *JWTVerifier) Verify(ctx context.Context, tokenString string) (*JWTClaim
 	}
 
 	// Construct JWKS endpoint from issuer
-	jwksURL := issStr + "/.well-known/jwks"
+	jwksURL := issStr + "/.well-known/jwks.json"
 
 	// Register and fetch JWKS set from the issuer
 	if err := v.cache.Register(jwksURL); err != nil {
