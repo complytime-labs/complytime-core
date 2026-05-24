@@ -296,6 +296,143 @@ target:
 	assert.False(t, result, "Entry should fail when policy reference is not witnessed")
 }
 
+func TestVerifier_VerifyEntry_AuditLogEvidenceReferencesValid(t *testing.T) {
+	// EvaluationLog at index 1 with target "production"
+	evaluationYAML := `metadata:
+  type: EvaluationLog
+target:
+  id: production
+`
+
+	// AuditLog at index 42 references evidence at index 1
+	auditYAML := `metadata:
+  type: AuditLog
+target:
+  id: production
+results:
+  - control-id: CC6.1
+    evidence:
+      - tessera-log-index: 1
+`
+
+	mockTessera := &mockTesseraReader{
+		entries: map[uint64][]byte{
+			1:  []byte(evaluationYAML),
+			42: []byte(auditYAML),
+		},
+	}
+
+	mockDB := &mockPostgres{
+		evidenceRows: map[uint64]evidenceRow{
+			1: {certified: true, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
+			42: {certified: true, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
+		},
+		witnessedIndices: map[uint64]bool{
+			1: true, // Evidence is witnessed
+		},
+	}
+
+	config := &Config{
+		TrustedPublishers: []TrustedPublisher{
+			{Issuer: "https://token.actions.githubusercontent.com", Sub: "repo:complytime/*", AllowedTypes: []string{"AuditLog", "EvaluationLog"}},
+		},
+	}
+
+	verifier := NewVerifier(mockTessera, mockDB, config)
+	result := verifier.VerifyEntry(context.Background(), 42)
+	assert.True(t, result, "AuditLog should pass when evidence references are valid and targets match")
+}
+
+func TestVerifier_VerifyEntry_AuditLogTargetMismatch(t *testing.T) {
+	// EvaluationLog with target "staging"
+	evaluationYAML := `metadata:
+  type: EvaluationLog
+target:
+  id: staging
+`
+
+	// AuditLog with target "production" references evidence from staging
+	auditYAML := `metadata:
+  type: AuditLog
+target:
+  id: production
+results:
+  - control-id: CC6.1
+    evidence:
+      - tessera-log-index: 1
+`
+
+	mockTessera := &mockTesseraReader{
+		entries: map[uint64][]byte{
+			1:  []byte(evaluationYAML),
+			42: []byte(auditYAML),
+		},
+	}
+
+	mockDB := &mockPostgres{
+		evidenceRows: map[uint64]evidenceRow{
+			1:  {certified: true, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
+			42: {certified: true, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
+		},
+		witnessedIndices: map[uint64]bool{1: true},
+	}
+
+	config := &Config{
+		TrustedPublishers: []TrustedPublisher{
+			{Issuer: "https://token.actions.githubusercontent.com", Sub: "repo:complytime/*", AllowedTypes: []string{"AuditLog", "EvaluationLog"}},
+		},
+	}
+
+	verifier := NewVerifier(mockTessera, mockDB, config)
+	result := verifier.VerifyEntry(context.Background(), 42)
+	assert.False(t, result, "AuditLog should fail when evidence targets don't match AuditLog target")
+}
+
+func TestVerifier_VerifyEntry_EvidenceReferenceWrongType(t *testing.T) {
+	// Policy at index 1 (not valid evidence type)
+	policyYAML := `metadata:
+  type: Policy
+target:
+  id: production
+`
+
+	// AuditLog references policy as evidence (invalid)
+	auditYAML := `metadata:
+  type: AuditLog
+target:
+  id: production
+results:
+  - control-id: CC6.1
+    evidence:
+      - tessera-log-index: 1
+`
+
+	mockTessera := &mockTesseraReader{
+		entries: map[uint64][]byte{
+			1:  []byte(policyYAML),
+			42: []byte(auditYAML),
+		},
+	}
+
+	mockDB := &mockPostgres{
+		evidenceRows: map[uint64]evidenceRow{
+			1:  {certified: true, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
+			42: {certified: true, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
+		},
+		witnessedIndices: map[uint64]bool{1: true},
+	}
+
+	config := &Config{
+		TrustedPublishers: []TrustedPublisher{
+			{Issuer: "https://token.actions.githubusercontent.com", Sub: "repo:complytime/*", AllowedTypes: []string{"AuditLog", "Policy"}},
+		},
+	}
+
+	verifier := NewVerifier(mockTessera, mockDB, config)
+	result := verifier.VerifyEntry(context.Background(), 42)
+	assert.False(t, result, "AuditLog should fail when evidence reference points to non-evidence artifact type")
+}
+
 func TestGlobMatch(t *testing.T) {
 	tests := []struct {
 		pattern string

@@ -85,7 +85,11 @@ func (v *Verifier) VerifyEntry(ctx context.Context, logIndex uint64) bool {
 
 	// 6. Verify reference integrity (mapping-references)
 	policyRefs, err := extractPolicyReferences(entry)
-	if err == nil && len(policyRefs) > 0 {
+	if err != nil {
+		slog.Error("failed to parse policy references", "log_index", logIndex, "error", err)
+		return false
+	}
+	if len(policyRefs) > 0 {
 		for _, policyIndex := range policyRefs {
 			if !v.verifyPolicyReference(ctx, policyIndex) {
 				slog.Warn("policy reference not found or not witnessed",
@@ -99,7 +103,11 @@ func (v *Verifier) VerifyEntry(ctx context.Context, logIndex uint64) bool {
 	// 7. For AuditLog, verify evidence references
 	if artifactType == "AuditLog" {
 		evidenceRefs, err := extractEvidenceReferences(entry)
-		if err == nil && len(evidenceRefs) > 0 {
+		if err != nil {
+			slog.Error("failed to parse evidence references", "log_index", logIndex, "error", err)
+			return false
+		}
+		if len(evidenceRefs) > 0 {
 			for _, evidenceIndex := range evidenceRefs {
 				if !v.verifyEvidenceReference(ctx, evidenceIndex) {
 					slog.Warn("evidence reference not found or not witnessed",
@@ -284,6 +292,10 @@ func parseTarget(entry []byte) (string, error) {
 
 	if err := yaml.Unmarshal(entry, &doc); err != nil {
 		return "", err
+	}
+
+	if doc.Target.ID == "" {
+		return "", fmt.Errorf("missing target.id")
 	}
 
 	return doc.Target.ID, nil
