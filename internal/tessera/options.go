@@ -10,7 +10,7 @@ type Options struct {
 
 func DefaultOptions() Options {
 	return Options{
-		CheckpointTime: 100 * time.Millisecond, // Short for tests; adjust in production
+		CheckpointTime: 10 * time.Minute,
 		CheckpointSize: 100,
 	}
 }

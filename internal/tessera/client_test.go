@@ -15,7 +15,12 @@ func TestClient_Add_SequentialIndices(t *testing.T) {
 	ctx := context.Background()
 	tmpDir := t.TempDir()
 
-	client, err := tessera.NewClient(ctx, tmpDir, tessera.DefaultOptions())
+	// Use short checkpoint time for tests
+	opts := tessera.Options{
+		CheckpointTime: 100 * time.Millisecond,
+		CheckpointSize: 100,
+	}
+	client, err := tessera.NewClient(ctx, tmpDir, opts)
 	require.NoError(t, err)
 	defer client.Close()
 
@@ -39,7 +44,12 @@ func TestClient_Read_ReturnsStoredEntry(t *testing.T) {
 	ctx := context.Background()
 	tmpDir := t.TempDir()
 
-	client, err := tessera.NewClient(ctx, tmpDir, tessera.DefaultOptions())
+	// Use short checkpoint time for tests
+	opts := tessera.Options{
+		CheckpointTime: 100 * time.Millisecond,
+		CheckpointSize: 100,
+	}
+	client, err := tessera.NewClient(ctx, tmpDir, opts)
 	require.NoError(t, err)
 	defer client.Close()
 
