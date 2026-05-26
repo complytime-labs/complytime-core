@@ -796,6 +796,11 @@ type EvidenceRecord struct {
 	CollectedAt    time.Time `json:"collected_at"`
 	Classification string    `json:"classification,omitempty"`
 	LogIndex       *uint64   `json:"log_index,omitempty"` // Tessera transparency log position
+
+	// Publisher identity from JWT verification
+	PublisherIssuer string `json:"publisher_issuer,omitempty"` // JWT iss claim
+	SubmittedBy     string `json:"submitted_by,omitempty"`     // JWT sub claim
+	PublisherType   string `json:"publisher_type,omitempty"`   // pipeline, service, or unknown
 }
 
 // nullStr returns nil for empty strings, pointer otherwise.
@@ -874,8 +879,9 @@ func (s *Store) InsertEvidence(ctx context.Context, records []EvidenceRecord) (i
 		exception_id, exception_active,
 		enrichment_status,
 		attestation_ref, source_registry, blob_ref,
-		owner, collected_at, log_index
-	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
+		owner, collected_at, log_index,
+		publisher_issuer, submitted_by, publisher_type
+	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39)
 	ON CONFLICT (evidence_id, control_id, requirement_id) DO UPDATE SET
 		target_name = EXCLUDED.target_name,
 		target_type = EXCLUDED.target_type,
@@ -887,7 +893,10 @@ func (s *Store) InsertEvidence(ctx context.Context, records []EvidenceRecord) (i
 		compliance_status = EXCLUDED.compliance_status,
 		owner = EXCLUDED.owner,
 		collected_at = EXCLUDED.collected_at,
-		log_index = EXCLUDED.log_index`
+		log_index = EXCLUDED.log_index,
+		publisher_issuer = EXCLUDED.publisher_issuer,
+		submitted_by = EXCLUDED.submitted_by,
+		publisher_type = EXCLUDED.publisher_type`
 
 	count := 0
 	for _, r := range records {
@@ -907,6 +916,7 @@ func (s *Store) InsertEvidence(ctx context.Context, records []EvidenceRecord) (i
 			r.EnrichmentStatus,
 			nullStr(r.AttestationRef), nullStr(r.SourceRegistry), nullStr(r.BlobRef),
 			nullStr(r.Owner), r.CollectedAt, r.LogIndex,
+			nullStr(r.PublisherIssuer), nullStr(r.SubmittedBy), nullStr(r.PublisherType),
 		); err != nil {
 			return count, fmt.Errorf("insert evidence row: %w", err)
 		}
@@ -1727,4 +1737,56 @@ func (s *Store) ListRequirementEvidence(ctx context.Context, requirementID strin
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// WitnessEvidenceRow contains publisher and certification data for witness verification.
+type WitnessEvidenceRow struct {
+	Certified       bool
+	PublisherIssuer string
+	SubmittedBy     string
+}
+
+// QueryEvidenceByLogIndex retrieves certification and publisher data for a given Tessera log index.
+// Returns nil if the evidence is not yet in PostgreSQL (async processing delay).
+func (s *Store) QueryEvidenceByLogIndex(ctx context.Context, logIndex uint64) (*WitnessEvidenceRow, error) {
+	const q = `SELECT certified, publisher_issuer, submitted_by
+	           FROM evidence
+	           WHERE log_index = $1
+	           LIMIT 1`
+
+	var row WitnessEvidenceRow
+	err := s.pool.QueryRow(ctx, q, logIndex).Scan(&row.Certified, &row.PublisherIssuer, &row.SubmittedBy)
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("query evidence by log_index: %w", err)
+	}
+
+	return &row, nil
+}
+
+// IsIndexWitnessed checks if a Tessera log index has been verified and countersigned by the witness.
+func (s *Store) IsIndexWitnessed(ctx context.Context, index uint64) bool {
+	const q = `SELECT EXISTS(SELECT 1 FROM witnessed_indices WHERE log_index = $1)`
+
+	var exists bool
+	err := s.pool.QueryRow(ctx, q, index).Scan(&exists)
+	if err != nil {
+		return false
+	}
+	return exists
+}
+
+// MarkIndexWitnessed records that a Tessera log index has been verified and countersigned.
+func (s *Store) MarkIndexWitnessed(ctx context.Context, index uint64, witnessName, checkpointHash string) error {
+	const q = `INSERT INTO witnessed_indices (log_index, witness_name, checkpoint_hash)
+	           VALUES ($1, $2, $3)
+	           ON CONFLICT (log_index) DO NOTHING`
+
+	_, err := s.pool.Exec(ctx, q, index, witnessName, checkpointHash)
+	if err != nil {
+		return fmt.Errorf("mark index witnessed: %w", err)
+	}
+	return nil
 }
