@@ -1744,18 +1744,19 @@ type WitnessEvidenceRow struct {
 	Certified       bool
 	PublisherIssuer string
 	SubmittedBy     string
+	PublisherType   string
 }
 
 // QueryEvidenceByLogIndex retrieves certification and publisher data for a given Tessera log index.
 // Returns nil if the evidence is not yet in PostgreSQL (async processing delay).
 func (s *Store) QueryEvidenceByLogIndex(ctx context.Context, logIndex uint64) (*WitnessEvidenceRow, error) {
-	const q = `SELECT certified, publisher_issuer, submitted_by
+	const q = `SELECT certified, publisher_issuer, submitted_by, publisher_type
 	           FROM evidence
 	           WHERE log_index = $1
 	           LIMIT 1`
 
 	var row WitnessEvidenceRow
-	err := s.pool.QueryRow(ctx, q, logIndex).Scan(&row.Certified, &row.PublisherIssuer, &row.SubmittedBy)
+	err := s.pool.QueryRow(ctx, q, logIndex).Scan(&row.Certified, &row.PublisherIssuer, &row.SubmittedBy, &row.PublisherType)
 	if err != nil {
 		if err.Error() == "no rows in result set" {
 			return nil, nil

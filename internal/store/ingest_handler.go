@@ -11,6 +11,7 @@ import (
 	gemara "github.com/gemaraproj/go-gemara"
 	"github.com/goccy/go-yaml"
 
+	"github.com/complytime-labs/complytime-core/internal/events"
 	"github.com/complytime-labs/complytime-core/internal/ingest"
 )
 
@@ -18,12 +19,12 @@ import (
 // Deprecated: use toEvidenceRecordsWithLogIndex instead. This function is kept for
 // backward compatibility and will be removed in a future version.
 func toEvidenceRecords(rows []ingest.EvidenceRow) []EvidenceRecord {
-	return toEvidenceRecordsWithLogIndex(rows, 0)
+	return toEvidenceRecordsWithLogIndex(rows, 0, nil)
 }
 
 // toEvidenceRecordsWithLogIndex converts ingest EvidenceRows to store EvidenceRecords,
-// optionally setting a log_index for all records (for Tessera transparency log tracking).
-func toEvidenceRecordsWithLogIndex(rows []ingest.EvidenceRow, logIndex uint64) []EvidenceRecord {
+// optionally setting a log_index and publisher identity for all records (for Tessera transparency log tracking).
+func toEvidenceRecordsWithLogIndex(rows []ingest.EvidenceRow, logIndex uint64, publisherIdentity *events.PublisherIdentity) []EvidenceRecord {
 	records := make([]EvidenceRecord, len(rows))
 	for i, row := range rows {
 		rec := EvidenceRecord{
@@ -71,6 +72,14 @@ func toEvidenceRecordsWithLogIndex(rows []ingest.EvidenceRow, logIndex uint64) [
 			v := logIndex
 			rec.LogIndex = &v
 		}
+
+		// Set publisher identity if provided (from JWT-verified ingestion)
+		if publisherIdentity != nil {
+			rec.PublisherIssuer = publisherIdentity.Issuer
+			rec.SubmittedBy = publisherIdentity.Sub
+			rec.PublisherType = publisherIdentity.Type
+		}
+
 		records[i] = rec
 	}
 	return records
