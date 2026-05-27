@@ -12,9 +12,11 @@ import (
 )
 
 const (
-	SubjectEvidence  = "core.evidence"
-	SubjectDraft     = "core.draft"
-	SubjectIngestRaw = "core.ingest"
+	SubjectEvidence         = "core.evidence"
+	SubjectDraft            = "core.draft"
+	SubjectIngestRaw        = "core.ingest"
+	SubjectPolicyNew        = "core.policy.new"
+	SubjectTargetRegistered = "core.target.registered"
 )
 
 // SubjectPrefix is the NATS subject namespace for studio events.
@@ -127,6 +129,21 @@ type IngestRawEvent struct {
 	Timestamp         time.Time         `json:"timestamp"`
 }
 
+// PolicyEvent is published when a new Policy artifact is ingested.
+type PolicyEvent struct {
+	LogIndex  uint64    `json:"log_index"`
+	PolicyID  string    `json:"policy_id"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// TargetRegisteredEvent is published when a TargetRegistration is ingested.
+type TargetRegisteredEvent struct {
+	LogIndex     uint64    `json:"log_index"`
+	TargetID     string    `json:"target_id"`
+	RegisteredBy string    `json:"registered_by"`
+	Timestamp    time.Time `json:"timestamp"`
+}
+
 // PublishIngestRaw publishes a raw artifact for async ingest. Returns an
 // error so the HTTP handler can fail the job immediately on NATS issues.
 // Note: LogIndex and PublisherIdentity are scaffolded in IngestRawEvent but not
@@ -203,6 +220,47 @@ func (b *Bus) SubscribeEvidence(handler func(EvidenceEvent)) (*nats.Subscription
 		}
 		handler(evt)
 	})
+}
+
+// PublishPolicyNew broadcasts that a new Policy artifact was ingested.
+func (b *Bus) PublishPolicyNew(logIndex uint64, policyID string) {
+	if b == nil || b.conn == nil {
+		return
+	}
+	evt := PolicyEvent{
+		LogIndex:  logIndex,
+		PolicyID:  policyID,
+		Timestamp: time.Now().UTC(),
+	}
+	data, err := json.Marshal(evt)
+	if err != nil {
+		slog.Warn("nats marshal failed", "error", err)
+		return
+	}
+	if err := b.conn.Publish(SubjectPolicyNew, data); err != nil {
+		slog.Warn("nats publish failed", "subject", SubjectPolicyNew, "error", err)
+	}
+}
+
+// PublishTargetRegistered broadcasts that a new target was registered.
+func (b *Bus) PublishTargetRegistered(logIndex uint64, targetID, registeredBy string) {
+	if b == nil || b.conn == nil {
+		return
+	}
+	evt := TargetRegisteredEvent{
+		LogIndex:     logIndex,
+		TargetID:     targetID,
+		RegisteredBy: registeredBy,
+		Timestamp:    time.Now().UTC(),
+	}
+	data, err := json.Marshal(evt)
+	if err != nil {
+		slog.Warn("nats marshal failed", "error", err)
+		return
+	}
+	if err := b.conn.Publish(SubjectTargetRegistered, data); err != nil {
+		slog.Warn("nats publish failed", "subject", SubjectTargetRegistered, "error", err)
+	}
 }
 
 // Close drains and closes the NATS connection.
