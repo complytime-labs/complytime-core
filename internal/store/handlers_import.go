@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
+	"github.com/complytime-labs/complytime-core/internal/events"
 	gemarapkg "github.com/complytime-labs/complytime-core/internal/gemara"
 )
 
@@ -75,11 +76,63 @@ func ociImport(c echo.Context, s Stores, ref string) error {
 		return jsonError(c, http.StatusBadGateway, "failed to pull bundle: "+err.Error())
 	}
 
-	var resp ociImportResponse
-	resp.Digest = bundle.Etag
-
+	bundleID := uuid.New().String()
 	allFiles := append(bundle.Files, bundle.Imports...)
+
+	if s.TesseraAppender == nil || s.IngestPublisher == nil {
+		return ociImportLegacy(c, s, allFiles, bundle.Etag)
+	}
+
+	identity := events.PublisherIdentity{
+		Sub:      "import:" + ref,
+		Issuer:   "complytime-gateway",
+		Type:     "import",
+		Verified: true,
+	}
+
+	var imported []ociImportedArtifact
 	for _, f := range allFiles {
+		detected, err := gemara.DetectType(f.Data)
+		if err != nil {
+			slog.Warn("skip unrecognized artifact", "name", f.Name, "error", err)
+			continue
+		}
+
+		logIndex, err := s.TesseraAppender.Add(ctx, f.Data)
+		if err != nil {
+			slog.Error("tessera append failed", "name", f.Name, "error", err)
+			continue
+		}
+
+		jobID := uuid.New().String()
+		s.IngestTracker.Create(jobID)
+
+		if err := s.IngestPublisher.PublishIngestRawWithContext(
+			jobID, f.Data, logIndex, identity,
+		); err != nil {
+			slog.Error("nats publish failed", "name", f.Name, "error", err)
+		}
+
+		imported = append(imported, ociImportedArtifact{
+			Type: detected.String(),
+			Name: f.Name,
+		})
+	}
+
+	return c.JSON(http.StatusAccepted, map[string]any{
+		"bundle_id": bundleID,
+		"status":    "processing",
+		"digest":    bundle.Etag,
+		"artifacts": len(imported),
+	})
+}
+
+func ociImportLegacy(c echo.Context, s Stores, files []gemarabundle.File, etag string) error {
+	var resp ociImportResponse
+	resp.Digest = etag
+
+	ctx := c.Request().Context()
+	for _, f := range files {
 		art, err := storeArtifactFile(ctx, s, f)
 		if err != nil {
 			slog.Warn("import artifact failed", "name", f.Name, "error", err)
