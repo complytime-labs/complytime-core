@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	gemara "github.com/gemaraproj/go-gemara"
 	gemarabundle "github.com/gemaraproj/go-gemara/bundle"
@@ -186,11 +187,29 @@ func storePolicyFromContent(ctx context.Context, ps PolicyStore, ctrlS ControlSt
 		pid = uuid.NewString()
 	}
 	p := Policy{
-		PolicyID: pid,
-		Title:    title,
-		Version:  pol.Metadata.Version,
-		Content:  content,
+		PolicyID:     pid,
+		Title:        title,
+		Version:      pol.Metadata.Version,
+		Content:      content,
+		Technologies: pol.Scope.In.Technologies,
+		Geopolitical: pol.Scope.In.Geopolitical,
+		Sensitivity:  pol.Scope.In.Sensitivity,
+		Users:        pol.Scope.In.Users,
+		Groups:       pol.Scope.In.Groups,
 	}
+
+	// Extract evaluation timeline
+	if start := string(pol.ImplementationPlan.EvaluationTimeline.Start); start != "" {
+		if t, err := time.Parse(time.RFC3339, start); err == nil {
+			p.EvaluationTimelineStart = &t
+		}
+	}
+	if end := string(pol.ImplementationPlan.EvaluationTimeline.End); end != "" {
+		if t, err := time.Parse(time.RFC3339, end); err == nil {
+			p.EvaluationTimelineEnd = &t
+		}
+	}
+
 	if err := ps.InsertPolicy(ctx, p); err != nil {
 		return ociImportedArtifact{}, err
 	}
