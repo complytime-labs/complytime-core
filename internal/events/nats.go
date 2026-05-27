@@ -263,6 +263,21 @@ func (b *Bus) PublishTargetRegistered(logIndex uint64, targetID, registeredBy st
 	}
 }
 
+// SubscribeTargetRegistered subscribes to target registration events.
+func (b *Bus) SubscribeTargetRegistered(handler func(TargetRegisteredEvent)) (*nats.Subscription, error) {
+	if b == nil || b.conn == nil {
+		return nil, nil
+	}
+	return b.conn.Subscribe(SubjectTargetRegistered, func(msg *nats.Msg) {
+		var evt TargetRegisteredEvent
+		if err := json.Unmarshal(msg.Data, &evt); err != nil {
+			slog.Warn("nats unmarshal failed", "error", err)
+			return
+		}
+		handler(evt)
+	})
+}
+
 // Close drains and closes the NATS connection.
 func (b *Bus) Close() {
 	if b == nil || b.conn == nil {

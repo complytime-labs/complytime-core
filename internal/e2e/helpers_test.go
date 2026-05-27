@@ -20,6 +20,7 @@ import (
 	"github.com/complytime-labs/complytime-core/internal/store"
 	"github.com/complytime-labs/complytime-core/internal/tessera"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/labstack/echo/v4"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	natsserver "github.com/nats-io/nats-server/v2/server"
@@ -185,6 +186,14 @@ func waitForJobCompletion(t *testing.T, tracker *store.IngestTracker, jobID stri
 	t.Fatalf("Job %s did not complete within %v", jobID, timeout)
 }
 
+
+// newTestEchoServer creates an Echo instance for E2E testing
+func newTestEchoServer() *echo.Echo {
+	e := echo.New()
+	e.HideBanner = true
+	e.HidePort = true
+	return e
+}
 
 // submitEvidence submits evidence YAML to the ingest endpoint
 func submitEvidence(t *testing.T, serverURL string, token string, yamlContent []byte) (*http.Response, map[string]any) {
