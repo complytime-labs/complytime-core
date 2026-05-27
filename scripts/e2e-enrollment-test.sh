@@ -73,6 +73,14 @@ wait_for_port() {
     done
 }
 
+# Auth headers for gateway API calls (simulates OAuth2 Proxy)
+AUTH_HEADERS=(-H "X-Forwarded-Email: e2e-test@complytime.dev" -H "X-Forwarded-Preferred-Username: e2e-test" -H "X-Forwarded-User: e2e-test")
+
+# Run psql inside the PostgreSQL container
+run_psql() {
+    $CONTAINER_RT exec "$PG_CONTAINER" psql -U complytime -d complytime "$@"
+}
+
 # ---------------------------------------------------------------------------
 # Infrastructure
 # ---------------------------------------------------------------------------
@@ -130,7 +138,7 @@ GATEWAY_URL="http://127.0.0.1:$GATEWAY_PORT"
 
 log "Step 1: Insert policy with dimensions..."
 
-psql "$POSTGRES_URL" -q -c "
+run_psql -q -c "
 INSERT INTO policies (policy_id, title, version, content,
   technologies, geopolitical, sensitivity,
   evaluation_timeline_start, evaluation_timeline_end, tessera_log_index)
@@ -147,7 +155,7 @@ ON CONFLICT (policy_id) DO UPDATE SET
 "
 
 # Verify policy stored
-POLICY_COUNT=$(psql "$POSTGRES_URL" -t -A -c "SELECT COUNT(*) FROM policies WHERE policy_id = 'infra-security-baseline';")
+POLICY_COUNT=$(run_psql -t -A -c "SELECT COUNT(*) FROM policies WHERE policy_id = 'infra-security-baseline';")
 if [ "$POLICY_COUNT" = "1" ]; then
     pass "Policy stored with dimensions"
 else
@@ -158,7 +166,7 @@ fi
 
 log "Step 2: Register target with dimensions..."
 
-psql "$POSTGRES_URL" -q -c "
+run_psql -q -c "
 INSERT INTO targets (target_id, tessera_log_index, target_name, target_type,
   technologies, geopolitical, sensitivity, users, groups,
   registered_at, registered_by)
@@ -168,7 +176,7 @@ VALUES ('prod-cluster', 1, 'Production Kubernetes Cluster', 'kubernetes-cluster'
 ON CONFLICT (target_id, tessera_log_index) DO NOTHING;
 "
 
-TARGET_COUNT=$(psql "$POSTGRES_URL" -t -A -c "SELECT COUNT(*) FROM targets WHERE target_id = 'prod-cluster';")
+TARGET_COUNT=$(run_psql -t -A -c "SELECT COUNT(*) FROM targets WHERE target_id = 'prod-cluster';")
 if [ "$TARGET_COUNT" = "1" ]; then
     pass "Target registered with dimensions"
 else
@@ -179,7 +187,7 @@ fi
 
 log "Step 3: Query policy discovery API..."
 
-DISCOVER_RESP=$(curl -s "$GATEWAY_URL/api/policies/discover?target_id=prod-cluster&timestamp=2026-05-26T10:00:00Z")
+DISCOVER_RESP=$(curl -s "${AUTH_HEADERS[@]}" "$GATEWAY_URL/api/policies/discover?target_id=prod-cluster&timestamp=2026-05-26T10:00:00Z")
 DISCOVER_STATUS=$(echo "$DISCOVER_RESP" | jq -r '.target.id // empty')
 POLICY_MATCH=$(echo "$DISCOVER_RESP" | jq -r '.applicable_policies[0].policy_id // empty')
 
@@ -207,7 +215,7 @@ fi
 
 log "Step 4: List registered targets..."
 
-TARGETS_RESP=$(curl -s "$GATEWAY_URL/api/targets")
+TARGETS_RESP=$(curl -s "${AUTH_HEADERS[@]}" "$GATEWAY_URL/api/targets")
 TARGET_ID=$(echo "$TARGETS_RESP" | jq -r '.[0].target_id // empty')
 
 if [ "$TARGET_ID" = "prod-cluster" ]; then
@@ -220,7 +228,7 @@ fi
 
 log "Step 5: Query non-existent target (expect 404)..."
 
-NOTFOUND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$GATEWAY_URL/api/policies/discover?target_id=nonexistent&timestamp=2026-05-26T10:00:00Z")
+NOTFOUND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${AUTH_HEADERS[@]}" "$GATEWAY_URL/api/policies/discover?target_id=nonexistent&timestamp=2026-05-26T10:00:00Z")
 
 if [ "$NOTFOUND_STATUS" = "404" ]; then
     pass "Non-existent target returns 404"
@@ -232,7 +240,7 @@ fi
 
 log "Step 6: Query with missing target_id (expect 400)..."
 
-BADREQ_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$GATEWAY_URL/api/policies/discover")
+BADREQ_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${AUTH_HEADERS[@]}" "$GATEWAY_URL/api/policies/discover")
 
 if [ "$BADREQ_STATUS" = "400" ]; then
     pass "Missing target_id returns 400"
@@ -244,7 +252,7 @@ fi
 
 log "Step 7: Query with timestamp outside evaluation window (expect empty)..."
 
-OUTSIDE_RESP=$(curl -s "$GATEWAY_URL/api/policies/discover?target_id=prod-cluster&timestamp=2027-01-01T00:00:00Z")
+OUTSIDE_RESP=$(curl -s "${AUTH_HEADERS[@]}" "$GATEWAY_URL/api/policies/discover?target_id=prod-cluster&timestamp=2027-01-01T00:00:00Z")
 OUTSIDE_COUNT=$(echo "$OUTSIDE_RESP" | jq '.applicable_policies | length')
 
 if [ "$OUTSIDE_COUNT" = "0" ]; then
@@ -257,7 +265,7 @@ fi
 
 log "Step 8: Register second target with non-matching dimensions..."
 
-psql "$POSTGRES_URL" -q -c "
+run_psql -q -c "
 INSERT INTO targets (target_id, tessera_log_index, target_name, target_type,
   technologies, geopolitical, sensitivity, users, groups,
   registered_at, registered_by)
@@ -267,7 +275,7 @@ VALUES ('staging-app', 2, 'Staging Web App', 'web-application',
 ON CONFLICT (target_id, tessera_log_index) DO NOTHING;
 "
 
-NOMATCH_RESP=$(curl -s "$GATEWAY_URL/api/policies/discover?target_id=staging-app&timestamp=2026-05-26T10:00:00Z")
+NOMATCH_RESP=$(curl -s "${AUTH_HEADERS[@]}" "$GATEWAY_URL/api/policies/discover?target_id=staging-app&timestamp=2026-05-26T10:00:00Z")
 NOMATCH_COUNT=$(echo "$NOMATCH_RESP" | jq '.applicable_policies | length')
 
 if [ "$NOMATCH_COUNT" = "0" ]; then
@@ -281,7 +289,7 @@ fi
 log "Step 9: Verify database state..."
 
 # Check targets table
-TOTAL_TARGETS=$(psql "$POSTGRES_URL" -t -A -c "SELECT COUNT(DISTINCT target_id) FROM targets;")
+TOTAL_TARGETS=$(run_psql -t -A -c "SELECT COUNT(DISTINCT target_id) FROM targets;")
 if [ "$TOTAL_TARGETS" = "2" ]; then
     pass "Two targets registered in database"
 else
@@ -289,7 +297,7 @@ else
 fi
 
 # Check policy dimensions stored
-POLICY_TECHS=$(psql "$POSTGRES_URL" -t -A -c "SELECT technologies FROM policies WHERE policy_id = 'infra-security-baseline';")
+POLICY_TECHS=$(run_psql -t -A -c "SELECT technologies FROM policies WHERE policy_id = 'infra-security-baseline';")
 if echo "$POLICY_TECHS" | grep -q "kubernetes"; then
     pass "Policy dimensions persisted in database"
 else
