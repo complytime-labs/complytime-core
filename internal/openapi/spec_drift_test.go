@@ -365,8 +365,10 @@ func (*nopCertificationStore) QueryRecentEvidence(context.Context, string, time.
 
 type nopEventPublisher struct{}
 
-func (*nopEventPublisher) PublishEvidence(string, int)                 {}
-func (*nopEventPublisher) PublishDraftAuditLog(string, string, string) {}
+func (*nopEventPublisher) PublishEvidence(string, int)                    {}
+func (*nopEventPublisher) PublishDraftAuditLog(string, string, string)    {}
+func (*nopEventPublisher) PublishPolicyNew(uint64, string)                {}
+func (*nopEventPublisher) PublishTargetRegistered(uint64, string, string) {}
 
 type nopIngestPublisher struct{}
 

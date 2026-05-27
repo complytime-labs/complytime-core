@@ -158,6 +158,8 @@ func main() {
 		IngestPublisher:     bus,
 		TesseraAppender:     tesseraClient,
 		JWTVerifier:         jwtVerifier,
+		Targets:             st,
+		PolicyDimensions:    st,
 	}
 	slog.Info("store API registered", "routes", []string{
 		"/api/policies",
