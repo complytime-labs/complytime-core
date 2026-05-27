@@ -44,43 +44,43 @@ func IngestWorker(
 			handleEvidenceIngest(ctx, evt, gemara.EnforcementLogArtifact, stores.Evidence,
 				pub, tracker)
 		case gemara.PolicyArtifact:
-			handleArtifactStore(evt, tracker, func() (string, string, error) {
+			handleArtifactStore(ctx, evt, tracker, func() (string, string, error) {
 				art, err := storePolicyFromContent(ctx, stores.Policies, stores.Controls,
 					string(evt.YAML))
 				if err == nil && pub != nil {
 					pub.PublishPolicyNew(evt.LogIndex, art.ID)
 				}
 				return art.ID, art.Type, err
-			})
+			}, stores.InsertBundleArtifact)
 		case gemara.ControlCatalogArtifact:
-			handleArtifactStore(evt, tracker, func() (string, string, error) {
+			handleArtifactStore(ctx, evt, tracker, func() (string, string, error) {
 				art, err := storeCatalogFromContent(ctx, stores, "ControlCatalog",
 					string(evt.YAML))
 				return art.ID, art.Type, err
-			})
+			}, stores.InsertBundleArtifact)
 		case gemara.ThreatCatalogArtifact:
-			handleArtifactStore(evt, tracker, func() (string, string, error) {
+			handleArtifactStore(ctx, evt, tracker, func() (string, string, error) {
 				art, err := storeCatalogFromContent(ctx, stores, "ThreatCatalog",
 					string(evt.YAML))
 				return art.ID, art.Type, err
-			})
+			}, stores.InsertBundleArtifact)
 		case gemara.RiskCatalogArtifact:
-			handleArtifactStore(evt, tracker, func() (string, string, error) {
+			handleArtifactStore(ctx, evt, tracker, func() (string, string, error) {
 				art, err := storeCatalogFromContent(ctx, stores, "RiskCatalog",
 					string(evt.YAML))
 				return art.ID, art.Type, err
-			})
+			}, stores.InsertBundleArtifact)
 		case gemara.GuidanceCatalogArtifact:
-			handleArtifactStore(evt, tracker, func() (string, string, error) {
+			handleArtifactStore(ctx, evt, tracker, func() (string, string, error) {
 				art, err := storeCatalogFromContent(ctx, stores, "GuidanceCatalog",
 					string(evt.YAML))
 				return art.ID, art.Type, err
-			})
+			}, stores.InsertBundleArtifact)
 		case gemara.MappingDocumentArtifact:
-			handleArtifactStore(evt, tracker, func() (string, string, error) {
+			handleArtifactStore(ctx, evt, tracker, func() (string, string, error) {
 				art, err := storeMappingFromContent(ctx, stores.Mappings, string(evt.YAML))
 				return art.ID, art.Type, err
-			})
+			}, stores.InsertBundleArtifact)
 		default:
 			tracker.Fail(evt.JobID, fmt.Sprintf("unsupported artifact type: %s",
 				artifactType))
@@ -134,15 +134,29 @@ func handleEvidenceIngest(
 }
 
 func handleArtifactStore(
+	ctx context.Context,
 	evt events.IngestRawEvent,
 	tracker *IngestTracker,
 	storeFn func() (string, string, error),
+	bundleStore func(context.Context, BundleArtifactRow) error,
 ) {
 	id, artType, err := storeFn()
 	if err != nil {
 		tracker.Fail(evt.JobID, fmt.Sprintf("store failed: %v", err))
 		slog.Warn("async ingest: store failed", "job_id", evt.JobID, "error", err)
 		return
+	}
+
+	if evt.BundleID != "" && bundleStore != nil {
+		if err := bundleStore(ctx, BundleArtifactRow{
+			BundleID:        evt.BundleID,
+			TesseraLogIndex: evt.LogIndex,
+			ArtifactType:    artType,
+			ArtifactID:      id,
+			OCIReference:    evt.OCIReference,
+		}); err != nil {
+			slog.Warn("bundle artifact tracking failed", "bundle_id", evt.BundleID, "error", err)
+		}
 	}
 
 	tracker.CompleteArtifact(evt.JobID, id, artType)

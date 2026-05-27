@@ -64,6 +64,17 @@ type Stores struct {
 	PolicyDimensions    PolicyDimensionStore
 }
 
+// InsertBundleArtifact inserts a bundle artifact if the Evidence store supports it.
+func (s Stores) InsertBundleArtifact(ctx context.Context, b BundleArtifactRow) error {
+	type bundleInserter interface {
+		InsertBundleArtifact(ctx context.Context, b BundleArtifactRow) error
+	}
+	if bi, ok := s.Evidence.(bundleInserter); ok {
+		return bi.InsertBundleArtifact(ctx, b)
+	}
+	return nil
+}
+
 // Register mounts all public store API endpoints on g (typically e.Group("/api")).
 // Internal (agent-only) endpoints are registered via RegisterInternal.
 func Register(g *echo.Group, s Stores) {

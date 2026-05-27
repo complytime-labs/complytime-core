@@ -123,6 +123,15 @@ type DraftAuditLogStore interface {
 	PromoteDraftAuditLog(ctx context.Context, draftID string, reviewedBy string) error
 }
 
+// BundleArtifactRow represents an artifact within an OCI bundle.
+type BundleArtifactRow struct {
+	BundleID        string
+	TesseraLogIndex uint64
+	ArtifactType    string
+	ArtifactID      string
+	OCIReference    string
+}
+
 // TargetStore defines operations for target registrations.
 type TargetStore interface {
 	InsertTarget(ctx context.Context, t TargetRow) error
@@ -1786,6 +1795,18 @@ func (s *Store) ListRequirementEvidence(ctx context.Context, requirementID strin
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) InsertBundleArtifact(ctx context.Context, b BundleArtifactRow) error {
+	const q = `INSERT INTO bundle_artifacts (bundle_id, tessera_log_index, artifact_type, artifact_id, oci_reference)
+	VALUES ($1, $2, $3, $4, $5)
+	ON CONFLICT (bundle_id, tessera_log_index) DO NOTHING`
+
+	_, err := s.pool.Exec(ctx, q, b.BundleID, b.TesseraLogIndex, b.ArtifactType, b.ArtifactID, nullStr(b.OCIReference))
+	if err != nil {
+		return fmt.Errorf("insert bundle artifact: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) InsertTarget(ctx context.Context, t TargetRow) error {

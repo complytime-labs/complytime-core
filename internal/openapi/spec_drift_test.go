@@ -378,6 +378,10 @@ func (*nopIngestPublisher) PublishIngestRawWithContext(string, []byte, uint64, e
 	return nil
 }
 
+func (*nopIngestPublisher) PublishIngestRawWithBundle(string, []byte, uint64, events.PublisherIdentity, string, string) error {
+	return nil
+}
+
 type nopHealthChecker struct{}
 
 func (*nopHealthChecker) Ping(context.Context) error { return nil }

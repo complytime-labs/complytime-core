@@ -115,6 +115,10 @@ func (p *immediateIngestPublisher) PublishIngestRawWithContext(jobID string, yam
 	return nil
 }
 
+func (p *immediateIngestPublisher) PublishIngestRawWithBundle(jobID string, yaml []byte, logIndex uint64, identity events.PublisherIdentity, bundleID, ociRef string) error {
+	return p.PublishIngestRawWithContext(jobID, yaml, logIndex, identity)
+}
+
 // Mock Tessera appender for tests
 type mockTesseraAppender struct {
 	nextIndex uint64

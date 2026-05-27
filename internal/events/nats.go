@@ -126,6 +126,8 @@ type IngestRawEvent struct {
 	LogIndex          uint64            `json:"log_index"`          // Tessera transparency log position
 	YAML              []byte            `json:"yaml"`
 	PublisherIdentity PublisherIdentity `json:"publisher_identity"`
+	BundleID          string            `json:"bundle_id,omitempty"`     // OCI bundle ID (empty for direct ingest)
+	OCIReference      string            `json:"oci_reference,omitempty"` // Source OCI reference
 	Timestamp         time.Time         `json:"timestamp"`
 }
 
@@ -171,6 +173,11 @@ func (b *Bus) PublishIngestRaw(jobID string, yaml []byte) error {
 // JWT-verified publisher identity and Tessera log_index. Returns an error so
 // the HTTP handler can fail the job immediately on NATS issues.
 func (b *Bus) PublishIngestRawWithContext(jobID string, yaml []byte, logIndex uint64, identity PublisherIdentity) error {
+	return b.PublishIngestRawWithBundle(jobID, yaml, logIndex, identity, "", "")
+}
+
+// PublishIngestRawWithBundle publishes with bundle tracking for OCI imports.
+func (b *Bus) PublishIngestRawWithBundle(jobID string, yaml []byte, logIndex uint64, identity PublisherIdentity, bundleID, ociRef string) error {
 	if b == nil || b.conn == nil {
 		return fmt.Errorf("nats not connected")
 	}
@@ -179,6 +186,8 @@ func (b *Bus) PublishIngestRawWithContext(jobID string, yaml []byte, logIndex ui
 		LogIndex:          logIndex,
 		YAML:              yaml,
 		PublisherIdentity: identity,
+		BundleID:          bundleID,
+		OCIReference:      ociRef,
 		Timestamp:         time.Now().UTC(),
 	}
 	data, err := json.Marshal(evt)

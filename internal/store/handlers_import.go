@@ -108,8 +108,8 @@ func ociImport(c echo.Context, s Stores, ref string) error {
 		jobID := uuid.New().String()
 		s.IngestTracker.Create(jobID)
 
-		if err := s.IngestPublisher.PublishIngestRawWithContext(
-			jobID, f.Data, logIndex, identity,
+		if err := s.IngestPublisher.PublishIngestRawWithBundle(
+			jobID, f.Data, logIndex, identity, bundleID, ref,
 		); err != nil {
 			slog.Error("nats publish failed", "name", f.Name, "error", err)
 		}
