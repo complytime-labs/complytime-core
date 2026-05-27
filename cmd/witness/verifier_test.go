@@ -31,8 +31,9 @@ type evidenceRow struct {
 }
 
 type mockPostgres struct {
-	evidenceRows     map[uint64]evidenceRow
-	witnessedIndices map[uint64]bool
+	evidenceRows       map[uint64]evidenceRow
+	witnessedIndices   map[uint64]bool
+	registeredTargets  map[string]bool
 }
 
 func (m *mockPostgres) QueryEvidenceByLogIndex(ctx context.Context, logIndex uint64) (*EvidenceRow, error) {
@@ -49,6 +50,13 @@ func (m *mockPostgres) QueryEvidenceByLogIndex(ctx context.Context, logIndex uin
 
 func (m *mockPostgres) IsIndexWitnessed(ctx context.Context, index uint64) bool {
 	return m.witnessedIndices[index]
+}
+
+func (m *mockPostgres) IsTargetRegistered(ctx context.Context, targetID string) bool {
+	if m.registeredTargets == nil {
+		return true
+	}
+	return m.registeredTargets[targetID]
 }
 
 func TestVerifier_VerifyEntry_AllChecksPass(t *testing.T) {

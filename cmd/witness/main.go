@@ -131,6 +131,10 @@ func (p *postgresAdapter) IsIndexWitnessed(ctx context.Context, index uint64) bo
 	return p.store.IsIndexWitnessed(ctx, index)
 }
 
+func (p *postgresAdapter) IsTargetRegistered(ctx context.Context, targetID string) bool {
+	return p.store.IsTargetRegistered(ctx, targetID)
+}
+
 // verificationLoop polls Tessera for new entries and verifies them
 func verificationLoop(ctx context.Context, verifier *Verifier, storeClient *store.Store, state *State, config *Config, statePath string) {
 	ticker := time.NewTicker(config.Witness.PollInterval)

@@ -18,6 +18,7 @@ type TesseraReader interface {
 type PostgresQuerier interface {
 	QueryEvidenceByLogIndex(ctx context.Context, logIndex uint64) (*EvidenceRow, error)
 	IsIndexWitnessed(ctx context.Context, index uint64) bool
+	IsTargetRegistered(ctx context.Context, targetID string) bool
 }
 
 type EvidenceRow struct {
@@ -81,6 +82,14 @@ func (v *Verifier) VerifyEntry(ctx context.Context, logIndex uint64) bool {
 			"issuer", evidenceRow.PublisherIssuer,
 			"sub", evidenceRow.SubmittedBy)
 		return false
+	}
+
+	// 5b. Advisory: Check if target is registered (non-blocking)
+	targetID, _ := parseTarget(entry)
+	if targetID != "" && !v.db.IsTargetRegistered(ctx, targetID) {
+		slog.Warn("evidence references unregistered target (advisory)",
+			"log_index", logIndex,
+			"target_id", targetID)
 	}
 
 	// 6. Verify reference integrity (mapping-references)

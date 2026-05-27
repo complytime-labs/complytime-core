@@ -1797,6 +1797,17 @@ func (s *Store) ListRequirementEvidence(ctx context.Context, requirementID strin
 	return out, rows.Err()
 }
 
+// IsTargetRegistered checks if a target has any registration in the targets table.
+func (s *Store) IsTargetRegistered(ctx context.Context, targetID string) bool {
+	const q = `SELECT EXISTS(SELECT 1 FROM targets WHERE target_id = $1)`
+	var exists bool
+	err := s.pool.QueryRow(ctx, q, targetID).Scan(&exists)
+	if err != nil {
+		return false
+	}
+	return exists
+}
+
 func (s *Store) InsertBundleArtifact(ctx context.Context, b BundleArtifactRow) error {
 	const q = `INSERT INTO bundle_artifacts (bundle_id, tessera_log_index, artifact_type, artifact_id, oci_reference)
 	VALUES ($1, $2, $3, $4, $5)
