@@ -38,6 +38,29 @@ Enable publishers to discover which Gemara Policy artifacts apply to their targe
 
 ## Architecture
 
+### Unified Ingestion Principle
+
+All artifacts flow through Tessera. The existing `POST /api/import` endpoint (OCI bundle import) is updated to route each artifact in the bundle through `/api/ingest` internally. This ensures every artifact — whether submitted directly or imported from an OCI registry — receives a `tessera_log_index` and is part of the immutable audit trail.
+
+### Policy Bundle Grouping
+
+Gemara Policy bundles in OCI registries contain multiple interdependent artifacts: Policy, ControlCatalog, ThreatCatalog, Mappings, etc. These are linked by a `bundle_id` so the system can reconstruct the full bundle and derive the **effective policy** — the resolved, flattened set of all requirements a target must comply with.
+
+```
+POST /api/import {"reference": "ghcr.io/org/policies/baseline:v2.0.0"}
+    ↓
+Gateway pulls OCI bundle (Policy + ControlCatalog + Mappings + ...)
+    ↓
+For each artifact in bundle:
+    - Submit to /api/ingest internally
+    - Each gets a tessera_log_index
+    - All share a bundle_id
+    ↓
+Worker processes each artifact → PostgreSQL (with log_index + bundle_id)
+    ↓
+Effective policy = resolved requirements from bundle_id group
+```
+
 ### Components
 
 ```
@@ -45,9 +68,11 @@ TargetRegistration (CUE) → /api/ingest → Tessera → Worker → PostgreSQL t
                                                             ↓
                                                     NATS core.target.registered
 
-Policy → /api/ingest → Tessera → Worker → PostgreSQL policies table
-                                         ↓
-                                 NATS core.policy.new
+Policy Bundle (OCI) → /api/import → /api/ingest (per artifact) → Tessera → Worker
+                                                                             ↓
+                                                                 PostgreSQL (with bundle_id)
+                                                                             ↓
+                                                                     NATS core.policy.new
 
 Publisher queries: GET /api/policies?target_id=X&timestamp=Y
                         ↓
@@ -446,10 +471,10 @@ trusted_publishers:
 
 ### Policy Storage
 
-**Assumption**: Existing `policies` table needs dimension columns added:
+**Assumption**: Existing `policies` table needs dimension and bundle columns added:
 
 ```sql
--- Migration: Add dimension columns to policies table
+-- Migration: Add dimension, timeline, and bundle columns to policies table
 ALTER TABLE policies ADD COLUMN IF NOT EXISTS technologies TEXT[] DEFAULT '{}';
 ALTER TABLE policies ADD COLUMN IF NOT EXISTS geopolitical TEXT[] DEFAULT '{}';
 ALTER TABLE policies ADD COLUMN IF NOT EXISTS sensitivity TEXT[] DEFAULT '{}';
@@ -457,13 +482,73 @@ ALTER TABLE policies ADD COLUMN IF NOT EXISTS users TEXT[] DEFAULT '{}';
 ALTER TABLE policies ADD COLUMN IF NOT EXISTS groups TEXT[] DEFAULT '{}';
 ALTER TABLE policies ADD COLUMN IF NOT EXISTS evaluation_timeline_start TIMESTAMPTZ;
 ALTER TABLE policies ADD COLUMN IF NOT EXISTS evaluation_timeline_end TIMESTAMPTZ;
+ALTER TABLE policies ADD COLUMN IF NOT EXISTS bundle_id TEXT;
+ALTER TABLE policies ADD COLUMN IF NOT EXISTS tessera_log_index BIGINT;
 
 CREATE INDEX idx_policies_dimensions ON policies USING GIN (
     technologies || geopolitical || sensitivity || users || groups
 );
+CREATE INDEX idx_policies_bundle ON policies(bundle_id) WHERE bundle_id IS NOT NULL;
 ```
 
-**Worker modification**: When parsing Policy YAML, extract dimensions and timeline for PostgreSQL storage.
+**Bundle artifacts table** (tracks all artifacts belonging to a bundle):
+
+```sql
+CREATE TABLE IF NOT EXISTS bundle_artifacts (
+    bundle_id           TEXT NOT NULL,
+    tessera_log_index   BIGINT NOT NULL,
+    artifact_type       TEXT NOT NULL,  -- Policy, ControlCatalog, ThreatCatalog, etc.
+    artifact_id         TEXT NOT NULL,
+    oci_reference       TEXT,           -- Source OCI bundle reference
+    imported_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    
+    PRIMARY KEY (bundle_id, tessera_log_index)
+);
+
+CREATE INDEX idx_bundle_artifacts_type ON bundle_artifacts(bundle_id, artifact_type);
+```
+
+**Effective policy**: The resolved set of requirements for a policy is derived by loading all artifacts sharing a `bundle_id` and resolving the Policy's import references against the imported ControlCatalogs, ThreatCatalogs, and Mappings. This resolution happens at query time — the `bundle_artifacts` table provides the lookup.
+
+**Worker modification**: When parsing Policy YAML, extract dimensions and timeline for PostgreSQL storage. When processing a bundle import, assign the same `bundle_id` to all artifacts.
+
+### Import API Update
+
+The existing `POST /api/import` handler is updated to route through Tessera:
+
+```go
+func ociImport(c echo.Context, s Stores, ref string) error {
+    bundle, _ := gemarabundle.Unpack(ctx, repo, ref)
+    
+    bundleID := uuid.New().String()
+    
+    // Submit each artifact to Tessera
+    for _, f := range append(bundle.Files, bundle.Imports...) {
+        logIndex, err := s.TesseraAppender.Add(ctx, f.Data)
+        if err != nil {
+            slog.Error("tessera append failed", "name", f.Name, "error", err)
+            continue
+        }
+        
+        // Publish to NATS for async processing with bundle_id
+        s.IngestPublisher.PublishIngestRawWithBundle(
+            bundleID, f.Data, logIndex, publisherIdentity, ref,
+        )
+    }
+    
+    return c.JSON(http.StatusAccepted, map[string]any{
+        "bundle_id": bundleID,
+        "status":    "processing",
+    })
+}
+```
+
+**Key changes**:
+- Import handler now returns `202 Accepted` (async) instead of `201 Created` (sync)
+- Each artifact gets its own `tessera_log_index`
+- All artifacts share a `bundle_id`
+- OCI reference stored for traceability
+- Worker processes each artifact and inserts into `bundle_artifacts` table
 
 ### Error Handling
 
