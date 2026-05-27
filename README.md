@@ -1,5 +1,7 @@
 # ComplyTime Core
 
+> **Note:** This project is built with AI assistance. Code, documentation, and design specs are authored collaboratively with LLM tools.
+
 Data platform for automated compliance evidence ingestion, verification, and posture analytics. Built around the [OpenSSF Gemara](https://gemara.openssf.org/) project.
 
 Core ingests evidence from scanning tools, stores it in an immutable [Tessera](https://github.com/transparency-dev/tessera) transparency log, certifies it for quality, and computes compliance posture across policies and targets. AI agents in the companion [Studio](https://github.com/complytime-labs/complytime-studio) workbench draft audit-ready artifacts from the stored evidence.
