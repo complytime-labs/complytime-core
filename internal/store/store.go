@@ -123,6 +123,12 @@ type DraftAuditLogStore interface {
 	PromoteDraftAuditLog(ctx context.Context, draftID string, reviewedBy string) error
 }
 
+// TargetStore defines operations for target registrations.
+type TargetStore interface {
+	InsertTarget(ctx context.Context, t TargetRow) error
+	GetLatestTarget(ctx context.Context, targetID string, asOf time.Time) (*TargetRow, error)
+	ListTargets(ctx context.Context) ([]TargetRow, error)
+}
 
 // Store provides typed access to PostgreSQL tables for policies,
 // mapping documents, evidence, and audit logs. Implements all
@@ -146,6 +152,7 @@ var (
 	_ RequirementStore        = (*Store)(nil)
 	_ CertificationStore      = (*Store)(nil)
 	_ GuidanceStore           = (*Store)(nil)
+	_ TargetStore             = (*Store)(nil)
 )
 
 // New wraps a PostgreSQL connection pool.
@@ -162,6 +169,21 @@ type Policy struct {
 	Content      string    `json:"content"`
 	ImportedAt   time.Time `json:"imported_at"`
 	ImportedBy   string    `json:"imported_by,omitempty"`
+}
+
+// TargetRow represents a target registration with dimensional metadata.
+type TargetRow struct {
+	TargetID        string    `json:"target_id"`
+	TesseraLogIndex uint64    `json:"tessera_log_index"`
+	TargetName      string    `json:"target_name"`
+	TargetType      string    `json:"target_type"`
+	Technologies    []string  `json:"technologies"`
+	Geopolitical    []string  `json:"geopolitical"`
+	Sensitivity     []string  `json:"sensitivity"`
+	Users           []string  `json:"users"`
+	Groups          []string  `json:"groups"`
+	RegisteredAt    time.Time `json:"registered_at"`
+	RegisteredBy    string    `json:"registered_by"`
 }
 
 // InsertPolicy stores a policy artifact (upsert on policy_id).
@@ -1735,6 +1757,78 @@ func (s *Store) ListRequirementEvidence(ctx context.Context, requirementID strin
 			return nil, fmt.Errorf("scan requirement evidence row: %w", err)
 		}
 		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) InsertTarget(ctx context.Context, t TargetRow) error {
+	const q = `INSERT INTO targets (
+		target_id, tessera_log_index, target_name, target_type,
+		technologies, geopolitical, sensitivity, users, groups,
+		registered_at, registered_by
+	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+	ON CONFLICT (target_id, tessera_log_index) DO NOTHING`
+
+	_, err := s.pool.Exec(ctx, q,
+		t.TargetID, t.TesseraLogIndex, t.TargetName, t.TargetType,
+		t.Technologies, t.Geopolitical, t.Sensitivity, t.Users, t.Groups,
+		t.RegisteredAt, t.RegisteredBy,
+	)
+	if err != nil {
+		return fmt.Errorf("insert target: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) GetLatestTarget(ctx context.Context, targetID string, asOf time.Time) (*TargetRow, error) {
+	const q = `SELECT target_id, tessera_log_index, target_name, target_type,
+		technologies, geopolitical, sensitivity, users, groups,
+		registered_at, registered_by
+	FROM targets
+	WHERE target_id = $1 AND registered_at <= $2
+	ORDER BY registered_at DESC
+	LIMIT 1`
+
+	var t TargetRow
+	err := s.pool.QueryRow(ctx, q, targetID, asOf).Scan(
+		&t.TargetID, &t.TesseraLogIndex, &t.TargetName, &t.TargetType,
+		&t.Technologies, &t.Geopolitical, &t.Sensitivity, &t.Users, &t.Groups,
+		&t.RegisteredAt, &t.RegisteredBy,
+	)
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get latest target: %w", err)
+	}
+	return &t, nil
+}
+
+func (s *Store) ListTargets(ctx context.Context) ([]TargetRow, error) {
+	const q = `SELECT DISTINCT ON (target_id)
+		target_id, tessera_log_index, target_name, target_type,
+		technologies, geopolitical, sensitivity, users, groups,
+		registered_at, registered_by
+	FROM targets
+	ORDER BY target_id, registered_at DESC`
+
+	rows, err := s.pool.Query(ctx, q)
+	if err != nil {
+		return nil, fmt.Errorf("list targets: %w", err)
+	}
+	defer rows.Close()
+
+	var out []TargetRow
+	for rows.Next() {
+		var t TargetRow
+		if err := rows.Scan(
+			&t.TargetID, &t.TesseraLogIndex, &t.TargetName, &t.TargetType,
+			&t.Technologies, &t.Geopolitical, &t.Sensitivity, &t.Users, &t.Groups,
+			&t.RegisteredAt, &t.RegisteredBy,
+		); err != nil {
+			return nil, fmt.Errorf("scan target row: %w", err)
+		}
+		out = append(out, t)
 	}
 	return out, rows.Err()
 }
