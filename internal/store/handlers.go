@@ -16,11 +16,13 @@ func jsonError(c echo.Context, code int, msg string) error {
 	return c.JSON(code, map[string]string{"error": msg})
 }
 
-// EventPublisher emits NATS events for evidence and draft audit logs.
+// EventPublisher emits NATS events for evidence, policies, and targets.
 // Implemented by *events.Bus; nil-safe (callers check before use).
 type EventPublisher interface {
 	PublishEvidence(policyID string, count int)
 	PublishDraftAuditLog(draftID, policyID, summary string)
+	PublishPolicyNew(logIndex uint64, policyID string)
+	PublishTargetRegistered(logIndex uint64, targetID, registeredBy string)
 }
 
 // HealthChecker verifies backend connectivity for health probes.
@@ -58,6 +60,8 @@ type Stores struct {
 	IngestPublisher     IngestRawPublisher
 	TesseraAppender     TesseraAppender
 	JWTVerifier         JWTVerifier
+	Targets             TargetStore
+	PolicyDimensions    PolicyDimensionStore
 }
 
 // Register mounts all public store API endpoints on g (typically e.Group("/api")).
@@ -73,4 +77,5 @@ func Register(g *echo.Group, s Stores) {
 	registerPostureAndRequirementRoutes(g, s)
 	registerDraftAuditRoutes(g, s)
 	registerThreatAndRiskRoutes(g, s)
+	registerTargetRoutes(g, s)
 }

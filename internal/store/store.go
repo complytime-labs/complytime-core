@@ -153,6 +153,7 @@ var (
 	_ CertificationStore      = (*Store)(nil)
 	_ GuidanceStore           = (*Store)(nil)
 	_ TargetStore             = (*Store)(nil)
+	_ PolicyDimensionStore    = (*Store)(nil)
 )
 
 // New wraps a PostgreSQL connection pool.
@@ -1829,6 +1830,50 @@ func (s *Store) ListTargets(ctx context.Context) ([]TargetRow, error) {
 			return nil, fmt.Errorf("scan target row: %w", err)
 		}
 		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) QueryPoliciesByDimensions(ctx context.Context, dims DimensionQuery) ([]PolicyWithDimensions, error) {
+	const q = `SELECT policy_id, title, version, tessera_log_index,
+		technologies, geopolitical, sensitivity,
+		evaluation_timeline_start, evaluation_timeline_end
+	FROM policies
+	WHERE (
+		technologies && $1
+		OR geopolitical && $2
+		OR sensitivity && $3
+		OR users && $4
+		OR groups && $5
+	)
+	AND (evaluation_timeline_start IS NULL OR evaluation_timeline_start <= $6)
+	AND (evaluation_timeline_end IS NULL OR evaluation_timeline_end >= $6)
+	ORDER BY tessera_log_index ASC`
+
+	rows, err := s.pool.Query(ctx, q,
+		dims.Technologies, dims.Geopolitical, dims.Sensitivity,
+		dims.Users, dims.Groups, dims.Timestamp,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query policies by dimensions: %w", err)
+	}
+	defer rows.Close()
+
+	var out []PolicyWithDimensions
+	for rows.Next() {
+		var p PolicyWithDimensions
+		var logIndex *int64
+		if err := rows.Scan(
+			&p.PolicyID, &p.Title, &p.Version, &logIndex,
+			&p.Technologies, &p.Geopolitical, &p.Sensitivity,
+			&p.EvaluationStart, &p.EvaluationEnd,
+		); err != nil {
+			return nil, fmt.Errorf("scan policy dimension row: %w", err)
+		}
+		if logIndex != nil {
+			p.LogIndex = uint64(*logIndex)
+		}
+		out = append(out, p)
 	}
 	return out, rows.Err()
 }

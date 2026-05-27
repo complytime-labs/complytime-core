@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	gemara "github.com/gemaraproj/go-gemara"
 
@@ -24,6 +25,12 @@ func IngestWorker(
 
 		artifactType, err := detectArtifactType(evt.YAML)
 		if err != nil {
+			// Fall back to string-based detection for CUE extensions
+			typeStr := detectArtifactTypeString(evt.YAML)
+			if typeStr == "TargetRegistration" {
+				handleTargetRegistration(ctx, evt, stores.Targets, pub, tracker)
+				return
+			}
 			tracker.Fail(evt.JobID, fmt.Sprintf("invalid artifact: %v", err))
 			slog.Warn("async ingest: invalid artifact", "job_id", evt.JobID, "error", err)
 			return
@@ -40,6 +47,9 @@ func IngestWorker(
 			handleArtifactStore(evt, tracker, func() (string, string, error) {
 				art, err := storePolicyFromContent(ctx, stores.Policies, stores.Controls,
 					string(evt.YAML))
+				if err == nil && pub != nil {
+					pub.PublishPolicyNew(evt.LogIndex, art.ID)
+				}
 				return art.ID, art.Type, err
 			})
 		case gemara.ControlCatalogArtifact:
@@ -140,5 +150,56 @@ func handleArtifactStore(
 		"job_id", evt.JobID,
 		"type", artType,
 		"artifact_id", id,
+	)
+}
+
+func handleTargetRegistration(
+	ctx context.Context,
+	evt events.IngestRawEvent,
+	targets TargetStore,
+	pub EventPublisher,
+	tracker *IngestTracker,
+) {
+	reg, err := parseTargetRegistration(evt.YAML)
+	if err != nil {
+		tracker.Fail(evt.JobID, fmt.Sprintf("parse failed: %v", err))
+		slog.Warn("async ingest: TargetRegistration parse failed", "job_id", evt.JobID, "error", err)
+		return
+	}
+
+	registeredAt, err := time.Parse(time.RFC3339, reg.Metadata.Date)
+	if err != nil {
+		registeredAt = time.Now().UTC()
+	}
+
+	row := TargetRow{
+		TargetID:        reg.Target.ID,
+		TesseraLogIndex: evt.LogIndex,
+		TargetName:      reg.Target.Name,
+		TargetType:      reg.Target.Type,
+		Technologies:    reg.Dimensions.Technologies,
+		Geopolitical:    reg.Dimensions.Geopolitical,
+		Sensitivity:     reg.Dimensions.Sensitivity,
+		Users:           reg.Dimensions.Users,
+		Groups:          reg.Dimensions.Groups,
+		RegisteredAt:    registeredAt,
+		RegisteredBy:    evt.PublisherIdentity.Sub,
+	}
+
+	if err := targets.InsertTarget(ctx, row); err != nil {
+		tracker.Fail(evt.JobID, fmt.Sprintf("insert failed: %v", err))
+		slog.Error("async ingest: TargetRegistration insert failed", "job_id", evt.JobID, "error", err)
+		return
+	}
+
+	if pub != nil {
+		pub.PublishTargetRegistered(evt.LogIndex, reg.Target.ID, evt.PublisherIdentity.Sub)
+	}
+
+	tracker.CompleteArtifact(evt.JobID, reg.Target.ID, "TargetRegistration")
+	slog.Info("async ingest completed",
+		"job_id", evt.JobID,
+		"type", "TargetRegistration",
+		"target_id", reg.Target.ID,
 	)
 }

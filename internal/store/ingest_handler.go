@@ -113,6 +113,50 @@ func detectArtifactType(data []byte) (gemara.ArtifactType, error) {
 	return hdr.Metadata.Type, nil
 }
 
+func detectArtifactTypeString(data []byte) string {
+	var hdr struct {
+		Metadata struct {
+			Type string `yaml:"type"`
+		} `yaml:"metadata"`
+	}
+	if err := yaml.Unmarshal(data, &hdr); err != nil {
+		return ""
+	}
+	return hdr.Metadata.Type
+}
+
+// TargetRegistrationYAML represents the parsed TargetRegistration artifact.
+type TargetRegistrationYAML struct {
+	Metadata struct {
+		Type string `yaml:"type"`
+		ID   string `yaml:"id"`
+		Date string `yaml:"date"`
+	} `yaml:"metadata"`
+	Target struct {
+		ID   string `yaml:"id"`
+		Name string `yaml:"name"`
+		Type string `yaml:"type"`
+	} `yaml:"target"`
+	Dimensions struct {
+		Technologies []string `yaml:"technologies"`
+		Geopolitical []string `yaml:"geopolitical"`
+		Sensitivity  []string `yaml:"sensitivity"`
+		Users        []string `yaml:"users"`
+		Groups       []string `yaml:"groups"`
+	} `yaml:"dimensions"`
+}
+
+func parseTargetRegistration(data []byte) (*TargetRegistrationYAML, error) {
+	var reg TargetRegistrationYAML
+	if err := yaml.Unmarshal(data, &reg); err != nil {
+		return nil, fmt.Errorf("parse TargetRegistration YAML: %w", err)
+	}
+	if reg.Target.ID == "" {
+		return nil, fmt.Errorf("missing target.id")
+	}
+	return &reg, nil
+}
+
 func flattenEvaluation(ctx context.Context, data []byte) ([]ingest.EvidenceRow, string, error) {
 	f := &bytesFetcher{data: data}
 	evalLog, err := gemara.Load[gemara.EvaluationLog](ctx, f, "upload.yaml")
