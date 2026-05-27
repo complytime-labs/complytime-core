@@ -83,12 +83,12 @@ $CONTAINER_RT run -d --name "$PG_CONTAINER" \
     -e POSTGRES_PASSWORD=complytime \
     -e POSTGRES_DB=complytime \
     -p "$PG_PORT":5432 \
-    postgres:16 >/dev/null
+    docker.io/library/postgres:16 >/dev/null
 
 log "Starting NATS on port $NATS_PORT..."
 $CONTAINER_RT run -d --name "$NATS_CONTAINER" \
     -p "$NATS_PORT":4222 \
-    nats:latest >/dev/null
+    docker.io/library/nats:latest >/dev/null
 
 log "Waiting for PostgreSQL..."
 wait_for_port "$PG_PORT"
