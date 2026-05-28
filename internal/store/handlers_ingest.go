@@ -24,7 +24,6 @@ func registerIngestRoutes(g *echo.Group, s Stores) {
 
 // IngestRawPublisher publishes raw YAML for async processing via NATS.
 type IngestRawPublisher interface {
-	PublishIngestRaw(jobID string, yaml []byte) error
 	PublishIngestRawWithContext(jobID string, yaml []byte, logIndex uint64, identity events.PublisherIdentity) error
 	PublishIngestRawWithBundle(jobID string, yaml []byte, logIndex uint64, identity events.PublisherIdentity, bundleID, ociRef string) error
 }

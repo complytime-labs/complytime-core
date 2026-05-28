@@ -1,6 +1,0 @@
-# SPDX-License-Identifier: Apache-2.0
-apiVersion: v2
-name: complytime-core
-description: ComplyTime evidence data platform — headless deployment
-version: 0.1.0
-appVersion: "0.3.0"
