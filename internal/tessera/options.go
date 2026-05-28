@@ -1,4 +1,5 @@
-// internal/tessera/options.go
+// SPDX-License-Identifier: Apache-2.0
+
 package tessera
 
 import "time"

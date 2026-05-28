@@ -14,6 +14,7 @@ import (
 	"github.com/complytime-labs/complytime-core/internal/consts"
 	"github.com/complytime-labs/complytime-core/internal/gemara"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -1955,7 +1956,7 @@ func (s *Store) QueryEvidenceByLogIndex(ctx context.Context, logIndex uint64) (*
 	var row WitnessEvidenceRow
 	err := s.pool.QueryRow(ctx, q, logIndex).Scan(&row.Certified, &row.PublisherIssuer, &row.SubmittedBy, &row.PublisherType)
 	if err != nil {
-		if err.Error() == "no rows in result set" {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("query evidence by log_index: %w", err)
@@ -1970,6 +1971,18 @@ func (s *Store) IsIndexWitnessed(ctx context.Context, index uint64) bool {
 
 	var exists bool
 	err := s.pool.QueryRow(ctx, q, index).Scan(&exists)
+	if err != nil {
+		return false
+	}
+	return exists
+}
+
+// PolicyExistsByID checks if a policy with the given ID exists in the database.
+func (s *Store) PolicyExistsByID(ctx context.Context, policyID string) bool {
+	const q = `SELECT EXISTS(SELECT 1 FROM policies WHERE policy_id = $1)`
+
+	var exists bool
+	err := s.pool.QueryRow(ctx, q, policyID).Scan(&exists)
 	if err != nil {
 		return false
 	}

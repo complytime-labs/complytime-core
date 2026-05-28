@@ -199,25 +199,29 @@ func TestE2E_PolicyDiscovery(t *testing.T) {
 	waitForJobCompletion(t, tracker, result["job_id"].(string), 10*time.Second)
 	t.Logf("Registered target prod-cluster")
 
-	// Step 2: Insert policy with matching dimensions directly
-	_, err = pgClient.Pool().Exec(ctx,
-		`INSERT INTO policies (policy_id, title, version, technologies, geopolitical,
-		 evaluation_timeline_start, evaluation_timeline_end, tessera_log_index)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		 ON CONFLICT (policy_id) DO UPDATE SET
-		   technologies = EXCLUDED.technologies,
-		   geopolitical = EXCLUDED.geopolitical,
-		   evaluation_timeline_start = EXCLUDED.evaluation_timeline_start,
-		   evaluation_timeline_end = EXCLUDED.evaluation_timeline_end,
-		   tessera_log_index = EXCLUDED.tessera_log_index`,
-		"infra-baseline", "Infrastructure Baseline", "2.0.0",
-		[]string{"kubernetes"}, []string{"EU"},
-		time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC),
-		int64(100),
-	)
+	// Step 2: Ingest policy through /api/ingest (not raw SQL)
+	policyYAML, err := os.ReadFile("testdata/policy_sample.yaml")
 	require.NoError(t, err)
-	t.Logf("Inserted policy with kubernetes+EU dimensions")
+
+	policyToken := jwtCtx.generateTestJWT(t, "repo:org/policies:ref:refs/heads/main")
+	policyHTTPResp, policyResult := submitEvidence(t, ingestServer.URL, policyToken, policyYAML)
+	require.Equal(t, http.StatusAccepted, policyHTTPResp.StatusCode)
+
+	policyJobID := policyResult["job_id"].(string)
+	policyLogIndex := uint64(policyResult["log_index"].(float64))
+	waitForJobCompletion(t, tracker, policyJobID, 10*time.Second)
+	t.Logf("Ingested policy via /api/ingest: job_id=%s, log_index=%d", policyJobID, policyLogIndex)
+
+	// Verify tessera_log_index propagated to the policies table
+	var storedLogIndex *uint64
+	err = pgClient.Pool().QueryRow(ctx,
+		`SELECT tessera_log_index FROM policies WHERE policy_id = $1`,
+		"infra-baseline",
+	).Scan(&storedLogIndex)
+	require.NoError(t, err)
+	require.NotNil(t, storedLogIndex, "tessera_log_index should be set on ingested policy")
+	assert.Equal(t, policyLogIndex, *storedLogIndex, "tessera_log_index should match ingest response")
+	t.Logf("Verified: policy tessera_log_index=%d matches ingest log_index", *storedLogIndex)
 
 	// Step 3: Query for applicable policies
 	queryURL := fmt.Sprintf("%s/api/policies/discover?target_id=prod-cluster&timestamp=2026-05-26T10:00:00Z", apiServer.URL)
@@ -237,7 +241,7 @@ func TestE2E_PolicyDiscovery(t *testing.T) {
 	// Verify matching policy found
 	require.Len(t, policyResp.ApplicablePolicies, 1, "Expected 1 applicable policy")
 	assert.Equal(t, "infra-baseline", policyResp.ApplicablePolicies[0].PolicyID)
-	assert.Equal(t, uint64(100), policyResp.ApplicablePolicies[0].LogIndex)
+	assert.Equal(t, policyLogIndex, policyResp.ApplicablePolicies[0].LogIndex)
 	t.Logf("Verified: Policy infra-baseline matches prod-cluster dimensions")
 
 	// Step 4: Query with non-existent target

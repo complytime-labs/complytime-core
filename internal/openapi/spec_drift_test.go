@@ -117,6 +117,8 @@ func buildRouter(t *testing.T) *echo.Echo {
 		IngestPublisher:     &nopIngestPublisher{},
 		TesseraAppender:     &nopTesseraAppender{},
 		JWTVerifier:         &nopJWTVerifier{},
+		Targets:             &nopTargetStore{},
+		PolicyDimensions:    &nopPolicyDimensionStore{},
 	}
 	store.Register(apiGroup, s)
 
@@ -416,6 +418,20 @@ func (*nopUserStore) CountAdmins(context.Context) (int, error)               { r
 func (*nopUserStore) InsertRoleChange(context.Context, auth.RoleChange) error { return nil }
 func (*nopUserStore) ListRoleChanges(context.Context) ([]auth.RoleChange, error) { return nil, nil }
 func (*nopUserStore) BootstrapAdmin(context.Context, string) (string, error)  { return "", nil }
+
+type nopTargetStore struct{}
+
+func (*nopTargetStore) InsertTarget(context.Context, store.TargetRow) error              { panic("nop") }
+func (*nopTargetStore) GetLatestTarget(context.Context, string, time.Time) (*store.TargetRow, error) {
+	panic("nop")
+}
+func (*nopTargetStore) ListTargets(context.Context) ([]store.TargetRow, error) { panic("nop") }
+
+type nopPolicyDimensionStore struct{}
+
+func (*nopPolicyDimensionStore) QueryPoliciesByDimensions(context.Context, store.DimensionQuery) ([]store.PolicyWithDimensions, error) {
+	panic("nop")
+}
 
 type nopTesseraAppender struct{}
 

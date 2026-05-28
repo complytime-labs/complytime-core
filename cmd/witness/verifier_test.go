@@ -24,6 +24,10 @@ func (m *mockTesseraReader) Read(ctx context.Context, index uint64) ([]byte, err
 	return entry, nil
 }
 
+func (m *mockTesseraReader) ReadCheckpoint(_ context.Context) ([]byte, error) {
+	return []byte("tessera-log\n100\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n"), nil
+}
+
 type evidenceRow struct {
 	certified       bool
 	publisherIssuer string
@@ -34,6 +38,7 @@ type mockPostgres struct {
 	evidenceRows       map[uint64]evidenceRow
 	witnessedIndices   map[uint64]bool
 	registeredTargets  map[string]bool
+	existingPolicies   map[string]bool
 }
 
 func (m *mockPostgres) QueryEvidenceByLogIndex(ctx context.Context, logIndex uint64) (*EvidenceRow, error) {
@@ -57,6 +62,13 @@ func (m *mockPostgres) IsTargetRegistered(ctx context.Context, targetID string) 
 		return true
 	}
 	return m.registeredTargets[targetID]
+}
+
+func (m *mockPostgres) PolicyExistsByID(ctx context.Context, policyID string) bool {
+	if m.existingPolicies == nil {
+		return true
+	}
+	return m.existingPolicies[policyID]
 }
 
 func TestVerifier_VerifyEntry_AllChecksPass(t *testing.T) {
@@ -439,6 +451,155 @@ results:
 	verifier := NewVerifier(mockTessera, mockDB, config)
 	result := verifier.VerifyEntry(context.Background(), 42)
 	assert.False(t, result, "AuditLog should fail when evidence reference points to non-evidence artifact type")
+}
+
+func TestVerifier_VerifyEntry_PolicyVerified(t *testing.T) {
+	policyYAML := `metadata:
+  type: Policy
+  id: infra-baseline
+  version: "2.0.0"
+title: Infrastructure Baseline
+`
+
+	mockTessera := &mockTesseraReader{
+		entries: map[uint64][]byte{
+			10: []byte(policyYAML),
+		},
+	}
+
+	mockDB := &mockPostgres{
+		existingPolicies: map[string]bool{
+			"infra-baseline": true,
+		},
+	}
+
+	config := &Config{
+		TrustedPublishers: []TrustedPublisher{
+			{Issuer: "https://example.com", Sub: "*", AllowedTypes: []string{"Policy"}},
+		},
+	}
+
+	verifier := NewVerifier(mockTessera, mockDB, config)
+	result := verifier.VerifyEntry(context.Background(), 10)
+	assert.True(t, result, "Policy entry should pass when policy exists in DB")
+}
+
+func TestVerifier_VerifyEntry_PolicyNotInDB(t *testing.T) {
+	policyYAML := `metadata:
+  type: Policy
+  id: missing-policy
+title: Missing Policy
+`
+
+	mockTessera := &mockTesseraReader{
+		entries: map[uint64][]byte{
+			10: []byte(policyYAML),
+		},
+	}
+
+	mockDB := &mockPostgres{
+		existingPolicies: map[string]bool{},
+	}
+
+	config := &Config{
+		TrustedPublishers: []TrustedPublisher{
+			{Issuer: "https://example.com", Sub: "*", AllowedTypes: []string{"Policy"}},
+		},
+	}
+
+	verifier := NewVerifier(mockTessera, mockDB, config)
+	result := verifier.VerifyEntry(context.Background(), 10)
+	assert.False(t, result, "Policy entry should fail when policy not yet in DB")
+}
+
+func TestVerifier_VerifyEntry_TargetRegistrationVerified(t *testing.T) {
+	targetYAML := `target:
+  id: prod-cluster
+  name: Production Cluster
+  type: kubernetes-cluster
+  technologies:
+    - kubernetes
+`
+
+	mockTessera := &mockTesseraReader{
+		entries: map[uint64][]byte{
+			5: []byte(targetYAML),
+		},
+	}
+
+	mockDB := &mockPostgres{
+		registeredTargets: map[string]bool{
+			"prod-cluster": true,
+		},
+	}
+
+	config := &Config{
+		TrustedPublishers: []TrustedPublisher{
+			{Issuer: "https://example.com", Sub: "*", AllowedTypes: []string{"EvaluationLog"}},
+		},
+	}
+
+	verifier := NewVerifier(mockTessera, mockDB, config)
+	result := verifier.VerifyEntry(context.Background(), 5)
+	assert.True(t, result, "TargetRegistration should pass when target exists in DB")
+}
+
+func TestVerifier_VerifyEntry_TargetRegistrationNotInDB(t *testing.T) {
+	targetYAML := `target:
+  id: unknown-cluster
+  name: Unknown Cluster
+  type: kubernetes-cluster
+  technologies:
+    - kubernetes
+`
+
+	mockTessera := &mockTesseraReader{
+		entries: map[uint64][]byte{
+			5: []byte(targetYAML),
+		},
+	}
+
+	mockDB := &mockPostgres{
+		registeredTargets: map[string]bool{},
+	}
+
+	config := &Config{
+		TrustedPublishers: []TrustedPublisher{
+			{Issuer: "https://example.com", Sub: "*", AllowedTypes: []string{"EvaluationLog"}},
+		},
+	}
+
+	verifier := NewVerifier(mockTessera, mockDB, config)
+	result := verifier.VerifyEntry(context.Background(), 5)
+	assert.False(t, result, "TargetRegistration should fail when target not in DB")
+}
+
+func TestVerifier_VerifyEntry_CatalogExistenceProof(t *testing.T) {
+	catalogYAML := `metadata:
+  type: ControlCatalog
+  id: nist-800-53
+controls:
+  - id: AC-1
+    title: Access Control Policy
+`
+
+	mockTessera := &mockTesseraReader{
+		entries: map[uint64][]byte{
+			20: []byte(catalogYAML),
+		},
+	}
+
+	mockDB := &mockPostgres{}
+
+	config := &Config{
+		TrustedPublishers: []TrustedPublisher{
+			{Issuer: "https://example.com", Sub: "*", AllowedTypes: []string{"EvaluationLog"}},
+		},
+	}
+
+	verifier := NewVerifier(mockTessera, mockDB, config)
+	result := verifier.VerifyEntry(context.Background(), 20)
+	assert.True(t, result, "Catalog entry should pass with existence proof only")
 }
 
 func TestGlobMatch(t *testing.T) {

@@ -13,12 +13,14 @@ import (
 
 type TesseraReader interface {
 	Read(ctx context.Context, index uint64) ([]byte, error)
+	ReadCheckpoint(ctx context.Context) ([]byte, error)
 }
 
 type PostgresQuerier interface {
 	QueryEvidenceByLogIndex(ctx context.Context, logIndex uint64) (*EvidenceRow, error)
 	IsIndexWitnessed(ctx context.Context, index uint64) bool
 	IsTargetRegistered(ctx context.Context, targetID string) bool
+	PolicyExistsByID(ctx context.Context, policyID string) bool
 }
 
 type EvidenceRow struct {
@@ -52,30 +54,46 @@ func (v *Verifier) VerifyEntry(ctx context.Context, logIndex uint64) bool {
 	// 2. Parse Gemara artifact type
 	artifactType, err := parseGemaraType(entry)
 	if err != nil {
+		// Entry exists in Tessera but isn't a valid Gemara artifact.
+		// This could be a TargetRegistration (no metadata.type) — try parsing as one.
+		if targetID, _ := parseTargetRegistrationID(entry); targetID != "" {
+			return v.verifyTargetRegistration(ctx, logIndex, entry, targetID)
+		}
 		slog.Error("invalid Gemara artifact", "log_index", logIndex, "error", err)
 		return false
 	}
 
-	// 3. Query PostgreSQL for certification result
+	// 3. Route verification by artifact type
+	switch artifactType {
+	case "EvaluationLog", "EnforcementLog":
+		return v.verifyEvidence(ctx, logIndex, entry, artifactType)
+	case "AuditLog":
+		return v.verifyAuditLog(ctx, logIndex, entry)
+	case "Policy":
+		return v.verifyPolicy(ctx, logIndex, entry)
+	default:
+		// Catalogs and other types: existence proof is sufficient
+		slog.Info("verified entry by existence (non-evidence type)",
+			"log_index", logIndex, "type", artifactType)
+		return true
+	}
+}
+
+// verifyEvidence runs the full verification pipeline for EvaluationLog/EnforcementLog.
+func (v *Verifier) verifyEvidence(ctx context.Context, logIndex uint64, entry []byte, artifactType string) bool {
 	evidenceRow, err := v.db.QueryEvidenceByLogIndex(ctx, logIndex)
 	if err != nil {
-		slog.Warn("entry not yet in PostgreSQL", "log_index", logIndex, "error", err)
+		slog.Warn("evidence not yet in PostgreSQL", "log_index", logIndex, "error", err)
 		return false
 	}
-
-	// Check entry exists in database
 	if evidenceRow == nil {
-		slog.Warn("entry not yet in PostgreSQL", "log_index", logIndex)
+		slog.Warn("evidence not yet in PostgreSQL", "log_index", logIndex)
 		return false
 	}
-
-	// 4. Check certification passed
 	if !evidenceRow.Certified {
-		slog.Warn("entry failed certification", "log_index", logIndex)
+		slog.Warn("evidence failed certification", "log_index", logIndex)
 		return false
 	}
-
-	// 5. Verify publisher identity
 	if !v.isPublisherTrusted(evidenceRow.PublisherIssuer, evidenceRow.SubmittedBy, artifactType) {
 		slog.Warn("publisher not trusted",
 			"log_index", logIndex,
@@ -84,56 +102,78 @@ func (v *Verifier) VerifyEntry(ctx context.Context, logIndex uint64) bool {
 		return false
 	}
 
-	// 5b. Advisory: Check if target is registered (non-blocking)
+	// Advisory: check target registration (non-blocking)
 	targetID, _ := parseTarget(entry)
 	if targetID != "" && !v.db.IsTargetRegistered(ctx, targetID) {
 		slog.Warn("evidence references unregistered target (advisory)",
-			"log_index", logIndex,
-			"target_id", targetID)
+			"log_index", logIndex, "target_id", targetID)
 	}
 
-	// 6. Verify reference integrity (mapping-references)
+	// Verify policy reference integrity
 	policyRefs, err := extractPolicyReferences(entry)
 	if err != nil {
 		slog.Error("failed to parse policy references", "log_index", logIndex, "error", err)
 		return false
 	}
-	if len(policyRefs) > 0 {
-		for _, policyIndex := range policyRefs {
-			if !v.verifyPolicyReference(ctx, policyIndex) {
-				slog.Warn("policy reference not found or not witnessed",
-					"log_index", logIndex,
-					"policy_log_index", policyIndex)
-				return false
-			}
-		}
-	}
-
-	// 7. For AuditLog, verify evidence references
-	if artifactType == "AuditLog" {
-		evidenceRefs, err := extractEvidenceReferences(entry)
-		if err != nil {
-			slog.Error("failed to parse evidence references", "log_index", logIndex, "error", err)
+	for _, policyIndex := range policyRefs {
+		if !v.verifyPolicyReference(ctx, policyIndex) {
+			slog.Warn("policy reference not found or not witnessed",
+				"log_index", logIndex, "policy_log_index", policyIndex)
 			return false
 		}
-		if len(evidenceRefs) > 0 {
-			for _, evidenceIndex := range evidenceRefs {
-				if !v.verifyEvidenceReference(ctx, evidenceIndex) {
-					slog.Warn("evidence reference not found or not witnessed",
-						"log_index", logIndex,
-						"evidence_log_index", evidenceIndex)
-					return false
-				}
-			}
-
-			// 8. Verify target scoping
-			if !v.verifyTargetScoping(ctx, entry, evidenceRefs) {
-				slog.Warn("AuditLog references evidence from multiple targets", "log_index", logIndex)
-				return false
-			}
-		}
 	}
 
+	return true
+}
+
+// verifyAuditLog extends evidence verification with evidence-reference and target-scoping checks.
+func (v *Verifier) verifyAuditLog(ctx context.Context, logIndex uint64, entry []byte) bool {
+	if !v.verifyEvidence(ctx, logIndex, entry, "AuditLog") {
+		return false
+	}
+
+	evidenceRefs, err := extractEvidenceReferences(entry)
+	if err != nil {
+		slog.Error("failed to parse evidence references", "log_index", logIndex, "error", err)
+		return false
+	}
+	for _, evidenceIndex := range evidenceRefs {
+		if !v.verifyEvidenceReference(ctx, evidenceIndex) {
+			slog.Warn("evidence reference not found or not witnessed",
+				"log_index", logIndex, "evidence_log_index", evidenceIndex)
+			return false
+		}
+	}
+	if len(evidenceRefs) > 0 && !v.verifyTargetScoping(ctx, entry, evidenceRefs) {
+		slog.Warn("AuditLog references evidence from multiple targets", "log_index", logIndex)
+		return false
+	}
+
+	return true
+}
+
+// verifyPolicy checks that a Policy artifact was processed by the ingest worker.
+func (v *Verifier) verifyPolicy(ctx context.Context, logIndex uint64, entry []byte) bool {
+	policyID := parsePolicyID(entry)
+	if policyID == "" {
+		slog.Warn("policy has no metadata.id", "log_index", logIndex)
+		return false
+	}
+	if !v.db.PolicyExistsByID(ctx, policyID) {
+		slog.Warn("policy not yet in PostgreSQL", "log_index", logIndex, "policy_id", policyID)
+		return false
+	}
+	slog.Info("verified policy entry", "log_index", logIndex, "policy_id", policyID)
+	return true
+}
+
+// verifyTargetRegistration checks that a TargetRegistration was processed.
+func (v *Verifier) verifyTargetRegistration(ctx context.Context, logIndex uint64, _ []byte, targetID string) bool {
+	if !v.db.IsTargetRegistered(ctx, targetID) {
+		slog.Warn("target not yet registered in PostgreSQL", "log_index", logIndex, "target_id", targetID)
+		return false
+	}
+	slog.Info("verified target registration entry", "log_index", logIndex, "target_id", targetID)
 	return true
 }
 
@@ -307,6 +347,36 @@ func parseTarget(entry []byte) (string, error) {
 		return "", fmt.Errorf("missing target.id")
 	}
 
+	return doc.Target.ID, nil
+}
+
+func parsePolicyID(entry []byte) string {
+	var doc struct {
+		Metadata struct {
+			ID string `yaml:"id"`
+		} `yaml:"metadata"`
+	}
+	if err := yaml.Unmarshal(entry, &doc); err != nil {
+		return ""
+	}
+	return doc.Metadata.ID
+}
+
+// parseTargetRegistrationID attempts to parse entry as a TargetRegistration
+// (which lacks metadata.type but has target.id and target.technologies).
+func parseTargetRegistrationID(entry []byte) (string, error) {
+	var doc struct {
+		Target struct {
+			ID           string   `yaml:"id"`
+			Technologies []string `yaml:"technologies"`
+		} `yaml:"target"`
+	}
+	if err := yaml.Unmarshal(entry, &doc); err != nil {
+		return "", err
+	}
+	if doc.Target.ID == "" || len(doc.Target.Technologies) == 0 {
+		return "", fmt.Errorf("not a TargetRegistration")
+	}
 	return doc.Target.ID, nil
 }
 

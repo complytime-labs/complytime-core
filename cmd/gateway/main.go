@@ -131,8 +131,9 @@ func main() {
 	if len(allowedIssuers) == 0 {
 		slog.Warn("JWT_ISSUERS not configured — trusted publisher ingestion will be unavailable")
 	}
-	jwtVerifier := auth.NewJWTVerifier(ctx, allowedIssuers)
-	slog.Info("jwt verifier ready", "allowed_issuers", len(allowedIssuers))
+	jwtAudience := os.Getenv("JWT_AUDIENCE")
+	jwtVerifier := auth.NewJWTVerifier(ctx, allowedIssuers, jwtAudience)
+	slog.Info("jwt verifier ready", "allowed_issuers", len(allowedIssuers), "audience", jwtAudience)
 
 	stores := store.Stores{
 		Policies:            st,

@@ -43,15 +43,18 @@ func IngestWorker(
 		case gemara.EnforcementLogArtifact:
 			handleEvidenceIngest(ctx, evt, gemara.EnforcementLogArtifact, stores.Evidence,
 				pub, tracker)
-		case gemara.PolicyArtifact:
-			handleArtifactStore(ctx, evt, tracker, func() (string, string, error) {
-				art, err := storePolicyFromContent(ctx, stores.Policies, stores.Controls,
-					string(evt.YAML))
-				if err == nil && pub != nil {
-					pub.PublishPolicyNew(evt.LogIndex, art.ID)
-				}
-				return art.ID, art.Type, err
-			}, stores.InsertBundleArtifact)
+	case gemara.PolicyArtifact:
+		handleArtifactStore(ctx, evt, tracker, func() (string, string, error) {
+			art, err := storePolicyFromContent(ctx, stores.Policies, stores.Controls,
+				string(evt.YAML), policyIngestOption{
+					LogIndex: evt.LogIndex,
+					BundleID: evt.BundleID,
+				})
+			if err == nil && pub != nil {
+				pub.PublishPolicyNew(evt.LogIndex, art.ID)
+			}
+			return art.ID, art.Type, err
+		}, stores.InsertBundleArtifact)
 		case gemara.ControlCatalogArtifact:
 			handleArtifactStore(ctx, evt, tracker, func() (string, string, error) {
 				art, err := storeCatalogFromContent(ctx, stores, "ControlCatalog",

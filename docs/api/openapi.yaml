@@ -904,6 +904,52 @@ paths:
         '409':
           description: Admin already exists
 
+  /api/targets:
+    get:
+      tags: [Enrollment]
+      operationId: listTargets
+      summary: List all registered targets
+      responses:
+        '200':
+          description: Array of registered targets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TargetSummary'
+
+  /api/policies/discover:
+    get:
+      tags: [Enrollment]
+      operationId: discoverPolicies
+      summary: Discover applicable policies for a target
+      parameters:
+        - name: target_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Target ID to match against policy dimensions
+        - name: timestamp
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Point-in-time for evaluation (defaults to now)
+      responses:
+        '200':
+          description: Target with matching policies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyQueryResponse'
+        '400':
+          description: Missing or invalid parameters
+        '404':
+          description: Target not found
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1478,4 +1524,67 @@ components:
           type: string
           format: date-time
 
+    TargetSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        technologies:
+          type: array
+          items:
+            type: string
+        geopolitical:
+          type: array
+          items:
+            type: string
+        sensitivity:
+          type: array
+          items:
+            type: string
+        registered_at:
+          type: string
+          format: date-time
 
+    PolicyWithDimensions:
+      type: object
+      properties:
+        log_index:
+          type: integer
+        policy_id:
+          type: string
+        title:
+          type: string
+        version:
+          type: string
+        technologies:
+          type: array
+          items:
+            type: string
+        geopolitical:
+          type: array
+          items:
+            type: string
+        sensitivity:
+          type: array
+          items:
+            type: string
+        evaluation_start:
+          type: string
+          format: date-time
+        evaluation_end:
+          type: string
+          format: date-time
+
+    PolicyQueryResponse:
+      type: object
+      properties:
+        target:
+          $ref: '#/components/schemas/TargetSummary'
+        applicable_policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyWithDimensions'

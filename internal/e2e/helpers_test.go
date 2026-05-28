@@ -135,7 +135,7 @@ func newTestJWTVerifier(t *testing.T) *jwtTestContext {
 	t.Cleanup(jwksServer.Close)
 
 	issuerURL := jwksServer.URL
-	verifier := auth.NewJWTVerifier(context.Background(), []string{issuerURL})
+	verifier := auth.NewJWTVerifier(context.Background(), []string{issuerURL}, "")
 
 	return &jwtTestContext{
 		PrivateKey: privateKey,

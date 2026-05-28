@@ -154,6 +154,27 @@ and audit trail.
 - `STUDIO_API_TOKEN` fully removed from gateway, Helm chart, and
   seed scripts
 
+## Amendment (2026-05)
+
+### Ingest Publisher-Attestation JWT
+
+The `/api/ingest` endpoint now accepts a `publisher-attestation` JWT in the `Authorization` header. This JWT is not validated by OAuth2 Proxy — it is parsed by the gateway's own `JWTVerifier` to extract publisher identity (`iss`, `sub`) which is committed to the Tessera transparency log entry alongside the artifact YAML.
+
+This is a separate concern from the headless auth path described above:
+
+| Concern | ADR 0027 (original) | Ingest JWT (this amendment) |
+|:--|:--|:--|
+| Who validates | OAuth2 Proxy | Gateway `JWTVerifier` |
+| Purpose | API authentication + RBAC | Publisher identity attestation |
+| Scope | All `/api/*` routes | `/api/ingest` only |
+| Identity flows to | users table (RBAC) | Tessera log + evidence table (provenance) |
+| Algorithm restriction | Provider-dependent | ES256/RS256 family only (hardened) |
+| Audience | OAuth2 Proxy `clientId` | Optional `JWT_AUDIENCE` env var |
+
+The gateway-side JWT verification was added per the transparency ledger ADR to provide cryptographic publisher provenance. It coexists with OAuth2 Proxy — in production, OAuth2 Proxy authenticates the caller (establishing who can call the API), and the gateway's `JWTVerifier` attests publisher identity (establishing who is claiming responsibility for the artifact).
+
+See: [Transparency Ledger ADR](transparency-ledger.md), [Witness Service ADR](witness-service.md)
+
 ## References
 
 - ADR 0006: [Internal Endpoint Isolation](internal-endpoint-isolation.md)

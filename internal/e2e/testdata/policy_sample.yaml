@@ -1,0 +1,22 @@
+metadata:
+  type: Policy
+  id: infra-baseline
+  version: "2.0.0"
+  gemara-version: "1.0.0"
+  date: "2026-05-01T00:00:00Z"
+title: Infrastructure Baseline
+scope:
+  in:
+    technologies:
+      - kubernetes
+    geopolitical:
+      - EU
+implementation-plan:
+  evaluation-timeline:
+    start: "2026-04-01T00:00:00Z"
+    end: "2026-06-30T00:00:00Z"
+adherence:
+  requirements:
+    - entryId: AC-1
+      title: Access Control Policy
+      referenceId: nist-800-53

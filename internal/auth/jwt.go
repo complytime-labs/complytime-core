@@ -1,7 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -20,16 +23,16 @@ type JWTClaims struct {
 
 // JWTVerifier handles JWT verification with JWKS discovery and caching
 type JWTVerifier struct {
-	// allowedIssuers maps issuer URLs to true for quick lookup
-	allowedIssuers map[string]bool
-	// cache is the JWK cache for JWKS sets
-	cache *jwk.Cache
+	allowedIssuers   map[string]bool
+	expectedAudience string
+	cache            *jwk.Cache
 }
 
-// NewJWTVerifier creates a new JWT verifier with the given allowed issuers
-// allowedIssuers is a slice of issuer URLs
-// ctx is used for background cache operations and should be a long-lived context
-func NewJWTVerifier(ctx context.Context, allowedIssuers []string) *JWTVerifier {
+// NewJWTVerifier creates a new JWT verifier.
+// allowedIssuers is a slice of issuer URLs.
+// audience is the expected audience claim; empty string skips audience validation.
+// ctx is used for background cache operations and should be a long-lived context.
+func NewJWTVerifier(ctx context.Context, allowedIssuers []string, audience string) *JWTVerifier {
 	issuerMap := make(map[string]bool)
 	for _, iss := range allowedIssuers {
 		issuerMap[iss] = true
@@ -46,8 +49,9 @@ func NewJWTVerifier(ctx context.Context, allowedIssuers []string) *JWTVerifier {
 	}
 
 	return &JWTVerifier{
-		allowedIssuers: issuerMap,
-		cache:          cache,
+		allowedIssuers:   issuerMap,
+		expectedAudience: audience,
+		cache:            cache,
 	}
 }
 
@@ -87,13 +91,8 @@ func (v *JWTVerifier) Verify(ctx context.Context, tokenString string) (*JWTClaim
 		return nil, fmt.Errorf("kid header missing or invalid")
 	}
 
-	// Construct JWKS endpoint from issuer
+	// Construct JWKS endpoint from issuer (pre-registered in NewJWTVerifier)
 	jwksURL := issStr + "/.well-known/jwks.json"
-
-	// Register and fetch JWKS set from the issuer
-	if err := v.cache.Register(jwksURL); err != nil {
-		return nil, fmt.Errorf("failed to register JWKS URL: %w", err)
-	}
 
 	jwkSet, err := v.cache.Get(ctx, jwksURL)
 	if err != nil {
@@ -112,13 +111,12 @@ func (v *JWTVerifier) Verify(ctx context.Context, tokenString string) (*JWTClaim
 		return nil, fmt.Errorf("failed to extract raw key: %w", err)
 	}
 
-	// Verify the signature using the raw key
+	// Verify the signature using the raw key with algorithm restriction
 	parsedToken, err = jwt.ParseWithClaims(tokenString, jwt.MapClaims{}, func(token *jwt.Token) (interface{}, error) {
-		// Use the algorithm specified in the JWKS key
 		return rawKey, nil
-	})
+	}, jwt.WithValidMethods([]string{"ES256", "ES384", "ES512", "RS256", "RS384", "RS512"}))
 	if err != nil {
-		if err.Error() == "token is expired" {
+		if errors.Is(err, jwt.ErrTokenExpired) {
 			return nil, fmt.Errorf("token is expired: %w", err)
 		}
 		return nil, fmt.Errorf("failed to verify token signature: %w", err)
@@ -162,6 +160,11 @@ func (v *JWTVerifier) Verify(ctx context.Context, tokenString string) (*JWTClaim
 		case float64:
 			iat = int64(iatVal)
 		}
+	}
+
+	// Validate audience if configured
+	if v.expectedAudience != "" && aud != v.expectedAudience {
+		return nil, fmt.Errorf("audience mismatch: got %q, want %q", aud, v.expectedAudience)
 	}
 
 	return &JWTClaims{

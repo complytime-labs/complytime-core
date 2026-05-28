@@ -8,6 +8,7 @@ KIND_CLUSTER ?= complytime-studio
 
 .PHONY: test lint clean \
 	gateway-build gateway-image \
+	witness-build witness-image \
 
 	compose-up seed \
 	cluster-up cluster-down \
@@ -35,6 +36,12 @@ gateway-build:
 
 gateway-image:
 	docker build --no-cache -f Dockerfile.gateway -t $(GATEWAY_IMAGE):$(GATEWAY_TAG) .
+
+witness-build:
+	go build -o bin/witness ./cmd/witness/
+
+witness-image:
+	docker build --no-cache -f Dockerfile.witness -t studio-witness:local .
 
 compose-up:
 	@echo "Docker Compose moved to studio-deploy. Run: cd ../studio-deploy && make up"

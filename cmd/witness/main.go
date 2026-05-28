@@ -4,10 +4,11 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"encoding/base64"
 	"log/slog"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -48,20 +49,16 @@ func main() {
 
 	slog.Info("loaded witness state", "last_verified_index", state.LastVerifiedIndex)
 
-	// Initialize Tessera client
+	// Initialize read-only Tessera reader (no appender, no signer)
 	tesseraPath := os.Getenv("TESSERA_PATH")
 	if tesseraPath == "" {
 		tesseraPath = "/var/lib/tessera"
 	}
 
-	tesseraClient, err := tessera.NewClient(ctx, tesseraPath, tessera.DefaultOptions())
-	if err != nil {
-		slog.Error("failed to initialize Tessera client", "error", err)
-		os.Exit(1)
-	}
-	defer func() { _ = tesseraClient.Close() }()
+	tesseraReader := tessera.NewReader(tesseraPath)
+	defer func() { _ = tesseraReader.Close() }()
 
-	slog.Info("tessera client initialized", "path", tesseraPath)
+	slog.Info("tessera reader initialized", "path", tesseraPath)
 
 	// Initialize PostgreSQL connection
 	pgURL := os.Getenv("POSTGRES_URL")
@@ -82,29 +79,42 @@ func main() {
 	storeClient := store.New(pgClient.Pool())
 
 	// Create verifier adapter
-	verifier := NewVerifier(&tesseraAdapter{tesseraClient}, &postgresAdapter{storeClient}, config)
+	verifier := NewVerifier(&tesseraAdapter{tesseraReader}, &postgresAdapter{storeClient}, config)
 
-	// Start verification loop
-	go verificationLoop(ctx, verifier, storeClient, state, config, statePath)
+	// Start verification loop with WaitGroup for clean shutdown
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		verificationLoop(ctx, verifier, storeClient, state, config, statePath)
+	}()
 
 	// Wait for shutdown signal
 	<-ctx.Done()
-	slog.Info("witness service shutting down")
+	slog.Info("witness service shutting down, waiting for verification loop to finish")
 
-	// Save state
+	// Wait for the loop goroutine to exit, ensuring LastVerifiedIndex is final
+	wg.Wait()
+
+	// Save state after loop has fully stopped
 	state.UpdatedAt = time.Now()
 	if err := SaveState(statePath, state); err != nil {
 		slog.Error("failed to save state", "error", err)
 	}
+	slog.Info("witness state saved", "last_verified_index", state.LastVerifiedIndex)
 }
 
-// tesseraAdapter adapts tessera.Client to TesseraReader interface
+// tesseraAdapter adapts tessera.Reader to TesseraReader interface
 type tesseraAdapter struct {
-	client *tessera.Client
+	reader *tessera.Reader
 }
 
 func (t *tesseraAdapter) Read(ctx context.Context, index uint64) ([]byte, error) {
-	return t.client.Read(ctx, index)
+	return t.reader.Read(ctx, index)
+}
+
+func (t *tesseraAdapter) ReadCheckpoint(ctx context.Context) ([]byte, error) {
+	return t.reader.ReadCheckpoint(ctx)
 }
 
 // postgresAdapter adapts store.Store to PostgresQuerier interface
@@ -133,6 +143,10 @@ func (p *postgresAdapter) IsIndexWitnessed(ctx context.Context, index uint64) bo
 
 func (p *postgresAdapter) IsTargetRegistered(ctx context.Context, targetID string) bool {
 	return p.store.IsTargetRegistered(ctx, targetID)
+}
+
+func (p *postgresAdapter) PolicyExistsByID(ctx context.Context, policyID string) bool {
+	return p.store.PolicyExistsByID(ctx, policyID)
 }
 
 // verificationLoop polls Tessera for new entries and verifies them
@@ -166,22 +180,31 @@ func verifyNewEntries(ctx context.Context, verifier *Verifier, storeClient *stor
 	verified := 0
 	for {
 		verifyCtx, cancel := context.WithTimeout(ctx, config.Witness.VerificationTimeout)
-		defer cancel()
 
 		// Try to verify this index
 		ok := verifier.VerifyEntry(verifyCtx, currentIndex)
 		if !ok {
-			// Verification failed or entry not ready yet
-			// Stop here and try again on next poll
+			cancel()
 			break
 		}
 
-		// Mark as witnessed
-		checkpointHash := fmt.Sprintf("checkpoint-%d", currentIndex)
+		// Read current checkpoint from Tessera log for countersigning
+		cpRaw, cpErr := verifier.tessera.ReadCheckpoint(verifyCtx)
+		var checkpointHash string
+		if cpErr != nil {
+			slog.Warn("failed to read checkpoint, using index marker", "log_index", currentIndex, "error", cpErr)
+			checkpointHash = ""
+		} else {
+			checkpointHash = base64.StdEncoding.EncodeToString(cpRaw)
+		}
+
 		if err := storeClient.MarkIndexWitnessed(verifyCtx, currentIndex, config.Witness.Name, checkpointHash); err != nil {
+			cancel()
 			slog.Error("failed to mark index as witnessed", "log_index", currentIndex, "error", err)
 			break
 		}
+
+		cancel()
 
 		state.LastVerifiedIndex = currentIndex
 		state.LastCheckpointHash = checkpointHash

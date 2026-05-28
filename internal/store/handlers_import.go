@@ -149,6 +149,12 @@ func ociImportLegacy(c echo.Context, s Stores, files []gemarabundle.File, etag s
 	return c.JSON(http.StatusCreated, resp)
 }
 
+// policyIngestOption carries Tessera provenance data for async-ingested policies.
+type policyIngestOption struct {
+	LogIndex uint64
+	BundleID string
+}
+
 func storeArtifactFile(ctx context.Context, s Stores, f gemarabundle.File) (ociImportedArtifact, error) {
 	content := string(f.Data)
 	detected, err := gemara.DetectType(f.Data)
@@ -170,7 +176,7 @@ func storeArtifactFile(ctx context.Context, s Stores, f gemarabundle.File) (ociI
 	}
 }
 
-func storePolicyFromContent(ctx context.Context, ps PolicyStore, ctrlS ControlStore, content string) (ociImportedArtifact, error) {
+func storePolicyFromContent(ctx context.Context, ps PolicyStore, ctrlS ControlStore, content string, opts ...policyIngestOption) (ociImportedArtifact, error) {
 	var pol gemara.Policy
 	if err := gemarapkg.UnmarshalYAML([]byte(content), &pol); err != nil {
 		return ociImportedArtifact{}, err
@@ -196,6 +202,12 @@ func storePolicyFromContent(ctx context.Context, ps PolicyStore, ctrlS ControlSt
 		Sensitivity:  pol.Scope.In.Sensitivity,
 		Users:        pol.Scope.In.Users,
 		Groups:       pol.Scope.In.Groups,
+	}
+
+	if len(opts) > 0 {
+		opt := opts[0]
+		p.TesseraLogIndex = &opt.LogIndex
+		p.BundleID = opt.BundleID
 	}
 
 	// Extract evaluation timeline
