@@ -166,12 +166,12 @@ func TestJWTVerifierUnknownIssuer(t *testing.T) {
 	// Convert to JWK for JWKS endpoint
 	jwkKey, err := jwk.FromRaw(privateKey.PublicKey)
 	require.NoError(t, err)
-	jwkKey.Set(jwk.KeyIDKey, "test-key-id")
-	jwkKey.Set(jwk.AlgorithmKey, jwa.ES256)
+	require.NoError(t, jwkKey.Set(jwk.KeyIDKey, "test-key-id"))
+	require.NoError(t, jwkKey.Set(jwk.AlgorithmKey, jwa.ES256))
 
 	// Extract x, y coordinates for JWKS response
-	x := base64.RawURLEncoding.EncodeToString(privateKey.PublicKey.X.Bytes())
-	y := base64.RawURLEncoding.EncodeToString(privateKey.PublicKey.Y.Bytes())
+	x := base64.RawURLEncoding.EncodeToString(privateKey.X.Bytes())
+	y := base64.RawURLEncoding.EncodeToString(privateKey.Y.Bytes())
 
 	// Create JWKS response
 	jwksResponse := map[string]interface{}{
