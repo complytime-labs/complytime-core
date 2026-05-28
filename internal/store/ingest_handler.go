@@ -15,9 +15,6 @@ import (
 	"github.com/complytime-labs/complytime-core/internal/ingest"
 )
 
-// toEvidenceRecords converts ingest EvidenceRows to store EvidenceRecords.
-// Deprecated: use toEvidenceRecordsWithLogIndex instead. This function is kept for
-// backward compatibility and will be removed in a future version.
 func toEvidenceRecords(rows []ingest.EvidenceRow) []EvidenceRecord {
 	return toEvidenceRecordsWithLogIndex(rows, 0, nil)
 }

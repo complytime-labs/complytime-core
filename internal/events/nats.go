@@ -250,6 +250,21 @@ func (b *Bus) PublishTargetRegistered(logIndex uint64, targetID, registeredBy st
 	}
 }
 
+// SubscribePolicyNew subscribes to new policy events.
+func (b *Bus) SubscribePolicyNew(handler func(PolicyEvent)) (*nats.Subscription, error) {
+	if b == nil || b.conn == nil {
+		return nil, nil
+	}
+	return b.conn.Subscribe(SubjectPolicyNew, func(msg *nats.Msg) {
+		var evt PolicyEvent
+		if err := json.Unmarshal(msg.Data, &evt); err != nil {
+			slog.Warn("nats unmarshal failed", "error", err)
+			return
+		}
+		handler(evt)
+	})
+}
+
 // SubscribeTargetRegistered subscribes to target registration events.
 func (b *Bus) SubscribeTargetRegistered(handler func(TargetRegisteredEvent)) (*nats.Subscription, error) {
 	if b == nil || b.conn == nil {
