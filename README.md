@@ -155,8 +155,6 @@ See [studio-deploy](https://github.com/complytime/studio-deploy) for Helm chart 
 | Document | Purpose |
 |:--|:--|
 | [Architecture](docs/architecture.md) | Component boundaries, routing, communication |
-| [Tessera Evidence Ingestion](docs/superpowers/specs/2026-05-22-tessera-evidence-ingestion-design.md) | Transparency log design and evidence chain |
-| [Policy Enrollment](docs/superpowers/specs/2026-05-26-policy-enrollment-design.md) | Target registration and policy discovery |
 | [Service Level Requirements](docs/requirements/service-level-requirements.md) | SLRs, ownership, gap analysis |
 | [Decisions](docs/decisions/) | Architecture Decision Records |
 
