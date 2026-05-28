@@ -4,7 +4,6 @@ package e2e
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -107,7 +106,7 @@ var _ = Describe("Evidence Chain", func() {
 		By("Creating EvaluationLog that references the policy via mapping-references")
 		// The derivePolicyID function uses the first mapping-reference id as
 		// the policy_id. We use "infra-baseline" to link to the policy above.
-		evalYAML := fmt.Sprintf(`metadata:
+		evalYAML := []byte(`metadata:
   type: EvaluationLog
   id: eval-chain-001
   version: 1.0.0
@@ -136,7 +135,7 @@ evaluations:
 
 		By("Submitting EvaluationLog")
 		evidenceToken := jwtCtx.generateTestJWT(GinkgoT(), "repo:org/evaluations:ref:refs/heads/main")
-		evidenceResp, evidenceResult := submitEvidence(GinkgoT(), ingestServer.URL, evidenceToken, []byte(evalYAML))
+		evidenceResp, evidenceResult := submitEvidence(GinkgoT(), ingestServer.URL, evidenceToken, evalYAML)
 		Expect(evidenceResp.StatusCode).To(Equal(http.StatusAccepted))
 
 		evidenceJobID := evidenceResult["job_id"].(string)

@@ -297,19 +297,3 @@ func setupCertificationPipeline(st *store.Store, bus *events.Bus) {
 	})
 }
 
-// setupFullCertificationPipeline is like setupCertificationPipeline but includes
-// the ProvenanceCertifier. Use this when evidence has source_registry set (e.g., after
-// a manual DB update).
-func setupFullCertificationPipeline(st *store.Store, bus *events.Bus) {
-	pipeline := certifier.NewPipeline(
-		&certifier.SchemaCertifier{},
-		&certifier.ProvenanceCertifier{KnownRegistries: map[string]bool{"ghcr.io": true}},
-		&certifier.ExecutorCertifier{KnownEngines: map[string]bool{"test-engine": true}},
-	)
-	adapter := &certificationAdapter{st: st}
-	handler := events.CertificationHandler(context.Background(), pipeline, adapter, adapter)
-	debouncer := events.NewDebouncer(100*time.Millisecond, handler)
-	_, _ = bus.SubscribeEvidence(func(evt events.EvidenceEvent) {
-		debouncer.Push(evt)
-	})
-}
