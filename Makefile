@@ -7,8 +7,8 @@ CONTAINER_RUNTIME ?= $(shell command -v podman >/dev/null 2>&1 && echo podman ||
 KIND_CLUSTER ?= complytime-studio
 
 .PHONY: test lint clean \
-	gateway-build gateway-image \
-	witness-build witness-image \
+	gateway-build gateway-build-fips gateway-image \
+	witness-build witness-build-fips witness-image \
 
 	compose-up seed \
 	cluster-up cluster-down \
@@ -34,11 +34,17 @@ clean:
 gateway-build:
 	go build -o bin/studio-gateway ./cmd/gateway/
 
+gateway-build-fips:
+	GOFIPS140=latest go build -o bin/studio-gateway ./cmd/gateway/
+
 gateway-image:
 	docker build --no-cache -f Dockerfile.gateway -t $(GATEWAY_IMAGE):$(GATEWAY_TAG) .
 
 witness-build:
 	go build -o bin/witness ./cmd/witness/
+
+witness-build-fips:
+	GOFIPS140=latest go build -o bin/witness ./cmd/witness/
 
 witness-image:
 	docker build --no-cache -f Dockerfile.witness -t studio-witness:local .

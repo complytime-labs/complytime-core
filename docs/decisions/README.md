@@ -24,6 +24,11 @@ Data platform decisions. Other repos maintain their own ADRs:
 | 0031 | [Three-Protocol Serving Layer](serving-layer-protocols.md) | Accepted | 2026-05-15 |
 | 0033 | [Evidence Quality Boundary](evidence-quality-boundary.md) | Accepted | 2026-05-15 |
 | 0034 | [Unified Ingest Pipeline](unified-ingest-pipeline.md) | Accepted | 2026-05-16 |
+| 0035 | [Native FIPS 140-3 Build Support](fips-140-native.md) | Accepted | 2026-05-27 |
+| 0036 | [Transparency Ledger (Tessera)](transparency-ledger.md) | Accepted | 2026-05-22 |
+| 0037 | [Witness Service](witness-service.md) | Accepted | 2026-05-23 |
+| 0038 | [Policy Enrollment and Discovery](policy-enrollment.md) | Accepted | 2026-05-26 |
+| 0039 | [OCI Import Through Tessera](import-through-tessera.md) | Accepted | 2026-05-26 |
 
 ## Active Workarounds
 
@@ -44,8 +49,12 @@ Data platform decisions. Other repos maintain their own ADRs:
 | Decision | Status |
 |:--|:--|
 | [External Authorization Engine](external-authz-engine.md) | Deferred — evaluate at RACI Phase 3 |
-| [Transparency Ledger](transparency-ledger.md) | Deferred — Trillian candidate when needed |
-| [Audit Provenance](audit-provenance-deferred.md) | Deferred — hash-chained logs lack external witness |
+
+## Superseded by Implementation
+
+| Decision | Superseded by |
+|:--|:--|
+| [Audit Provenance (hash chains)](audit-provenance-deferred.md) | #0036 Transparency Ledger (Tessera) |
 
 ## Exploratory
 
