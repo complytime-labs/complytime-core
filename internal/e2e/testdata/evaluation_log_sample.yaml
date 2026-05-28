@@ -6,6 +6,10 @@ metadata:
     name: test-engine
     version: 1.0.0
   date: "2026-05-26T00:00:00Z"
+  mapping-references:
+    - id: test-policy
+      title: Test Policy
+      version: "1.0.0"
 target:
   id: tgt-test-001
   name: Test Target

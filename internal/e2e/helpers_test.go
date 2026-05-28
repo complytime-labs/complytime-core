@@ -90,7 +90,11 @@ func newTestTessera(t testingHelper) *tessera.Client {
 	t.Helper()
 
 	tmpDir := t.TempDir()
-	client, err := tessera.NewClient(context.Background(), tmpDir, tessera.DefaultOptions())
+	opts := tessera.Options{
+		CheckpointTime: 100 * time.Millisecond, // Fast checkpoints for E2E tests
+		CheckpointSize: 10,                      // Small batch size for E2E tests
+	}
+	client, err := tessera.NewClient(context.Background(), tmpDir, opts)
 	Expect(err).NotTo(HaveOccurred(), "Failed to create Tessera client")
 
 	t.Cleanup(func() {
