@@ -14,8 +14,8 @@ import (
 func TestState_SaveAndLoad(t *testing.T) {
 	tmpfile, err := os.CreateTemp("", "witness-state-*.json")
 	require.NoError(t, err)
-	defer os.Remove(tmpfile.Name())
-	tmpfile.Close()
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
+	require.NoError(t, tmpfile.Close())
 
 	// Create state
 	original := &State{

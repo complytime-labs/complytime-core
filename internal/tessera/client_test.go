@@ -22,7 +22,7 @@ func TestClient_Add_SequentialIndices(t *testing.T) {
 	}
 	client, err := tessera.NewClient(ctx, tmpDir, opts)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Add first entry
 	idx1, err := client.Add(ctx, []byte("entry 1"))
@@ -51,7 +51,7 @@ func TestClient_Read_ReturnsStoredEntry(t *testing.T) {
 	}
 	client, err := tessera.NewClient(ctx, tmpDir, opts)
 	require.NoError(t, err)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Add entry
 	entry := []byte("test evidence yaml")

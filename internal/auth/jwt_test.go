@@ -27,12 +27,12 @@ func TestJWTVerifierValidToken(t *testing.T) {
 	// Convert to JWK for JWKS endpoint
 	jwkKey, err := jwk.FromRaw(privateKey.PublicKey)
 	require.NoError(t, err)
-	jwkKey.Set(jwk.KeyIDKey, "test-key-id")
-	jwkKey.Set(jwk.AlgorithmKey, jwa.ES256)
+	require.NoError(t, jwkKey.Set(jwk.KeyIDKey, "test-key-id"))
+	require.NoError(t, jwkKey.Set(jwk.AlgorithmKey, jwa.ES256))
 
 	// Extract x, y coordinates for JWKS response
-	x := base64.RawURLEncoding.EncodeToString(privateKey.PublicKey.X.Bytes())
-	y := base64.RawURLEncoding.EncodeToString(privateKey.PublicKey.Y.Bytes())
+	x := base64.RawURLEncoding.EncodeToString(privateKey.X.Bytes())
+	y := base64.RawURLEncoding.EncodeToString(privateKey.Y.Bytes())
 
 	// Create JWKS response
 	jwksResponse := map[string]interface{}{
@@ -52,7 +52,7 @@ func TestJWTVerifierValidToken(t *testing.T) {
 	// Create mock JWKS endpoint
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(jwksResponse)
+		_ = json.NewEncoder(w).Encode(jwksResponse)
 	}))
 	defer server.Close()
 
@@ -98,12 +98,11 @@ func TestJWTVerifierExpiredToken(t *testing.T) {
 	// Convert to JWK for JWKS endpoint
 	jwkKey, err := jwk.FromRaw(privateKey.PublicKey)
 	require.NoError(t, err)
-	jwkKey.Set(jwk.KeyIDKey, "test-key-id")
-	jwkKey.Set(jwk.AlgorithmKey, jwa.ES256)
+	require.NoError(t, jwkKey.Set(jwk.KeyIDKey, "test-key-id"))
 
 	// Extract x, y coordinates for JWKS response
-	x := base64.RawURLEncoding.EncodeToString(privateKey.PublicKey.X.Bytes())
-	y := base64.RawURLEncoding.EncodeToString(privateKey.PublicKey.Y.Bytes())
+	x := base64.RawURLEncoding.EncodeToString(privateKey.X.Bytes())
+	y := base64.RawURLEncoding.EncodeToString(privateKey.Y.Bytes())
 
 	// Create JWKS response
 	jwksResponse := map[string]interface{}{
@@ -123,7 +122,7 @@ func TestJWTVerifierExpiredToken(t *testing.T) {
 	// Create mock JWKS endpoint
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(jwksResponse)
+		_ = json.NewEncoder(w).Encode(jwksResponse)
 	}))
 	defer server.Close()
 
@@ -192,7 +191,7 @@ func TestJWTVerifierUnknownIssuer(t *testing.T) {
 	// Create mock JWKS endpoint
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(jwksResponse)
+		_ = json.NewEncoder(w).Encode(jwksResponse)
 	}))
 	defer server.Close()
 

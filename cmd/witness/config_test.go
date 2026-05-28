@@ -32,11 +32,11 @@ trusted_publishers:
 
 	tmpfile, err := os.CreateTemp("", "witness-config-*.yaml")
 	require.NoError(t, err)
-	defer os.Remove(tmpfile.Name())
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
 
 	_, err = tmpfile.WriteString(yamlContent)
 	require.NoError(t, err)
-	tmpfile.Close()
+	require.NoError(t, tmpfile.Close())
 
 	// Load config
 	config, err := LoadConfig(tmpfile.Name())

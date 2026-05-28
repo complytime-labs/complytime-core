@@ -59,7 +59,7 @@ func main() {
 		slog.Error("failed to initialize Tessera client", "error", err)
 		os.Exit(1)
 	}
-	defer tesseraClient.Close()
+	defer func() { _ = tesseraClient.Close() }()
 
 	slog.Info("tessera client initialized", "path", tesseraPath)
 

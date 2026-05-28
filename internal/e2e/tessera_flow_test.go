@@ -195,7 +195,7 @@ func TestE2E_RejectInvalidJWT(t *testing.T) {
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Verify rejection
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode, "Expected 403 Forbidden for invalid JWT")

@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/lestrrat-go/jwx/v2/jwk"
@@ -40,8 +41,7 @@ func NewJWTVerifier(ctx context.Context, allowedIssuers []string) *JWTVerifier {
 	for _, iss := range allowedIssuers {
 		jwksURL := iss + "/.well-known/jwks.json"
 		if err := cache.Register(jwksURL); err != nil {
-			// Log registration error but don't fail initialization
-			// The cache will attempt registration on first access
+			slog.Debug("jwks pre-registration deferred", "url", jwksURL, "error", err)
 		}
 	}
 

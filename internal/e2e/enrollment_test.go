@@ -223,7 +223,7 @@ func TestE2E_PolicyDiscovery(t *testing.T) {
 	queryURL := fmt.Sprintf("%s/api/policies/discover?target_id=prod-cluster&timestamp=2026-05-26T10:00:00Z", apiServer.URL)
 	queryResp, err := http.Get(queryURL)
 	require.NoError(t, err)
-	defer queryResp.Body.Close()
+	defer func() { _ = queryResp.Body.Close() }()
 	require.Equal(t, http.StatusOK, queryResp.StatusCode)
 
 	var policyResp store.PolicyQueryResponse
@@ -244,7 +244,7 @@ func TestE2E_PolicyDiscovery(t *testing.T) {
 	queryURL = fmt.Sprintf("%s/api/policies/discover?target_id=nonexistent&timestamp=2026-05-26T10:00:00Z", apiServer.URL)
 	queryResp2, err := http.Get(queryURL)
 	require.NoError(t, err)
-	defer queryResp2.Body.Close()
+	defer func() { _ = queryResp2.Body.Close() }()
 	assert.Equal(t, http.StatusNotFound, queryResp2.StatusCode)
 	t.Logf("Verified: Non-existent target returns 404")
 

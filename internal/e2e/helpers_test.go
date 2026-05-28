@@ -81,7 +81,7 @@ func newTestTessera(t *testing.T) *tessera.Client {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		client.Close()
+		_ = client.Close()
 	})
 
 	return client
