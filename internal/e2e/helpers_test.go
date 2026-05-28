@@ -17,14 +17,15 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/complytime-labs/complytime-core/internal/auth"
+	"github.com/complytime-labs/complytime-core/internal/certifier"
 	"github.com/complytime-labs/complytime-core/internal/events"
 	"github.com/complytime-labs/complytime-core/internal/store"
 	"github.com/complytime-labs/complytime-core/internal/tessera"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwk"
-	natsserver "github.com/nats-io/nats-server/v2/server"
 	"github.com/labstack/echo/v4"
+	natsserver "github.com/nats-io/nats-server/v2/server"
 )
 
 // testingHelper is an interface satisfied by both *testing.T and GinkgoT().
@@ -223,4 +224,94 @@ func submitEvidence(t testingHelper, serverURL string, token string, yamlContent
 	Expect(err).NotTo(HaveOccurred())
 
 	return resp, result
+}
+
+// certificationAdapter bridges store.Store to events.CertificationQuerier
+// and events.CertificationWriter interfaces. The store uses store-local types
+// while the events package uses certifier.EvidenceRow and events.CertificationRow.
+type certificationAdapter struct {
+	st *store.Store
+}
+
+func (a *certificationAdapter) QueryRecentEvidence(
+	ctx context.Context, policyID string, since time.Time,
+) ([]certifier.EvidenceRow, error) {
+	rows, err := a.st.QueryRecentEvidence(ctx, policyID, since)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]certifier.EvidenceRow, len(rows))
+	for i, r := range rows {
+		out[i] = certifier.EvidenceRow{
+			EvidenceID:       r.EvidenceID,
+			TargetID:         r.TargetID,
+			RuleID:           r.RuleID,
+			EvalResult:       r.EvalResult,
+			ComplianceStatus: r.ComplianceStatus,
+			EngineName:       r.EngineName,
+			SourceRegistry:   r.SourceRegistry,
+			AttestationRef:   r.AttestationRef,
+			EnrichmentStatus: r.EnrichmentStatus,
+			CollectedAt:      r.CollectedAt,
+		}
+	}
+	return out, nil
+}
+
+func (a *certificationAdapter) InsertCertifications(
+	ctx context.Context, rows []events.CertificationRow,
+) error {
+	storeRows := make([]store.CertificationRow, len(rows))
+	for i, r := range rows {
+		storeRows[i] = store.CertificationRow{
+			EvidenceID:       r.EvidenceID,
+			Certifier:        r.Certifier,
+			CertifierVersion: r.CertifierVersion,
+			Result:           r.Result,
+			Reason:           r.Reason,
+		}
+	}
+	return a.st.InsertCertifications(ctx, storeRows)
+}
+
+func (a *certificationAdapter) UpdateEvidenceCertified(
+	ctx context.Context, evidenceID string, certified bool,
+) error {
+	return a.st.UpdateEvidenceCertified(ctx, evidenceID, certified)
+}
+
+// setupCertificationPipeline wires the certifier pipeline (schema + executor)
+// to evidence events on the NATS bus with a fast 100ms debounce for E2E tests.
+// The ProvenanceCertifier is omitted because the EvaluationLog flattener does
+// not populate source_registry or attestation_ref from YAML, so provenance
+// would always fail. Tests that need provenance certification should set
+// source_registry directly in the DB before triggering the pipeline.
+func setupCertificationPipeline(st *store.Store, bus *events.Bus) {
+	pipeline := certifier.NewPipeline(
+		&certifier.SchemaCertifier{},
+		&certifier.ExecutorCertifier{KnownEngines: map[string]bool{"test-engine": true}},
+	)
+	adapter := &certificationAdapter{st: st}
+	handler := events.CertificationHandler(context.Background(), pipeline, adapter, adapter)
+	debouncer := events.NewDebouncer(100*time.Millisecond, handler)
+	_, _ = bus.SubscribeEvidence(func(evt events.EvidenceEvent) {
+		debouncer.Push(evt)
+	})
+}
+
+// setupFullCertificationPipeline is like setupCertificationPipeline but includes
+// the ProvenanceCertifier. Use this when evidence has source_registry set (e.g., after
+// a manual DB update).
+func setupFullCertificationPipeline(st *store.Store, bus *events.Bus) {
+	pipeline := certifier.NewPipeline(
+		&certifier.SchemaCertifier{},
+		&certifier.ProvenanceCertifier{KnownRegistries: map[string]bool{"ghcr.io": true}},
+		&certifier.ExecutorCertifier{KnownEngines: map[string]bool{"test-engine": true}},
+	)
+	adapter := &certificationAdapter{st: st}
+	handler := events.CertificationHandler(context.Background(), pipeline, adapter, adapter)
+	debouncer := events.NewDebouncer(100*time.Millisecond, handler)
+	_, _ = bus.SubscribeEvidence(func(evt events.EvidenceEvent) {
+		debouncer.Push(evt)
+	})
 }

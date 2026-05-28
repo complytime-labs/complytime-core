@@ -244,6 +244,136 @@ dimensions:
 			defer func() { _ = queryResp2.Body.Close() }()
 			Expect(queryResp2.StatusCode).To(Equal(http.StatusNotFound))
 		})
+
+		It("extracts dimensions from ingested policy YAML", func() {
+			By("Ingesting policy through /api/ingest")
+			policyYAML, err := os.ReadFile("testdata/policy_sample.yaml")
+			Expect(err).NotTo(HaveOccurred())
+
+			policyToken := jwtCtx.generateTestJWT(GinkgoT(), "repo:org/policies:ref:refs/heads/main")
+			policyResp, policyResult := submitEvidence(GinkgoT(), ingestServer.URL, policyToken, policyYAML)
+			Expect(policyResp.StatusCode).To(Equal(http.StatusAccepted))
+
+			policyJobID := policyResult["job_id"].(string)
+			waitForJob(tracker, policyJobID)
+
+			By("Querying stored policy dimensions")
+			var technologies, geopolitical []string
+			var evalStart, evalEnd *time.Time
+			err = pgClient.Pool().QueryRow(ctx,
+				`SELECT technologies, geopolitical, evaluation_timeline_start, evaluation_timeline_end
+				 FROM policies WHERE policy_id = $1`, "infra-baseline",
+			).Scan(&technologies, &geopolitical, &evalStart, &evalEnd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying technology dimensions")
+			Expect(technologies).To(ContainElement("kubernetes"),
+				"Policy scope.in.technologies should contain kubernetes")
+
+			By("Verifying geopolitical dimensions")
+			Expect(geopolitical).To(ContainElement("EU"),
+				"Policy scope.in.geopolitical should contain EU")
+
+			By("Verifying evaluation timeline")
+			Expect(evalStart).NotTo(BeNil(), "evaluation_timeline_start should be set")
+			Expect(evalEnd).NotTo(BeNil(), "evaluation_timeline_end should be set")
+
+			expectedStart, _ := time.Parse(time.RFC3339, "2026-04-01T00:00:00Z")
+			expectedEnd, _ := time.Parse(time.RFC3339, "2026-06-30T00:00:00Z")
+			Expect(evalStart.UTC()).To(Equal(expectedStart.UTC()),
+				"evaluation_timeline_start should match policy YAML")
+			Expect(evalEnd.UTC()).To(Equal(expectedEnd.UTC()),
+				"evaluation_timeline_end should match policy YAML")
+
+			GinkgoWriter.Printf("Policy dimensions verified:\n")
+			GinkgoWriter.Printf("  technologies: %v\n", technologies)
+			GinkgoWriter.Printf("  geopolitical: %v\n", geopolitical)
+			GinkgoWriter.Printf("  eval_start: %v\n", evalStart)
+			GinkgoWriter.Printf("  eval_end: %v\n", evalEnd)
+		})
+	})
+
+	Context("target registration versioning", func() {
+		It("returns correct version for each timestamp", func() {
+			By("Registering target at T1 with technologies=[kubernetes]")
+			t1 := time.Now().UTC().Add(-2 * time.Hour)
+			err := st.InsertTarget(ctx, store.TargetRow{
+				TargetID:        "versioned-target",
+				TesseraLogIndex: 100,
+				TargetName:      "Versioned Target v1",
+				TargetType:      "kubernetes-cluster",
+				Technologies:    []string{"kubernetes"},
+				Geopolitical:    []string{"US"},
+				Sensitivity:     []string{},
+				Users:           []string{},
+				Groups:          []string{},
+				RegisteredAt:    t1,
+				RegisteredBy:    "repo:org/infra:ref:refs/heads/main",
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Registering target at T2 with technologies=[kubernetes, postgresql]")
+			t2 := time.Now().UTC().Add(-1 * time.Hour)
+			err = st.InsertTarget(ctx, store.TargetRow{
+				TargetID:        "versioned-target",
+				TesseraLogIndex: 200,
+				TargetName:      "Versioned Target v2",
+				TargetType:      "kubernetes-cluster",
+				Technologies:    []string{"kubernetes", "postgresql"},
+				Geopolitical:    []string{"US", "EU"},
+				Sensitivity:     []string{"confidential"},
+				Users:           []string{},
+				Groups:          []string{},
+				RegisteredAt:    t2,
+				RegisteredBy:    "repo:org/infra:ref:refs/heads/main",
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Querying target at T1 should return v1")
+			// Query just after T1
+			queryTime1 := t1.Add(1 * time.Second)
+			target1, err := st.GetLatestTarget(ctx, "versioned-target", queryTime1)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(target1).NotTo(BeNil(), "Target should exist at T1")
+			Expect(target1.TargetName).To(Equal("Versioned Target v1"))
+			Expect(target1.Technologies).To(Equal([]string{"kubernetes"}),
+				"At T1, target should have only kubernetes")
+			Expect(target1.TesseraLogIndex).To(Equal(uint64(100)))
+
+			GinkgoWriter.Printf("Target at T1: name=%s technologies=%v\n",
+				target1.TargetName, target1.Technologies)
+
+			By("Querying target at T2 should return v2")
+			// Query just after T2
+			queryTime2 := t2.Add(1 * time.Second)
+			target2, err := st.GetLatestTarget(ctx, "versioned-target", queryTime2)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(target2).NotTo(BeNil(), "Target should exist at T2")
+			Expect(target2.TargetName).To(Equal("Versioned Target v2"))
+			Expect(target2.Technologies).To(Equal([]string{"kubernetes", "postgresql"}),
+				"At T2, target should have kubernetes and postgresql")
+			Expect(target2.Geopolitical).To(Equal([]string{"US", "EU"}),
+				"At T2, target should have US and EU")
+			Expect(target2.Sensitivity).To(Equal([]string{"confidential"}),
+				"At T2, target should have confidential sensitivity")
+			Expect(target2.TesseraLogIndex).To(Equal(uint64(200)))
+
+			GinkgoWriter.Printf("Target at T2: name=%s technologies=%v\n",
+				target2.TargetName, target2.Technologies)
+
+			By("Querying target before T1 should return nil")
+			targetBefore, err := st.GetLatestTarget(ctx, "versioned-target", t1.Add(-1*time.Second))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(targetBefore).To(BeNil(),
+				"Target should not exist before first registration")
+
+			By("Querying target at current time should return v2 (latest)")
+			targetNow, err := st.GetLatestTarget(ctx, "versioned-target", time.Now().UTC())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(targetNow).NotTo(BeNil())
+			Expect(targetNow.TargetName).To(Equal("Versioned Target v2"),
+				"Current query should return latest version")
+		})
 	})
 })
 
