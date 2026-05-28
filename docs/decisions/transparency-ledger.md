@@ -1,81 +1,72 @@
-# Transparency Ledger for Certification Activities
+# Transparency Ledger for Evidence and Certification
 
-**Status:** Exploratory
-
-## Context
-
-Evidence certification verdicts (schema validity, provenance, attestation integrity) are stored in a `certifications` table in ClickHouse. This table is operational metadata — it answers "what did the certifiers say?" for the UI and the agent. It does not provide tamper-evidence, cryptographic ordering, or independent verifiability.
-
-ClickHouse is a mutable store. The same credentials that write evidence can rewrite certification rows. There is no structural guarantee that historical verdicts are preserved unaltered.
-
-For a compliance platform, this gap matters. Auditors may need to verify that certification happened at a claimed time and was not retroactively modified.
-
-## Problem
-
-A `certifications` table in the application database is not a ledger. It lacks:
-
-- **Append-only enforcement** — ClickHouse supports `ALTER DELETE` and mutations
-- **Tamper evidence** — no hash chain between entries
-- **Independent trust boundary** — same database, same credentials, same blast radius
-- **External verifiability** — no third party can audit without trusting the DB operator
-
-## Candidate: Trillian
-
-[Trillian](https://github.com/google/trillian) is a transparent, append-only log backed by a Merkle tree. It provides cryptographic proof that:
-
-- An entry was included in the log at a specific index
-- The log has not been retroactively modified (consistency proofs)
-- Any observer can verify inclusion without trusting the log operator
-
-Trillian is the backend for Certificate Transparency (CT) logs, Sigstore Rekor, and Go module checksum databases.
-
-| Property | ClickHouse table | Trillian log |
-|---|---|---|
-| Append-only | No | Yes (Merkle tree) |
-| Tamper-evident | No | Yes (consistency proofs) |
-| Independent trust | No | Yes (separate service, separate keys) |
-| Cryptographic ordering | No | Yes (tree head signatures) |
-| External verifiability | No | Yes (monitors/auditors can verify) |
-| Query performance | High (OLAP) | Low (log, not a query engine) |
-
-## Architecture if adopted
-
-```
-Evidence ingested
-       │
-       ▼
-CertificationHandler
-       │
-       ├── INSERT to certifications table (ClickHouse, query surface)
-       │
-       └── Append to Trillian log (proof surface)
-               │
-               ▼
-         Signed tree head (STH)
-         Inclusion proof per entry
-```
-
-ClickHouse remains the query engine for the UI and agent. Trillian is the proof engine for auditors. Dual-write, independent trust boundaries.
-
-Certification rows in ClickHouse gain a `log_index` column referencing the Trillian entry. Auditors can verify any certification verdict by requesting the inclusion proof from Trillian and checking it against the signed tree head.
-
-## Alternatives
-
-| Alternative | Trade-off |
-|---|---|
-| **Sigstore Rekor** | Hosted transparency log. Avoids running Trillian. Designed for software supply chain attestations. May not fit arbitrary certification verdicts without adaptation. |
-| **S3 Object Lock** | Append-only at the storage layer. No Merkle tree, no inclusion proofs. Simpler but weaker guarantees. |
-| **Application-layer hash chain** | Each row includes `hash(previous_row)`. Detectable tampering but no external witness. No independent verifiability. |
-| **Do nothing** | Accept that the certifications table is operational, not evidentiary. Sufficient if auditors trust the platform operator. |
-
-## Open Questions
-
-- What is the deployment cost of Trillian (requires a backing database — MySQL or CockroachDB)?
-- Is Rekor a better fit given the project's existing alignment with Sigstore for attestation bundles?
-- What certification activities should be logged — only evidence certification, or also policy imports, assessment verdicts, audit log generation?
-- What is the retention policy for the transparency log vs. ClickHouse?
-- Who are the external verifiers / monitors in the compliance context?
+**Status:** Accepted
+**Date:** 2026-05-22 (implemented), 2026-05-27 (ADR updated)
+**Supersedes:** Original exploratory ADR evaluating Trillian
 
 ## Decision
 
-Deferred. The `certifications` table in ClickHouse is sufficient for the current scope. When external auditability becomes a requirement, revisit this document and evaluate Trillian or Rekor as the proof layer alongside ClickHouse as the query layer.
+All evidence submissions are appended to a [Tessera](https://github.com/transparency-dev/tessera) transparency log before async processing. Tessera is the source of truth; PostgreSQL is a rebuildable queryable cache. An independent witness service verifies log entries and countersigns checkpoints.
+
+## Context
+
+The original ADR evaluated Trillian as an exploratory option and deferred the decision. Since then, [Tessera](https://github.com/transparency-dev/tessera) — Trillian's successor from the same transparency-dev team — reached v1.0. Tessera provides the same cryptographic guarantees (Merkle tree, append-only, inclusion/consistency proofs) with a simpler operational model: POSIX file storage instead of requiring MySQL/CockroachDB.
+
+The platform migrated from ClickHouse to PostgreSQL before this work. The transparency log addresses the same gap identified in the original ADR: PostgreSQL is a mutable store with no structural guarantee against retroactive modification.
+
+## Architecture
+
+```
+POST /api/ingest (JWT verified)
+    ↓
+Tessera append → sequential log_index
+    ↓
+NATS core.ingest (async)
+    ↓
+IngestWorker → PostgreSQL (with log_index column)
+    ↓
+CertificationHandler → evidence.certified
+
+Witness service (independent daemon):
+    ↓ polls Tessera
+    ├─ Verify certification passed
+    ├─ Verify publisher trusted (JWT issuer/sub vs config)
+    ├─ Verify reference integrity (policy refs, evidence refs)
+    ├─ Advisory: check target registered
+    └─ Countersign checkpoint
+```
+
+## Why Tessera over Trillian
+
+| Property | Trillian | Tessera |
+|:--|:--|:--|
+| Storage backend | MySQL or CockroachDB | POSIX filesystem (PersistentVolume) |
+| Operational complexity | High (separate database) | Low (directory on disk) |
+| Cryptographic guarantees | Merkle tree, signed tree heads | Same (successor library) |
+| Maintained by | transparency-dev (Google) | Same team |
+| Go API | Stable | Stable (v1.0) |
+
+## Key Design Decisions
+
+**PostgreSQL is a cache, not the source of truth.** The `log_index` column on the `evidence` table links each row to its Tessera entry. PostgreSQL can be rebuilt by replaying the Tessera log.
+
+**POSIX storage for cloud-agnostic deployment.** Tessera uses a directory on disk, mountable as a Kubernetes PersistentVolume. No cloud-specific storage driver required.
+
+**Ephemeral signer keys per client instance.** Checkpoint signatures cannot be verified across process restarts. Acceptable for internal transparency logs where the witness provides independent verification.
+
+**Witness validation is advisory for target registration.** The witness logs warnings for unregistered targets but does not reject evidence. This allows gradual adoption of the enrollment system.
+
+## Alternatives Considered
+
+| Alternative | Why not |
+|:--|:--|
+| Trillian | Requires MySQL/CockroachDB — unnecessary operational complexity |
+| Sigstore Rekor | Hosted service, designed for software supply chain not compliance evidence |
+| S3 Object Lock | No Merkle tree, no inclusion proofs, no independent verifiability |
+| Application-layer hash chain | No external witness, rewritable by anyone with DB access |
+| Do nothing | Auditors cannot independently verify evidence integrity |
+
+## Related
+
+- [Hash-Chained Audit Provenance](audit-provenance-deferred.md) — superseded by this decision
+- [Unified Ingest Pipeline](unified-ingest-pipeline.md) — all artifacts route through Tessera

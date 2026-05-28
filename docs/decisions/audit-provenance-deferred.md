@@ -1,49 +1,18 @@
 # Hash-Chained Audit Provenance Deferred
 
-**Status:** Deferred (trigger: regulatory requirement or Trillian integration)
-**Date:** 2026-04-29
+**Status:** Superseded by [Transparency Ledger](transparency-ledger.md)
+**Date:** 2026-04-29 (original), 2026-05-27 (superseded)
 
 ## Decision
 
-Studio will not add hash-chained provenance (`prev_hash`, `entry_hash`) to the `audit_logs` ClickHouse table. The existing `ReplacingMergeTree` with content-addressed `audit_id` provides deduplication. Tamper-evident audit trails are deferred until a verifiable log infrastructure (e.g., Trillian) justifies the complexity.
+~~Studio will not add hash-chained provenance to the audit_logs table. Tamper-evident audit trails are deferred until a verifiable log infrastructure justifies the complexity.~~
 
-## Context
+**Superseded:** The trigger condition (verifiable log infrastructure) has been met. Tessera provides the tamper-evident transparency log that this ADR identified as the recommended path. See [Transparency Ledger](transparency-ledger.md) for the accepted architecture.
 
-As agents produce more audit artifacts, the question arises whether the `audit_logs` table should provide tamper-evidence — the ability to detect if stored records have been modified after the fact.
+## Original Context
 
-A candidate design was evaluated: SHA-256 hash chains where each entry's hash includes the previous entry's hash, forming a linked chain. A `GET /api/audit-logs/verify` endpoint would walk the chain and detect breaks.
+This ADR evaluated in-database hash chains for audit provenance and deferred in favor of a proper transparency log (Trillian was the candidate at the time). The core reasoning remains valid: in-database hash chains are self-referential and rewritable by anyone with database access. External verifiable infrastructure is required for real tamper-evidence.
 
-## STRIDE Analysis
+## Resolution
 
-| Category | Threat | Hash Chain Mitigates? | Rationale |
-|:--|:--|:--|:--|
-| Tampering | Privileged user modifies audit_log content | Partially | Detects modification if verifier runs. But anyone with ClickHouse write access can rewrite all rows and recompute all hashes. |
-| Tampering | Attacker deletes audit_log rows | Yes | Breaks the chain. Detected on next verification run. |
-| Repudiation | Agent denies producing artifact | Partially | Proves artifact was stored at a point in time. Does not prove authorship (no cryptographic signature). |
-
-## Why Defer
-
-**1. No external anchor.** The hash chain is self-referential within ClickHouse. Rewriting the entire chain from entry 1 is undetectable without an off-system witness. Real tamper-evidence requires immutable external storage.
-
-**2. ClickHouse eventual consistency.** Async replication means replicas may return incomplete chains during lag windows, causing false verification failures. The verification endpoint must define snapshot semantics — added complexity with no existing requirement driving it.
-
-**3. Single-writer constraint.** Hash chains require serialized ordering. Multiple gateway replicas inserting concurrently create ambiguous chain ordering. Enforcing single-writer is an architectural constraint with operational cost.
-
-**4. Cost exceeds value today.** The `audit_logs` table already uses `ReplacingMergeTree` with a content-addressed `audit_id`. This provides deduplication and idempotent writes. For "what did the agent produce," this is sufficient.
-
-## When to Revisit
-
-If Studio needs a tamper-evident audit trail that withstands privileged attackers, use a verifiable log system:
-
-| Option | Mechanism | Strength |
-|:--|:--|:--|
-| [Trillian](https://github.com/google/trillian) | Merkle tree-based transparency log | Cryptographic proof of inclusion + consistency. External verifiers can audit without DB access. |
-| WORM storage | Append-only S3 with Object Lock | Prevents deletion/modification at storage layer. No cryptographic proof of ordering. |
-| Signed checkpoints | Periodic signed hash published to immutable store | Detects chain rewriting between checkpoints. Requires key management. |
-
-**Recommended path:** Trillian. It solves the fundamental problem (external verifiable witness) that in-database hash chains cannot. Scope as a dedicated spec when a regulatory requirement demands it.
-
-## Related
-
-- [Agent Trust Model Deferred](trust-model-deferred.md) — companion decision
-- [Agent Interaction Model](agent-interaction-model.md) — HITL chatbot model (all agents confirm with user)
+Tessera (Trillian's successor) was integrated in May 2026. All evidence submissions — including artifacts that become audit log inputs — are appended to the Tessera transparency log with cryptographic ordering and independent witness verification. The `log_index` column on database tables links queryable data back to its immutable log entry.
