@@ -134,9 +134,7 @@ func newTestJWTVerifier(t testingHelper) *jwtTestContext {
 	jwksServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/.well-known/jwks.json" {
 			w.Header().Set("Content-Type", "application/json")
-			err := json.NewEncoder(w).Encode(map[string]any{
-				"keys": set,
-			})
+			err := json.NewEncoder(w).Encode(set)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
