@@ -131,7 +131,7 @@ func newTestJWTVerifier(t testingHelper) *jwtTestContext {
 
 	// Create JWKS endpoint
 	jwksServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/.well-known/jwks" {
+		if r.URL.Path == "/.well-known/jwks.json" {
 			w.Header().Set("Content-Type", "application/json")
 			err := json.NewEncoder(w).Encode(map[string]any{
 				"keys": set,
@@ -180,25 +180,7 @@ func (ctx *jwtTestContext) generateTestJWT(t testingHelper, sub string) string {
 	return signedToken
 }
 
-// waitForJobCompletion polls the tracker until the job completes (legacy helper)
-func waitForJobCompletion(t testingHelper, tracker *store.IngestTracker, jobID string, timeout time.Duration) {
-	t.Helper()
-
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		status := tracker.Get(jobID)
-		if status != nil && status.Status == "completed" {
-			return
-		}
-		if status != nil && status.Status == "failed" {
-			t.Fatalf("Job %s failed: %s", jobID, status.Error)
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	t.Fatalf("Job %s did not complete within %v", jobID, timeout)
-}
-
-// waitForJob is a Gomega-native alternative using Eventually
+// waitForJob uses Gomega Eventually to poll for job completion
 func waitForJob(tracker *store.IngestTracker, jobID string) {
 	Eventually(func() string {
 		status := tracker.Get(jobID)
