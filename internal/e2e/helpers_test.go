@@ -12,23 +12,35 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"testing"
 	"time"
+
+	. "github.com/onsi/gomega"
 
 	"github.com/complytime-labs/complytime-core/internal/auth"
 	"github.com/complytime-labs/complytime-core/internal/events"
 	"github.com/complytime-labs/complytime-core/internal/store"
 	"github.com/complytime-labs/complytime-core/internal/tessera"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/labstack/echo/v4"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	natsserver "github.com/nats-io/nats-server/v2/server"
-	"github.com/stretchr/testify/require"
+	"github.com/labstack/echo/v4"
 )
 
+// testingHelper is an interface satisfied by both *testing.T and GinkgoT().
+// It covers the methods used by our helper functions.
+type testingHelper interface {
+	Helper()
+	Cleanup(func())
+	TempDir() string
+	Fatalf(format string, args ...any)
+	Errorf(format string, args ...any)
+	FailNow()
+	Logf(format string, args ...any)
+}
+
 // startTestNATSServer creates an embedded NATS server for testing
-func startTestNATSServer(t *testing.T) *natsserver.Server {
+func startTestNATSServer(t testingHelper) *natsserver.Server {
 	t.Helper()
 
 	opts := &natsserver.Options{
@@ -39,15 +51,15 @@ func startTestNATSServer(t *testing.T) *natsserver.Server {
 	}
 
 	ns, err := natsserver.NewServer(opts)
-	require.NoError(t, err)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create NATS server")
 
 	// Start server in goroutine
 	go ns.Start()
 
 	// Wait for server to be ready
-	require.Eventually(t, func() bool {
+	Eventually(func() bool {
 		return ns.ReadyForConnections(1 * time.Second)
-	}, 5*time.Second, 100*time.Millisecond, "NATS server did not start")
+	}).WithTimeout(5 * time.Second).WithPolling(100 * time.Millisecond).Should(BeTrue(), "NATS server did not start")
 
 	t.Cleanup(func() {
 		ns.Shutdown()
@@ -58,12 +70,12 @@ func startTestNATSServer(t *testing.T) *natsserver.Server {
 }
 
 // connectTestNATS creates a NATS connection to the test server
-func connectTestNATS(t *testing.T, url string) *events.Bus {
+func connectTestNATS(t testingHelper, url string) *events.Bus {
 	t.Helper()
 
 	bus, err := events.Connect(url)
-	require.NoError(t, err)
-	require.NotNil(t, bus)
+	Expect(err).NotTo(HaveOccurred(), "Failed to connect to NATS")
+	Expect(bus).NotTo(BeNil(), "NATS bus is nil")
 
 	t.Cleanup(func() {
 		bus.Close()
@@ -73,12 +85,12 @@ func connectTestNATS(t *testing.T, url string) *events.Bus {
 }
 
 // newTestTessera creates an embedded Tessera client with temp storage
-func newTestTessera(t *testing.T) *tessera.Client {
+func newTestTessera(t testingHelper) *tessera.Client {
 	t.Helper()
 
 	tmpDir := t.TempDir()
 	client, err := tessera.NewClient(context.Background(), tmpDir, tessera.DefaultOptions())
-	require.NoError(t, err)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create Tessera client")
 
 	t.Cleanup(func() {
 		_ = client.Close()
@@ -96,22 +108,22 @@ type jwtTestContext struct {
 }
 
 // newTestJWTVerifier creates a mock JWT verifier with JWKS endpoint
-func newTestJWTVerifier(t *testing.T) *jwtTestContext {
+func newTestJWTVerifier(t testingHelper) *jwtTestContext {
 	t.Helper()
 
 	// Generate ECDSA key pair
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
+	Expect(err).NotTo(HaveOccurred(), "Failed to generate ECDSA key")
 
 	// Create JWK from public key
 	key, err := jwk.FromRaw(privateKey.PublicKey)
-	require.NoError(t, err)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create JWK")
 
 	err = key.Set(jwk.KeyIDKey, "test-key-id")
-	require.NoError(t, err)
+	Expect(err).NotTo(HaveOccurred())
 
 	err = key.Set(jwk.AlgorithmKey, jwa.ES256)
-	require.NoError(t, err)
+	Expect(err).NotTo(HaveOccurred())
 
 	// Create JWKS set
 	set := jwk.NewSet()
@@ -146,7 +158,7 @@ func newTestJWTVerifier(t *testing.T) *jwtTestContext {
 }
 
 // generateTestJWT creates a signed JWT token for testing
-func (ctx *jwtTestContext) generateTestJWT(t *testing.T, sub string) string {
+func (ctx *jwtTestContext) generateTestJWT(t testingHelper, sub string) string {
 	t.Helper()
 
 	now := time.Now()
@@ -163,13 +175,13 @@ func (ctx *jwtTestContext) generateTestJWT(t *testing.T, sub string) string {
 	token.Header["kid"] = "test-key-id"
 
 	signedToken, err := token.SignedString(ctx.PrivateKey)
-	require.NoError(t, err)
+	Expect(err).NotTo(HaveOccurred(), "Failed to sign JWT")
 
 	return signedToken
 }
 
-// waitForJobCompletion polls the tracker until the job completes
-func waitForJobCompletion(t *testing.T, tracker *store.IngestTracker, jobID string, timeout time.Duration) {
+// waitForJobCompletion polls the tracker until the job completes (legacy helper)
+func waitForJobCompletion(t testingHelper, tracker *store.IngestTracker, jobID string, timeout time.Duration) {
 	t.Helper()
 
 	deadline := time.Now().Add(timeout)
@@ -186,6 +198,22 @@ func waitForJobCompletion(t *testing.T, tracker *store.IngestTracker, jobID stri
 	t.Fatalf("Job %s did not complete within %v", jobID, timeout)
 }
 
+// waitForJob is a Gomega-native alternative using Eventually
+func waitForJob(tracker *store.IngestTracker, jobID string) {
+	Eventually(func() string {
+		status := tracker.Get(jobID)
+		if status == nil {
+			return ""
+		}
+		return status.Status
+	}).WithTimeout(10 * time.Second).WithPolling(50 * time.Millisecond).Should(
+		SatisfyAny(Equal("completed"), Equal("failed")),
+	)
+
+	status := tracker.Get(jobID)
+	Expect(status).NotTo(BeNil())
+	Expect(status.Status).To(Equal("completed"), "Job failed: %s", status.Error)
+}
 
 // newTestEchoServer creates an Echo instance for E2E testing
 func newTestEchoServer() *echo.Echo {
@@ -196,21 +224,21 @@ func newTestEchoServer() *echo.Echo {
 }
 
 // submitEvidence submits evidence YAML to the ingest endpoint
-func submitEvidence(t *testing.T, serverURL string, token string, yamlContent []byte) (*http.Response, map[string]any) {
+func submitEvidence(t testingHelper, serverURL string, token string, yamlContent []byte) (*http.Response, map[string]any) {
 	t.Helper()
 
 	req, err := http.NewRequest("POST", serverURL, bytes.NewReader(yamlContent))
-	require.NoError(t, err)
+	Expect(err).NotTo(HaveOccurred())
 
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/x-yaml")
 
 	resp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
+	Expect(err).NotTo(HaveOccurred())
 
 	var result map[string]any
 	err = json.NewDecoder(resp.Body).Decode(&result)
-	require.NoError(t, err)
+	Expect(err).NotTo(HaveOccurred())
 
 	return resp, result
 }

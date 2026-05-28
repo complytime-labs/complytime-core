@@ -8,265 +8,181 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"testing"
-	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 
 	"github.com/complytime-labs/complytime-core/internal/postgres"
 	"github.com/complytime-labs/complytime-core/internal/store"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/complytime-labs/complytime-core/internal/tessera"
 )
 
-func TestE2E_TesseraEvidenceFlow(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping E2E test in short mode")
-	}
+var _ = Describe("Tessera Evidence Flow", func() {
+	var (
+		ctx           context.Context
+		pgClient      *postgres.Client
+		st            *store.Store
+		tracker       *store.IngestTracker
+		server        *httptest.Server
+		jwtCtx        *jwtTestContext
+		tesseraClient *tessera.Client
+	)
 
-	// Check for PostgreSQL test URL
-	pgURL := os.Getenv("POSTGRES_TEST_URL")
-	if pgURL == "" {
-		t.Skip("POSTGRES_TEST_URL not set, skipping integration test")
-	}
+	BeforeEach(func() {
+		ctx = context.Background()
+		pgURL := os.Getenv("POSTGRES_TEST_URL")
 
-	ctx := context.Background()
+		By("Connecting to PostgreSQL")
+		var err error
+		pgClient, err = postgres.New(ctx, postgres.Config{URL: pgURL})
+		Expect(err).NotTo(HaveOccurred(), "Failed to connect to PostgreSQL")
+		DeferCleanup(pgClient.Close)
 
-	// 1. Initialize PostgreSQL
-	pgClient, err := postgres.New(ctx, postgres.Config{URL: pgURL})
-	require.NoError(t, err, "Failed to connect to PostgreSQL")
-	defer pgClient.Close()
+		By("Running migrations")
+		err = pgClient.EnsureSchema(ctx)
+		Expect(err).NotTo(HaveOccurred(), "Failed to run migrations")
 
-	// Run migrations
-	err = pgClient.EnsureSchema(ctx)
-	require.NoError(t, err, "Failed to run migrations")
+		st = store.New(pgClient.Pool())
 
-	st := store.New(pgClient.Pool())
+		By("Starting NATS server")
+		natsServer := startTestNATSServer(GinkgoT())
+		natsURL := natsServer.ClientURL()
 
-	// 2. Start embedded NATS server
-	natsServer := startTestNATSServer(t)
-	natsURL := natsServer.ClientURL()
-	t.Logf("Started NATS server at %s", natsURL)
+		By("Creating Tessera client")
+		tesseraClient = newTestTessera(GinkgoT())
 
-	// 3. Create Tessera client
-	tesseraClient := newTestTessera(t)
-	t.Logf("Created Tessera client")
+		By("Creating JWT verifier")
+		jwtCtx = newTestJWTVerifier(GinkgoT())
 
-	// 4. Create mock JWT verifier
-	jwtCtx := newTestJWTVerifier(t)
-	t.Logf("Created JWT verifier with issuer %s", jwtCtx.IssuerURL)
+		By("Subscribing NATS worker")
+		bus := connectTestNATS(GinkgoT(), natsURL)
+		tracker = store.NewIngestTracker()
 
-	// 5. Start NATS subscriber (worker)
-	bus := connectTestNATS(t, natsURL)
-	tracker := store.NewIngestTracker()
+		workerCtx, cancelWorker := context.WithCancel(context.Background())
+		DeferCleanup(cancelWorker)
 
-	workerCtx, cancelWorker := context.WithCancel(context.Background())
-	defer cancelWorker()
+		stores := store.Stores{
+			Evidence: st,
+			Policies: st,
+			Controls: st,
+			Mappings: st,
+		}
 
-	// Create stores struct for worker
-	stores := store.Stores{
-		Evidence: st,
-		Policies: st,
-		Controls: st,
-		Mappings: st,
-	}
+		worker := store.IngestWorker(workerCtx, stores, bus, tracker)
+		_, err = bus.SubscribeIngestRaw(worker)
+		Expect(err).NotTo(HaveOccurred(), "Failed to subscribe worker to NATS")
 
-	worker := store.IngestWorker(workerCtx, stores, bus, tracker)
-	_, err = bus.SubscribeIngestRaw(worker)
-	require.NoError(t, err, "Failed to subscribe worker to NATS")
-	t.Logf("Worker subscribed to NATS")
+		By("Starting HTTP server")
+		ingestHandler := store.IngestAsyncHandler(bus, tracker, tesseraClient, jwtCtx.Verifier)
+		server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ingestHandler.ServeHTTP(w, r)
+		}))
+		DeferCleanup(server.Close)
+	})
 
-	// 6. Create HTTP test server with ingest handler
-	ingestHandler := store.IngestAsyncHandler(bus, tracker, tesseraClient, jwtCtx.Verifier)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ingestHandler.ServeHTTP(w, r)
-	}))
-	defer server.Close()
-	t.Logf("Started test HTTP server at %s", server.URL)
+	Context("happy path", func() {
+		It("ingests evidence through the full pipeline", func() {
+			By("Loading test YAML fixture")
+			evalLogYAML, err := os.ReadFile("testdata/evaluation_log_sample.yaml")
+			Expect(err).NotTo(HaveOccurred(), "Failed to read test YAML")
 
-	// 7. Load test YAML fixture
-	evalLogYAML, err := os.ReadFile("testdata/evaluation_log_sample.yaml")
-	require.NoError(t, err, "Failed to read test YAML")
+			By("Generating JWT token")
+			testSubject := "repo:org/test-repo:ref:refs/heads/main"
+			token := jwtCtx.generateTestJWT(GinkgoT(), testSubject)
 
-	// 8. Generate JWT token for test publisher
-	testSubject := "repo:org/test-repo:ref:refs/heads/main"
-	token := jwtCtx.generateTestJWT(t, testSubject)
-	t.Logf("Generated JWT for subject: %s", testSubject)
+			By("Submitting evidence via HTTP POST")
+			resp, result := submitEvidence(GinkgoT(), server.URL, token, evalLogYAML)
+			Expect(resp.StatusCode).To(Equal(http.StatusAccepted), "Expected 202 Accepted")
 
-	// 9. Submit evidence via HTTP POST
-	resp, result := submitEvidence(t, server.URL, token, evalLogYAML)
-	require.Equal(t, http.StatusAccepted, resp.StatusCode, "Expected 202 Accepted")
+			jobID, ok := result["job_id"].(string)
+			Expect(ok).To(BeTrue(), "job_id not found in response")
 
-	jobID, ok := result["job_id"].(string)
-	require.True(t, ok, "job_id not found in response")
+			logIndexFloat, ok := result["log_index"].(float64)
+			Expect(ok).To(BeTrue(), "log_index not found in response")
+			logIndex := uint64(logIndexFloat)
 
-	logIndexFloat, ok := result["log_index"].(float64)
-	require.True(t, ok, "log_index not found in response")
-	logIndex := uint64(logIndexFloat)
+			GinkgoWriter.Printf("Submitted evidence: job_id=%s, log_index=%d\n", jobID, logIndex)
 
-	t.Logf("Submitted evidence: job_id=%s, log_index=%d", jobID, logIndex)
+			By("Waiting for worker to process")
+			waitForJob(tracker, jobID)
 
-	// 10. Wait for worker to process
-	waitForJobCompletion(t, tracker, jobID, 10*time.Second)
-	t.Logf("Worker completed job %s", jobID)
+			By("Verifying Tessera contains entry")
+			tesseraEntry, err := tesseraClient.Read(ctx, logIndex)
+			Expect(err).NotTo(HaveOccurred(), "Failed to read from Tessera")
+			Expect(tesseraEntry).NotTo(BeEmpty(), "Tessera entry is empty")
+			Expect(string(tesseraEntry)).To(ContainSubstring("metadata"), "Tessera entry missing metadata")
 
-	// 11. Verify Tessera contains entry
-	tesseraEntry, err := tesseraClient.Read(ctx, logIndex)
-	require.NoError(t, err, "Failed to read from Tessera")
-	require.NotEmpty(t, tesseraEntry, "Tessera entry is empty")
-	require.Contains(t, string(tesseraEntry), "metadata", "Tessera entry missing metadata")
-	t.Logf("✓ Verified: Evidence exists in Tessera at log_index %d", logIndex)
+			By("Verifying PostgreSQL has evidence with publisher fields")
+			evidenceRow, err := st.QueryEvidenceByLogIndex(ctx, logIndex)
+			Expect(err).NotTo(HaveOccurred(), "Failed to query evidence by log_index")
+			Expect(evidenceRow).NotTo(BeNil(), "Evidence not found in database")
 
-	// 12. Verify PostgreSQL has evidence with publisher fields populated
-	evidenceRow, err := st.QueryEvidenceByLogIndex(ctx, logIndex)
-	require.NoError(t, err, "Failed to query evidence by log_index")
-	require.NotNil(t, evidenceRow, "Evidence not found in database")
+			Expect(evidenceRow.PublisherIssuer).To(Equal(jwtCtx.IssuerURL),
+				"PublisherIssuer not populated - worker bug not fixed!")
+			Expect(evidenceRow.SubmittedBy).To(Equal(testSubject),
+				"SubmittedBy not populated - worker bug not fixed!")
+			Expect(evidenceRow.PublisherType).To(Equal("pipeline"),
+				"PublisherType not populated - worker bug not fixed!")
 
-	// Critical assertions - publisher identity fields MUST be populated
-	assert.Equal(t, jwtCtx.IssuerURL, evidenceRow.PublisherIssuer,
-		"PublisherIssuer not populated - worker bug not fixed!")
-	assert.Equal(t, testSubject, evidenceRow.SubmittedBy,
-		"SubmittedBy not populated - worker bug not fixed!")
-	assert.Equal(t, "pipeline", evidenceRow.PublisherType,
-		"PublisherType not populated - worker bug not fixed!")
+			GinkgoWriter.Printf("  - PublisherIssuer: %s\n", evidenceRow.PublisherIssuer)
+			GinkgoWriter.Printf("  - SubmittedBy: %s\n", evidenceRow.SubmittedBy)
+			GinkgoWriter.Printf("  - PublisherType: %s\n", evidenceRow.PublisherType)
+			GinkgoWriter.Printf("  - Certified: %v\n", evidenceRow.Certified)
 
-	t.Logf("✓ Verified: Evidence in PostgreSQL with publisher fields populated")
-	t.Logf("  - PublisherIssuer: %s", evidenceRow.PublisherIssuer)
-	t.Logf("  - SubmittedBy: %s", evidenceRow.SubmittedBy)
-	t.Logf("  - PublisherType: %s", evidenceRow.PublisherType)
+			By("Simulating witness service marking index as witnessed")
+			witnessName := "test-witness"
+			err = st.MarkIndexWitnessed(ctx, logIndex, witnessName, "test-checkpoint-hash")
+			Expect(err).NotTo(HaveOccurred(), "Failed to mark index as witnessed")
 
-	// 13. Verify certification status (certifier may or may not have run yet in this flow)
-	// Note: The full certifier pipeline is complex and may be skipped in this minimal test
-	// We're primarily testing the Tessera + publisher identity flow
-	t.Logf("  - Certified: %v", evidenceRow.Certified)
+			By("Verifying witness marking persists")
+			witnessed := st.IsIndexWitnessed(ctx, logIndex)
+			Expect(witnessed).To(BeTrue(), "Index should be marked witnessed")
+		})
+	})
 
-	// 14. Verify data is ready for witness verification
-	// The witness service would query this same data and verify:
-	// - Entry exists in Tessera ✓ (checked above)
-	// - Evidence has certification result ✓ (checked above)
-	// - Publisher identity matches trusted publisher ✓ (data exists, witness unit tests verify logic)
-	t.Logf("✓ Verified: All data present for witness verification")
-	t.Logf("  Note: Witness unit tests (cmd/witness/verifier_test.go) verify the verification logic")
+	Context("invalid JWT", func() {
+		It("rejects with 403 Forbidden", func() {
+			By("Submitting with invalid token")
+			req, err := http.NewRequest("POST", server.URL, bytes.NewReader([]byte("test")))
+			Expect(err).NotTo(HaveOccurred())
+			req.Header.Set("Authorization", "Bearer invalid-token")
 
-	// 15. Simulate witness service marking index as witnessed
-	witnessName := "test-witness"
-	err = st.MarkIndexWitnessed(ctx, logIndex, witnessName, "test-checkpoint-hash")
-	require.NoError(t, err, "Failed to mark index as witnessed")
+			resp, err := http.DefaultClient.Do(req)
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = resp.Body.Close() }()
 
-	// 16. Verify witness marking persists
-	witnessed := st.IsIndexWitnessed(ctx, logIndex)
-	require.True(t, witnessed, "Index should be marked witnessed")
-	t.Logf("✓ Verified: Witness marking persisted in database")
+			By("Verifying rejection")
+			Expect(resp.StatusCode).To(Equal(http.StatusForbidden), "Expected 403 Forbidden for invalid JWT")
+		})
+	})
 
-	t.Logf("✅ End-to-end Tessera evidence flow test PASSED")
-}
+	Context("untrusted publisher", func() {
+		It("stores evidence but witness would reject", func() {
+			By("Loading test YAML fixture")
+			evalLogYAML, err := os.ReadFile("testdata/evaluation_log_sample.yaml")
+			Expect(err).NotTo(HaveOccurred())
 
-func TestE2E_RejectInvalidJWT(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping E2E test in short mode")
-	}
+			By("Submitting evidence with untrusted subject")
+			untrustedSubject := "repo:malicious/attacker:ref:refs/heads/main"
+			token := jwtCtx.generateTestJWT(GinkgoT(), untrustedSubject)
 
-	pgURL := os.Getenv("POSTGRES_TEST_URL")
-	if pgURL == "" {
-		t.Skip("POSTGRES_TEST_URL not set, skipping integration test")
-	}
+			resp, result := submitEvidence(GinkgoT(), server.URL, token, evalLogYAML)
+			Expect(resp.StatusCode).To(Equal(http.StatusAccepted))
 
-	ctx := context.Background()
+			jobID := result["job_id"].(string)
+			logIndex := uint64(result["log_index"].(float64))
 
-	// Setup minimal infrastructure
-	pgClient, err := postgres.New(ctx, postgres.Config{URL: pgURL})
-	require.NoError(t, err)
-	defer pgClient.Close()
+			By("Waiting for worker to process")
+			waitForJob(tracker, jobID)
 
-	natsServer := startTestNATSServer(t)
-	tesseraClient := newTestTessera(t)
-	jwtCtx := newTestJWTVerifier(t)
-	bus := connectTestNATS(t, natsServer.ClientURL())
-	tracker := store.NewIngestTracker()
+			By("Verifying evidence was stored with untrusted subject")
+			evidenceRow, err := st.QueryEvidenceByLogIndex(ctx, logIndex)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(evidenceRow).NotTo(BeNil())
 
-	ingestHandler := store.IngestAsyncHandler(bus, tracker, tesseraClient, jwtCtx.Verifier)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ingestHandler.ServeHTTP(w, r)
-	}))
-	defer server.Close()
-
-	// Submit with invalid token
-	req, err := http.NewRequest("POST", server.URL, bytes.NewReader([]byte("test")))
-	require.NoError(t, err)
-	req.Header.Set("Authorization", "Bearer invalid-token")
-
-	resp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-	defer func() { _ = resp.Body.Close() }()
-
-	// Verify rejection
-	assert.Equal(t, http.StatusForbidden, resp.StatusCode, "Expected 403 Forbidden for invalid JWT")
-	t.Logf("✓ Verified: Invalid JWT rejected with 403")
-}
-
-func TestE2E_RejectUntrustedPublisher(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping E2E test in short mode")
-	}
-
-	pgURL := os.Getenv("POSTGRES_TEST_URL")
-	if pgURL == "" {
-		t.Skip("POSTGRES_TEST_URL not set, skipping integration test")
-	}
-
-	ctx := context.Background()
-
-	// Setup
-	pgClient, err := postgres.New(ctx, postgres.Config{URL: pgURL})
-	require.NoError(t, err)
-	defer pgClient.Close()
-
-	err = pgClient.EnsureSchema(ctx)
-	require.NoError(t, err)
-
-	st := store.New(pgClient.Pool())
-	natsServer := startTestNATSServer(t)
-	tesseraClient := newTestTessera(t)
-	jwtCtx := newTestJWTVerifier(t)
-	bus := connectTestNATS(t, natsServer.ClientURL())
-	tracker := store.NewIngestTracker()
-
-	// Start worker
-	workerCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	stores := store.Stores{Evidence: st, Policies: st, Controls: st, Mappings: st}
-	worker := store.IngestWorker(workerCtx, stores, bus, tracker)
-	_, err = bus.SubscribeIngestRaw(worker)
-	require.NoError(t, err)
-
-	ingestHandler := store.IngestAsyncHandler(bus, tracker, tesseraClient, jwtCtx.Verifier)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ingestHandler.ServeHTTP(w, r)
-	}))
-	defer server.Close()
-
-	// Submit evidence (will succeed at gateway level)
-	evalLogYAML, err := os.ReadFile("testdata/evaluation_log_sample.yaml")
-	require.NoError(t, err)
-
-	// Use a subject that doesn't match the trusted publisher pattern
-	untrustedSubject := "repo:malicious/attacker:ref:refs/heads/main"
-	token := jwtCtx.generateTestJWT(t, untrustedSubject)
-
-	resp, result := submitEvidence(t, server.URL, token, evalLogYAML)
-	require.Equal(t, http.StatusAccepted, resp.StatusCode)
-
-	jobID := result["job_id"].(string)
-	logIndex := uint64(result["log_index"].(float64))
-
-	waitForJobCompletion(t, tracker, jobID, 10*time.Second)
-
-	// Verify the evidence was stored with the untrusted subject
-	evidenceRow, err := st.QueryEvidenceByLogIndex(ctx, logIndex)
-	require.NoError(t, err)
-	require.NotNil(t, evidenceRow)
-
-	assert.Equal(t, untrustedSubject, evidenceRow.SubmittedBy,
-		"Evidence should have untrusted subject stored")
-	t.Logf("✓ Verified: Evidence stored with untrusted publisher subject: %s", untrustedSubject)
-	t.Logf("  Note: Witness would reject this during verification (tested in cmd/witness/verifier_test.go)")
-}
+			Expect(evidenceRow.SubmittedBy).To(Equal(untrustedSubject),
+				"Evidence should have untrusted subject stored")
+			GinkgoWriter.Printf("Evidence stored with untrusted publisher subject: %s\n", untrustedSubject)
+		})
+	})
+})
