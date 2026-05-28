@@ -13,6 +13,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/complytime-labs/complytime-core/internal/auth"
 	"github.com/complytime-labs/complytime-core/internal/events"
 )
 
@@ -103,16 +104,59 @@ func (p *immediateIngestPublisher) PublishIngestRaw(jobID string, yaml []byte) e
 	return nil
 }
 
+func (p *immediateIngestPublisher) PublishIngestRawWithContext(jobID string, yaml []byte, logIndex uint64, identity events.PublisherIdentity) error {
+	p.worker(events.IngestRawEvent{
+		JobID:             jobID,
+		LogIndex:          logIndex,
+		YAML:              yaml,
+		PublisherIdentity: identity,
+		Timestamp:         time.Now().UTC(),
+	})
+	return nil
+}
+
+func (p *immediateIngestPublisher) PublishIngestRawWithBundle(jobID string, yaml []byte, logIndex uint64, identity events.PublisherIdentity, bundleID, ociRef string) error {
+	return p.PublishIngestRawWithContext(jobID, yaml, logIndex, identity)
+}
+
+// Mock Tessera appender for tests
+type mockTesseraAppender struct {
+	nextIndex uint64
+}
+
+func (m *mockTesseraAppender) Add(ctx context.Context, entry []byte) (uint64, error) {
+	idx := m.nextIndex
+	m.nextIndex++
+	return idx, nil
+}
+
+// Mock JWT verifier for tests that always succeeds
+type mockJWTVerifier struct{}
+
+func (m *mockJWTVerifier) Verify(ctx context.Context, token string) (*auth.JWTClaims, error) {
+	return &auth.JWTClaims{
+		Iss: "https://token.actions.githubusercontent.com",
+		Sub: "repo:complytime/scanner:ref:refs/heads/main",
+		Aud: "https://example.com",
+		Exp: int64(time.Now().Add(time.Hour).Unix()),
+		Iat: int64(time.Now().Unix()),
+	}, nil
+}
+
 func echoWithSyncIngest(t *testing.T, ev EvidenceStore) (*echo.Echo, *IngestTracker) {
 	t.Helper()
 	ctx := context.Background()
 	tracker := NewIngestTracker()
 	var st Stores
 	pub := &immediateIngestPublisher{}
+	tessera := &mockTesseraAppender{}
+	jwt := &mockJWTVerifier{}
 	st = Stores{
 		Evidence:        ev,
 		IngestTracker:   tracker,
 		IngestPublisher: pub,
+		TesseraAppender: tessera,
+		JWTVerifier:     jwt,
 	}
 	pub.worker = IngestWorker(ctx, st, nil, tracker)
 
@@ -142,6 +186,7 @@ func TestContract_POST_api_ingest_EvaluationLog(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/ingest", strings.NewReader(minimalEvalLog))
 	req.Header.Set("Content-Type", "application/x-yaml")
+	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 	if rec.Code != http.StatusAccepted {
@@ -175,6 +220,7 @@ func TestContract_POST_api_ingest_EnforcementLog(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/ingest", strings.NewReader(minimalEnfLog))
 	req.Header.Set("Content-Type", "application/x-yaml")
+	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 	if rec.Code != http.StatusAccepted {
@@ -199,9 +245,12 @@ func TestContract_POST_api_ingest_EmptyBody(t *testing.T) {
 		Evidence:        &fakeEvidenceStore{},
 		IngestTracker:   NewIngestTracker(),
 		IngestPublisher: &immediateIngestPublisher{},
+		TesseraAppender: &mockTesseraAppender{},
+		JWTVerifier:     &mockJWTVerifier{},
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/ingest", strings.NewReader(""))
+	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
@@ -215,6 +264,7 @@ func TestContract_POST_api_ingest_InvalidYAML(t *testing.T) {
 
 	body := "not: valid: yaml: ["
 	req := httptest.NewRequest(http.MethodPost, "/api/ingest", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 	if rec.Code != http.StatusAccepted {
@@ -234,6 +284,7 @@ func TestContract_POST_api_ingest_UnsupportedArtifactType(t *testing.T) {
 	e, tracker := echoWithSyncIngest(t, &fakeEvidenceStore{})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/ingest", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 	if rec.Code != http.StatusAccepted {
@@ -253,6 +304,7 @@ func TestContract_POST_api_ingest_InsertFailure(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/ingest", strings.NewReader(minimalEvalLog))
 	req.Header.Set("Content-Type", "application/x-yaml")
+	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 	if rec.Code != http.StatusAccepted {
@@ -263,5 +315,36 @@ func TestContract_POST_api_ingest_InsertFailure(t *testing.T) {
 	st := tracker.Get(jid)
 	if st == nil || st.Status != "failed" || !strings.Contains(st.Error, "insert") {
 		t.Fatalf("expected insert failure, got %+v", st)
+	}
+}
+
+func TestContract_POST_api_ingest_MissingAuthorizationHeader(t *testing.T) {
+	t.Parallel()
+	e := echo.New()
+	g := e.Group("/api")
+	Register(g, Stores{
+		Evidence:        &fakeEvidenceStore{},
+		IngestTracker:   NewIngestTracker(),
+		IngestPublisher: &immediateIngestPublisher{},
+		TesseraAppender: &mockTesseraAppender{},
+		JWTVerifier:     &mockJWTVerifier{},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/ingest", strings.NewReader(minimalEvalLog))
+	req.Header.Set("Content-Type", "application/x-yaml")
+	// Deliberately omit Authorization header
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	errors, ok := resp["errors"].([]interface{})
+	if !ok || len(errors) == 0 {
+		t.Fatalf("expected errors array in response, got %v", resp)
 	}
 }

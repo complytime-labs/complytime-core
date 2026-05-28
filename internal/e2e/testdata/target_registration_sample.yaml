@@ -1,0 +1,21 @@
+metadata:
+  type: TargetRegistration
+  id: prod-cluster-reg-v1
+  version: 1.0.0
+  date: "2026-05-26T10:00:00Z"
+  author:
+    name: platform-team
+
+target:
+  id: prod-cluster
+  name: Production Kubernetes Cluster
+  type: kubernetes-cluster
+
+dimensions:
+  technologies:
+    - kubernetes
+    - postgresql
+  geopolitical:
+    - EU
+  sensitivity:
+    - confidential

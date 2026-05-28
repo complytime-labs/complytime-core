@@ -28,6 +28,7 @@ import (
 	"github.com/complytime-labs/complytime-core/internal/httputil"
 	pgstore "github.com/complytime-labs/complytime-core/internal/postgres"
 	"github.com/complytime-labs/complytime-core/internal/store"
+	"github.com/complytime-labs/complytime-core/internal/tessera"
 )
 
 func main() {
@@ -111,6 +112,29 @@ func main() {
 	var pub store.EventPublisher = bus
 	ingestTracker := store.NewIngestTracker()
 
+	// Initialize Tessera client for transparency log
+	tesseraPath := httputil.EnvOr("TESSERA_PATH", "/data/tessera")
+	tesseraClient, err := tessera.NewClient(ctx, tesseraPath, tessera.DefaultOptions())
+	if err != nil {
+		slog.Error("tessera client init failed", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := tesseraClient.Close(); err != nil {
+			slog.Warn("tessera client close failed", "error", err)
+		}
+	}()
+	slog.Info("tessera client ready", "path", tesseraPath)
+
+	// Initialize JWT verifier with allowed issuers from environment
+	allowedIssuers := splitComma(os.Getenv("JWT_ISSUERS"))
+	if len(allowedIssuers) == 0 {
+		slog.Warn("JWT_ISSUERS not configured — trusted publisher ingestion will be unavailable")
+	}
+	jwtAudience := os.Getenv("JWT_AUDIENCE")
+	jwtVerifier := auth.NewJWTVerifier(ctx, allowedIssuers, jwtAudience)
+	slog.Info("jwt verifier ready", "allowed_issuers", len(allowedIssuers), "audience", jwtAudience)
+
 	stores := store.Stores{
 		Policies:            st,
 		Mappings:            st,
@@ -133,6 +157,10 @@ func main() {
 		Registry:            registryConfig,
 		IngestTracker:       ingestTracker,
 		IngestPublisher:     bus,
+		TesseraAppender:     tesseraClient,
+		JWTVerifier:         jwtVerifier,
+		Targets:             st,
+		PolicyDimensions:    st,
 	}
 	slog.Info("store API registered", "routes", []string{
 		"/api/policies",

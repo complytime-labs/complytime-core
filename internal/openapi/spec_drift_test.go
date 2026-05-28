@@ -19,6 +19,7 @@ import (
 
 	"github.com/complytime-labs/complytime-core/internal/auth"
 	"github.com/complytime-labs/complytime-core/internal/config"
+	"github.com/complytime-labs/complytime-core/internal/events"
 	"github.com/complytime-labs/complytime-core/internal/gemara"
 	"github.com/complytime-labs/complytime-core/internal/store"
 )
@@ -114,6 +115,10 @@ func buildRouter(t *testing.T) *echo.Echo {
 		Users:               &nopUserStore{},
 		IngestTracker:       store.NewIngestTracker(),
 		IngestPublisher:     &nopIngestPublisher{},
+		TesseraAppender:     &nopTesseraAppender{},
+		JWTVerifier:         &nopJWTVerifier{},
+		Targets:             &nopTargetStore{},
+		PolicyDimensions:    &nopPolicyDimensionStore{},
 	}
 	store.Register(apiGroup, s)
 
@@ -362,12 +367,22 @@ func (*nopCertificationStore) QueryRecentEvidence(context.Context, string, time.
 
 type nopEventPublisher struct{}
 
-func (*nopEventPublisher) PublishEvidence(string, int)                 {}
-func (*nopEventPublisher) PublishDraftAuditLog(string, string, string) {}
+func (*nopEventPublisher) PublishEvidence(string, int)                    {}
+func (*nopEventPublisher) PublishDraftAuditLog(string, string, string)    {}
+func (*nopEventPublisher) PublishPolicyNew(uint64, string)                {}
+func (*nopEventPublisher) PublishTargetRegistered(uint64, string, string) {}
 
 type nopIngestPublisher struct{}
 
 func (*nopIngestPublisher) PublishIngestRaw(string, []byte) error { return nil }
+
+func (*nopIngestPublisher) PublishIngestRawWithContext(string, []byte, uint64, events.PublisherIdentity) error {
+	return nil
+}
+
+func (*nopIngestPublisher) PublishIngestRawWithBundle(string, []byte, uint64, events.PublisherIdentity, string, string) error {
+	return nil
+}
 
 type nopHealthChecker struct{}
 
@@ -403,3 +418,33 @@ func (*nopUserStore) CountAdmins(context.Context) (int, error)               { r
 func (*nopUserStore) InsertRoleChange(context.Context, auth.RoleChange) error { return nil }
 func (*nopUserStore) ListRoleChanges(context.Context) ([]auth.RoleChange, error) { return nil, nil }
 func (*nopUserStore) BootstrapAdmin(context.Context, string) (string, error)  { return "", nil }
+
+type nopTargetStore struct{}
+
+func (*nopTargetStore) InsertTarget(context.Context, store.TargetRow) error              { panic("nop") }
+func (*nopTargetStore) GetLatestTarget(context.Context, string, time.Time) (*store.TargetRow, error) {
+	panic("nop")
+}
+func (*nopTargetStore) ListTargets(context.Context) ([]store.TargetRow, error) { panic("nop") }
+
+type nopPolicyDimensionStore struct{}
+
+func (*nopPolicyDimensionStore) QueryPoliciesByDimensions(context.Context, store.DimensionQuery) ([]store.PolicyWithDimensions, error) {
+	panic("nop")
+}
+
+type nopTesseraAppender struct{}
+
+func (*nopTesseraAppender) Add(context.Context, []byte) (uint64, error) { return 0, nil }
+
+type nopJWTVerifier struct{}
+
+func (*nopJWTVerifier) Verify(context.Context, string) (*auth.JWTClaims, error) {
+	return &auth.JWTClaims{
+		Iss: "https://example.com",
+		Sub: "test-subject",
+		Aud: "https://example.com",
+		Exp: int64(time.Now().Add(time.Hour).Unix()),
+		Iat: int64(time.Now().Unix()),
+	}, nil
+}

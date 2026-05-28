@@ -11,14 +11,23 @@ import (
 	gemara "github.com/gemaraproj/go-gemara"
 	"github.com/goccy/go-yaml"
 
+	"github.com/complytime-labs/complytime-core/internal/events"
 	"github.com/complytime-labs/complytime-core/internal/ingest"
 )
 
 // toEvidenceRecords converts ingest EvidenceRows to store EvidenceRecords.
+// Deprecated: use toEvidenceRecordsWithLogIndex instead. This function is kept for
+// backward compatibility and will be removed in a future version.
 func toEvidenceRecords(rows []ingest.EvidenceRow) []EvidenceRecord {
+	return toEvidenceRecordsWithLogIndex(rows, 0, nil)
+}
+
+// toEvidenceRecordsWithLogIndex converts ingest EvidenceRows to store EvidenceRecords,
+// optionally setting a log_index and publisher identity for all records (for Tessera transparency log tracking).
+func toEvidenceRecordsWithLogIndex(rows []ingest.EvidenceRow, logIndex uint64, publisherIdentity *events.PublisherIdentity) []EvidenceRecord {
 	records := make([]EvidenceRecord, len(rows))
 	for i, row := range rows {
-		records[i] = EvidenceRecord{
+		rec := EvidenceRecord{
 			EvidenceID:           row.EvidenceID,
 			PolicyID:             derefStr(row.PolicyID),
 			TargetID:             row.TargetID,
@@ -56,6 +65,22 @@ func toEvidenceRecords(rows []ingest.EvidenceRow) []EvidenceRecord {
 			Certified:            row.Certified,
 			CollectedAt:          row.CollectedAt,
 		}
+		// Set log_index if provided (from IngestRawEvent)
+		if row.LogIndex != nil {
+			rec.LogIndex = row.LogIndex
+		} else if logIndex > 0 {
+			v := logIndex
+			rec.LogIndex = &v
+		}
+
+		// Set publisher identity if provided (from JWT-verified ingestion)
+		if publisherIdentity != nil {
+			rec.PublisherIssuer = publisherIdentity.Issuer
+			rec.SubmittedBy = publisherIdentity.Sub
+			rec.PublisherType = publisherIdentity.Type
+		}
+
+		records[i] = rec
 	}
 	return records
 }
@@ -86,6 +111,50 @@ func detectArtifactType(data []byte) (gemara.ArtifactType, error) {
 		return gemara.InvalidArtifact, fmt.Errorf("missing or invalid metadata.type field")
 	}
 	return hdr.Metadata.Type, nil
+}
+
+func detectArtifactTypeString(data []byte) string {
+	var hdr struct {
+		Metadata struct {
+			Type string `yaml:"type"`
+		} `yaml:"metadata"`
+	}
+	if err := yaml.Unmarshal(data, &hdr); err != nil {
+		return ""
+	}
+	return hdr.Metadata.Type
+}
+
+// TargetRegistrationYAML represents the parsed TargetRegistration artifact.
+type TargetRegistrationYAML struct {
+	Metadata struct {
+		Type string `yaml:"type"`
+		ID   string `yaml:"id"`
+		Date string `yaml:"date"`
+	} `yaml:"metadata"`
+	Target struct {
+		ID   string `yaml:"id"`
+		Name string `yaml:"name"`
+		Type string `yaml:"type"`
+	} `yaml:"target"`
+	Dimensions struct {
+		Technologies []string `yaml:"technologies"`
+		Geopolitical []string `yaml:"geopolitical"`
+		Sensitivity  []string `yaml:"sensitivity"`
+		Users        []string `yaml:"users"`
+		Groups       []string `yaml:"groups"`
+	} `yaml:"dimensions"`
+}
+
+func parseTargetRegistration(data []byte) (*TargetRegistrationYAML, error) {
+	var reg TargetRegistrationYAML
+	if err := yaml.Unmarshal(data, &reg); err != nil {
+		return nil, fmt.Errorf("parse TargetRegistration YAML: %w", err)
+	}
+	if reg.Target.ID == "" {
+		return nil, fmt.Errorf("missing target.id")
+	}
+	return &reg, nil
 }
 
 func flattenEvaluation(ctx context.Context, data []byte) ([]ingest.EvidenceRow, string, error) {

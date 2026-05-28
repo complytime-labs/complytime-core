@@ -14,6 +14,7 @@ import (
 	"github.com/complytime-labs/complytime-core/internal/consts"
 	"github.com/complytime-labs/complytime-core/internal/gemara"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -40,6 +41,11 @@ type MappingStore interface {
 // GuidanceStore defines write operations for parsed guidance catalog entries.
 type GuidanceStore interface {
 	InsertGuidanceEntries(ctx context.Context, rows []gemara.GuidanceEntryRow) error
+}
+
+// TesseraAppender defines operations for appending entries to a transparency log.
+type TesseraAppender interface {
+	Add(ctx context.Context, entry []byte) (uint64, error)
 }
 
 // ControlStore defines read/write operations for parsed control catalog entries.
@@ -118,6 +124,21 @@ type DraftAuditLogStore interface {
 	PromoteDraftAuditLog(ctx context.Context, draftID string, reviewedBy string) error
 }
 
+// BundleArtifactRow represents an artifact within an OCI bundle.
+type BundleArtifactRow struct {
+	BundleID        string
+	TesseraLogIndex uint64
+	ArtifactType    string
+	ArtifactID      string
+	OCIReference    string
+}
+
+// TargetStore defines operations for target registrations.
+type TargetStore interface {
+	InsertTarget(ctx context.Context, t TargetRow) error
+	GetLatestTarget(ctx context.Context, targetID string, asOf time.Time) (*TargetRow, error)
+	ListTargets(ctx context.Context) ([]TargetRow, error)
+}
 
 // Store provides typed access to PostgreSQL tables for policies,
 // mapping documents, evidence, and audit logs. Implements all
@@ -141,6 +162,8 @@ var (
 	_ RequirementStore        = (*Store)(nil)
 	_ CertificationStore      = (*Store)(nil)
 	_ GuidanceStore           = (*Store)(nil)
+	_ TargetStore             = (*Store)(nil)
+	_ PolicyDimensionStore    = (*Store)(nil)
 )
 
 // New wraps a PostgreSQL connection pool.
@@ -157,6 +180,32 @@ type Policy struct {
 	Content      string    `json:"content"`
 	ImportedAt   time.Time `json:"imported_at"`
 	ImportedBy   string    `json:"imported_by,omitempty"`
+
+	// Dimensional metadata for policy enrollment
+	Technologies         []string   `json:"technologies,omitempty"`
+	Geopolitical         []string   `json:"geopolitical,omitempty"`
+	Sensitivity          []string   `json:"sensitivity,omitempty"`
+	Users                []string   `json:"users,omitempty"`
+	Groups               []string   `json:"groups,omitempty"`
+	EvaluationTimelineStart *time.Time `json:"evaluation_timeline_start,omitempty"`
+	EvaluationTimelineEnd   *time.Time `json:"evaluation_timeline_end,omitempty"`
+	BundleID             string     `json:"bundle_id,omitempty"`
+	TesseraLogIndex      *uint64    `json:"tessera_log_index,omitempty"`
+}
+
+// TargetRow represents a target registration with dimensional metadata.
+type TargetRow struct {
+	TargetID        string    `json:"target_id"`
+	TesseraLogIndex uint64    `json:"tessera_log_index"`
+	TargetName      string    `json:"target_name"`
+	TargetType      string    `json:"target_type"`
+	Technologies    []string  `json:"technologies"`
+	Geopolitical    []string  `json:"geopolitical"`
+	Sensitivity     []string  `json:"sensitivity"`
+	Users           []string  `json:"users"`
+	Groups          []string  `json:"groups"`
+	RegisteredAt    time.Time `json:"registered_at"`
+	RegisteredBy    string    `json:"registered_by"`
 }
 
 // InsertPolicy stores a policy artifact (upsert on policy_id).
@@ -165,16 +214,31 @@ func (s *Store) InsertPolicy(ctx context.Context, p Policy) error {
 		p.PolicyID = uuid.New().String()
 	}
 	_, err := s.pool.Exec(ctx,
-		`INSERT INTO policies (policy_id, title, version, oci_reference, content, imported_by)
-		 VALUES ($1, $2, $3, $4, $5, $6)
+		`INSERT INTO policies (policy_id, title, version, oci_reference, content, imported_by,
+		   technologies, geopolitical, sensitivity, users, groups,
+		   evaluation_timeline_start, evaluation_timeline_end,
+		   bundle_id, tessera_log_index)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		 ON CONFLICT (policy_id) DO UPDATE SET
 		   title         = EXCLUDED.title,
 		   version       = EXCLUDED.version,
 		   oci_reference = EXCLUDED.oci_reference,
 		   content       = EXCLUDED.content,
 		   imported_by   = EXCLUDED.imported_by,
+		   technologies  = EXCLUDED.technologies,
+		   geopolitical  = EXCLUDED.geopolitical,
+		   sensitivity   = EXCLUDED.sensitivity,
+		   users         = EXCLUDED.users,
+		   groups        = EXCLUDED.groups,
+		   evaluation_timeline_start = EXCLUDED.evaluation_timeline_start,
+		   evaluation_timeline_end   = EXCLUDED.evaluation_timeline_end,
+		   bundle_id     = EXCLUDED.bundle_id,
+		   tessera_log_index = EXCLUDED.tessera_log_index,
 		   imported_at   = now()`,
 		p.PolicyID, p.Title, p.Version, p.OCIReference, p.Content, p.ImportedBy,
+		p.Technologies, p.Geopolitical, p.Sensitivity, p.Users, p.Groups,
+		p.EvaluationTimelineStart, p.EvaluationTimelineEnd,
+		nullStr(p.BundleID), p.TesseraLogIndex,
 	)
 	return err
 }
@@ -790,6 +854,12 @@ type EvidenceRecord struct {
 	Owner          string    `json:"owner,omitempty"`
 	CollectedAt    time.Time `json:"collected_at"`
 	Classification string    `json:"classification,omitempty"`
+	LogIndex       *uint64   `json:"log_index,omitempty"` // Tessera transparency log position
+
+	// Publisher identity from JWT verification
+	PublisherIssuer string `json:"publisher_issuer,omitempty"` // JWT iss claim
+	SubmittedBy     string `json:"submitted_by,omitempty"`     // JWT sub claim
+	PublisherType   string `json:"publisher_type,omitempty"`   // pipeline, service, or unknown
 }
 
 // nullStr returns nil for empty strings, pointer otherwise.
@@ -868,8 +938,9 @@ func (s *Store) InsertEvidence(ctx context.Context, records []EvidenceRecord) (i
 		exception_id, exception_active,
 		enrichment_status,
 		attestation_ref, source_registry, blob_ref,
-		owner, collected_at
-	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
+		owner, collected_at, log_index,
+		publisher_issuer, submitted_by, publisher_type
+	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39)
 	ON CONFLICT (evidence_id, control_id, requirement_id) DO UPDATE SET
 		target_name = EXCLUDED.target_name,
 		target_type = EXCLUDED.target_type,
@@ -880,7 +951,11 @@ func (s *Store) InsertEvidence(ctx context.Context, records []EvidenceRecord) (i
 		eval_message = EXCLUDED.eval_message,
 		compliance_status = EXCLUDED.compliance_status,
 		owner = EXCLUDED.owner,
-		collected_at = EXCLUDED.collected_at`
+		collected_at = EXCLUDED.collected_at,
+		log_index = EXCLUDED.log_index,
+		publisher_issuer = EXCLUDED.publisher_issuer,
+		submitted_by = EXCLUDED.submitted_by,
+		publisher_type = EXCLUDED.publisher_type`
 
 	count := 0
 	for _, r := range records {
@@ -899,7 +974,8 @@ func (s *Store) InsertEvidence(ctx context.Context, records []EvidenceRecord) (i
 			nullStr(r.ExceptionID), r.ExceptionActive,
 			r.EnrichmentStatus,
 			nullStr(r.AttestationRef), nullStr(r.SourceRegistry), nullStr(r.BlobRef),
-			nullStr(r.Owner), r.CollectedAt,
+			nullStr(r.Owner), r.CollectedAt, r.LogIndex,
+			nullStr(r.PublisherIssuer), nullStr(r.SubmittedBy), nullStr(r.PublisherType),
 		); err != nil {
 			return count, fmt.Errorf("insert evidence row: %w", err)
 		}
@@ -954,6 +1030,7 @@ func (s *Store) QueryEvidence(ctx context.Context, f EvidenceFilter) ([]Evidence
 		"COALESCE(e.blob_ref, '') AS blob_ref",
 		"e.certified",
 		"e.collected_at",
+		"e.log_index",
 		"COALESCE(ea_latest.classification, '') AS classification",
 	).From(`evidence e
 		LEFT JOIN LATERAL (
@@ -1028,6 +1105,7 @@ func (s *Store) QueryEvidence(ctx context.Context, f EvidenceFilter) ([]Evidence
 			&r.AttestationRef, &r.SourceRegistry, &r.BlobRef,
 			&r.Certified,
 			&r.CollectedAt,
+			&r.LogIndex,
 			&r.Classification,
 		); err != nil {
 			return nil, fmt.Errorf("scan evidence: %w", err)
@@ -1718,4 +1796,208 @@ func (s *Store) ListRequirementEvidence(ctx context.Context, requirementID strin
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// IsTargetRegistered checks if a target has any registration in the targets table.
+func (s *Store) IsTargetRegistered(ctx context.Context, targetID string) bool {
+	const q = `SELECT EXISTS(SELECT 1 FROM targets WHERE target_id = $1)`
+	var exists bool
+	err := s.pool.QueryRow(ctx, q, targetID).Scan(&exists)
+	if err != nil {
+		return false
+	}
+	return exists
+}
+
+func (s *Store) InsertBundleArtifact(ctx context.Context, b BundleArtifactRow) error {
+	const q = `INSERT INTO bundle_artifacts (bundle_id, tessera_log_index, artifact_type, artifact_id, oci_reference)
+	VALUES ($1, $2, $3, $4, $5)
+	ON CONFLICT (bundle_id, tessera_log_index) DO NOTHING`
+
+	_, err := s.pool.Exec(ctx, q, b.BundleID, b.TesseraLogIndex, b.ArtifactType, b.ArtifactID, nullStr(b.OCIReference))
+	if err != nil {
+		return fmt.Errorf("insert bundle artifact: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) InsertTarget(ctx context.Context, t TargetRow) error {
+	const q = `INSERT INTO targets (
+		target_id, tessera_log_index, target_name, target_type,
+		technologies, geopolitical, sensitivity, users, groups,
+		registered_at, registered_by
+	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+	ON CONFLICT (target_id, tessera_log_index) DO NOTHING`
+
+	_, err := s.pool.Exec(ctx, q,
+		t.TargetID, t.TesseraLogIndex, t.TargetName, t.TargetType,
+		t.Technologies, t.Geopolitical, t.Sensitivity, t.Users, t.Groups,
+		t.RegisteredAt, t.RegisteredBy,
+	)
+	if err != nil {
+		return fmt.Errorf("insert target: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) GetLatestTarget(ctx context.Context, targetID string, asOf time.Time) (*TargetRow, error) {
+	const q = `SELECT target_id, tessera_log_index, target_name, target_type,
+		technologies, geopolitical, sensitivity, users, groups,
+		registered_at, registered_by
+	FROM targets
+	WHERE target_id = $1 AND registered_at <= $2
+	ORDER BY registered_at DESC
+	LIMIT 1`
+
+	var t TargetRow
+	err := s.pool.QueryRow(ctx, q, targetID, asOf).Scan(
+		&t.TargetID, &t.TesseraLogIndex, &t.TargetName, &t.TargetType,
+		&t.Technologies, &t.Geopolitical, &t.Sensitivity, &t.Users, &t.Groups,
+		&t.RegisteredAt, &t.RegisteredBy,
+	)
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get latest target: %w", err)
+	}
+	return &t, nil
+}
+
+func (s *Store) ListTargets(ctx context.Context) ([]TargetRow, error) {
+	const q = `SELECT DISTINCT ON (target_id)
+		target_id, tessera_log_index, target_name, target_type,
+		technologies, geopolitical, sensitivity, users, groups,
+		registered_at, registered_by
+	FROM targets
+	ORDER BY target_id, registered_at DESC`
+
+	rows, err := s.pool.Query(ctx, q)
+	if err != nil {
+		return nil, fmt.Errorf("list targets: %w", err)
+	}
+	defer rows.Close()
+
+	var out []TargetRow
+	for rows.Next() {
+		var t TargetRow
+		if err := rows.Scan(
+			&t.TargetID, &t.TesseraLogIndex, &t.TargetName, &t.TargetType,
+			&t.Technologies, &t.Geopolitical, &t.Sensitivity, &t.Users, &t.Groups,
+			&t.RegisteredAt, &t.RegisteredBy,
+		); err != nil {
+			return nil, fmt.Errorf("scan target row: %w", err)
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) QueryPoliciesByDimensions(ctx context.Context, dims DimensionQuery) ([]PolicyWithDimensions, error) {
+	const q = `SELECT policy_id, title, version, tessera_log_index,
+		technologies, geopolitical, sensitivity,
+		evaluation_timeline_start, evaluation_timeline_end
+	FROM policies
+	WHERE (
+		technologies && $1
+		OR geopolitical && $2
+		OR sensitivity && $3
+		OR users && $4
+		OR groups && $5
+	)
+	AND (evaluation_timeline_start IS NULL OR evaluation_timeline_start <= $6)
+	AND (evaluation_timeline_end IS NULL OR evaluation_timeline_end >= $6)
+	ORDER BY tessera_log_index ASC`
+
+	rows, err := s.pool.Query(ctx, q,
+		dims.Technologies, dims.Geopolitical, dims.Sensitivity,
+		dims.Users, dims.Groups, dims.Timestamp,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query policies by dimensions: %w", err)
+	}
+	defer rows.Close()
+
+	var out []PolicyWithDimensions
+	for rows.Next() {
+		var p PolicyWithDimensions
+		var logIndex *int64
+		if err := rows.Scan(
+			&p.PolicyID, &p.Title, &p.Version, &logIndex,
+			&p.Technologies, &p.Geopolitical, &p.Sensitivity,
+			&p.EvaluationStart, &p.EvaluationEnd,
+		); err != nil {
+			return nil, fmt.Errorf("scan policy dimension row: %w", err)
+		}
+		if logIndex != nil {
+			p.LogIndex = uint64(*logIndex)
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// WitnessEvidenceRow contains publisher and certification data for witness verification.
+type WitnessEvidenceRow struct {
+	Certified       bool
+	PublisherIssuer string
+	SubmittedBy     string
+	PublisherType   string
+}
+
+// QueryEvidenceByLogIndex retrieves certification and publisher data for a given Tessera log index.
+// Returns nil if the evidence is not yet in PostgreSQL (async processing delay).
+func (s *Store) QueryEvidenceByLogIndex(ctx context.Context, logIndex uint64) (*WitnessEvidenceRow, error) {
+	const q = `SELECT certified, publisher_issuer, submitted_by, publisher_type
+	           FROM evidence
+	           WHERE log_index = $1
+	           LIMIT 1`
+
+	var row WitnessEvidenceRow
+	err := s.pool.QueryRow(ctx, q, logIndex).Scan(&row.Certified, &row.PublisherIssuer, &row.SubmittedBy, &row.PublisherType)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("query evidence by log_index: %w", err)
+	}
+
+	return &row, nil
+}
+
+// IsIndexWitnessed checks if a Tessera log index has been verified and countersigned by the witness.
+func (s *Store) IsIndexWitnessed(ctx context.Context, index uint64) bool {
+	const q = `SELECT EXISTS(SELECT 1 FROM witnessed_indices WHERE log_index = $1)`
+
+	var exists bool
+	err := s.pool.QueryRow(ctx, q, index).Scan(&exists)
+	if err != nil {
+		return false
+	}
+	return exists
+}
+
+// PolicyExistsByID checks if a policy with the given ID exists in the database.
+func (s *Store) PolicyExistsByID(ctx context.Context, policyID string) bool {
+	const q = `SELECT EXISTS(SELECT 1 FROM policies WHERE policy_id = $1)`
+
+	var exists bool
+	err := s.pool.QueryRow(ctx, q, policyID).Scan(&exists)
+	if err != nil {
+		return false
+	}
+	return exists
+}
+
+// MarkIndexWitnessed records that a Tessera log index has been verified and countersigned.
+func (s *Store) MarkIndexWitnessed(ctx context.Context, index uint64, witnessName, checkpointHash string) error {
+	const q = `INSERT INTO witnessed_indices (log_index, witness_name, checkpoint_hash)
+	           VALUES ($1, $2, $3)
+	           ON CONFLICT (log_index) DO NOTHING`
+
+	_, err := s.pool.Exec(ctx, q, index, witnessName, checkpointHash)
+	if err != nil {
+		return fmt.Errorf("mark index witnessed: %w", err)
+	}
+	return nil
 }

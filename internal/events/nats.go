@@ -12,9 +12,11 @@ import (
 )
 
 const (
-	SubjectEvidence  = "core.evidence"
-	SubjectDraft     = "core.draft"
-	SubjectIngestRaw = "core.ingest"
+	SubjectEvidence         = "core.evidence"
+	SubjectDraft            = "core.draft"
+	SubjectIngestRaw        = "core.ingest"
+	SubjectPolicyNew        = "core.policy.new"
+	SubjectTargetRegistered = "core.target.registered"
 )
 
 // SubjectPrefix is the NATS subject namespace for studio events.
@@ -110,23 +112,61 @@ func (b *Bus) PublishDraftAuditLog(draftID, policyID, summary string) {
 	}
 }
 
+// PublisherIdentity contains JWT-verified publisher information.
+type PublisherIdentity struct {
+	Sub      string `json:"sub"`      // JWT sub claim
+	Issuer   string `json:"issuer"`   // JWT iss claim
+	Type     string `json:"type"`     // "pipeline" or "service"
+	Verified bool   `json:"verified"` // Always true after JWT verification
+}
+
 // IngestRawEvent carries a raw Gemara artifact for async processing.
 type IngestRawEvent struct {
-	JobID     string    `json:"job_id"`
-	YAML      []byte    `json:"yaml"`
+	JobID             string            `json:"job_id"`
+	LogIndex          uint64            `json:"log_index"`          // Tessera transparency log position
+	YAML              []byte            `json:"yaml"`
+	PublisherIdentity PublisherIdentity `json:"publisher_identity"`
+	BundleID          string            `json:"bundle_id,omitempty"`     // OCI bundle ID (empty for direct ingest)
+	OCIReference      string            `json:"oci_reference,omitempty"` // Source OCI reference
+	Timestamp         time.Time         `json:"timestamp"`
+}
+
+// PolicyEvent is published when a new Policy artifact is ingested.
+type PolicyEvent struct {
+	LogIndex  uint64    `json:"log_index"`
+	PolicyID  string    `json:"policy_id"`
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// PublishIngestRaw publishes a raw artifact for async ingest. Returns an
-// error so the HTTP handler can fail the job immediately on NATS issues.
-func (b *Bus) PublishIngestRaw(jobID string, yaml []byte) error {
+// TargetRegisteredEvent is published when a TargetRegistration is ingested.
+type TargetRegisteredEvent struct {
+	LogIndex     uint64    `json:"log_index"`
+	TargetID     string    `json:"target_id"`
+	RegisteredBy string    `json:"registered_by"`
+	Timestamp    time.Time `json:"timestamp"`
+}
+
+
+// PublishIngestRawWithContext publishes a raw artifact for async ingest with
+// JWT-verified publisher identity and Tessera log_index. Returns an error so
+// the HTTP handler can fail the job immediately on NATS issues.
+func (b *Bus) PublishIngestRawWithContext(jobID string, yaml []byte, logIndex uint64, identity PublisherIdentity) error {
+	return b.PublishIngestRawWithBundle(jobID, yaml, logIndex, identity, "", "")
+}
+
+// PublishIngestRawWithBundle publishes with bundle tracking for OCI imports.
+func (b *Bus) PublishIngestRawWithBundle(jobID string, yaml []byte, logIndex uint64, identity PublisherIdentity, bundleID, ociRef string) error {
 	if b == nil || b.conn == nil {
 		return fmt.Errorf("nats not connected")
 	}
 	evt := IngestRawEvent{
-		JobID:     jobID,
-		YAML:      yaml,
-		Timestamp: time.Now().UTC(),
+		JobID:             jobID,
+		LogIndex:          logIndex,
+		YAML:              yaml,
+		PublisherIdentity: identity,
+		BundleID:          bundleID,
+		OCIReference:      ociRef,
+		Timestamp:         time.Now().UTC(),
 	}
 	data, err := json.Marshal(evt)
 	if err != nil {
@@ -161,6 +201,62 @@ func (b *Bus) SubscribeEvidence(handler func(EvidenceEvent)) (*nats.Subscription
 	}
 	return b.conn.Subscribe(SubjectPrefix+".>", func(msg *nats.Msg) {
 		var evt EvidenceEvent
+		if err := json.Unmarshal(msg.Data, &evt); err != nil {
+			slog.Warn("nats unmarshal failed", "error", err)
+			return
+		}
+		handler(evt)
+	})
+}
+
+// PublishPolicyNew broadcasts that a new Policy artifact was ingested.
+func (b *Bus) PublishPolicyNew(logIndex uint64, policyID string) {
+	if b == nil || b.conn == nil {
+		return
+	}
+	evt := PolicyEvent{
+		LogIndex:  logIndex,
+		PolicyID:  policyID,
+		Timestamp: time.Now().UTC(),
+	}
+	data, err := json.Marshal(evt)
+	if err != nil {
+		slog.Warn("nats marshal failed", "error", err)
+		return
+	}
+	if err := b.conn.Publish(SubjectPolicyNew, data); err != nil {
+		slog.Warn("nats publish failed", "subject", SubjectPolicyNew, "error", err)
+	}
+}
+
+// PublishTargetRegistered broadcasts that a new target was registered.
+func (b *Bus) PublishTargetRegistered(logIndex uint64, targetID, registeredBy string) {
+	if b == nil || b.conn == nil {
+		return
+	}
+	evt := TargetRegisteredEvent{
+		LogIndex:     logIndex,
+		TargetID:     targetID,
+		RegisteredBy: registeredBy,
+		Timestamp:    time.Now().UTC(),
+	}
+	data, err := json.Marshal(evt)
+	if err != nil {
+		slog.Warn("nats marshal failed", "error", err)
+		return
+	}
+	if err := b.conn.Publish(SubjectTargetRegistered, data); err != nil {
+		slog.Warn("nats publish failed", "subject", SubjectTargetRegistered, "error", err)
+	}
+}
+
+// SubscribeTargetRegistered subscribes to target registration events.
+func (b *Bus) SubscribeTargetRegistered(handler func(TargetRegisteredEvent)) (*nats.Subscription, error) {
+	if b == nil || b.conn == nil {
+		return nil, nil
+	}
+	return b.conn.Subscribe(SubjectTargetRegistered, func(msg *nats.Msg) {
+		var evt TargetRegisteredEvent
 		if err := json.Unmarshal(msg.Data, &evt); err != nil {
 			slog.Warn("nats unmarshal failed", "error", err)
 			return

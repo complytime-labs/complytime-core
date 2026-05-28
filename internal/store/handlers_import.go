@@ -9,12 +9,14 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	gemara "github.com/gemaraproj/go-gemara"
 	gemarabundle "github.com/gemaraproj/go-gemara/bundle"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
+	"github.com/complytime-labs/complytime-core/internal/events"
 	gemarapkg "github.com/complytime-labs/complytime-core/internal/gemara"
 )
 
@@ -75,11 +77,63 @@ func ociImport(c echo.Context, s Stores, ref string) error {
 		return jsonError(c, http.StatusBadGateway, "failed to pull bundle: "+err.Error())
 	}
 
-	var resp ociImportResponse
-	resp.Digest = bundle.Etag
-
+	bundleID := uuid.New().String()
 	allFiles := append(bundle.Files, bundle.Imports...)
+
+	if s.TesseraAppender == nil || s.IngestPublisher == nil {
+		return ociImportLegacy(c, s, allFiles, bundle.Etag)
+	}
+
+	identity := events.PublisherIdentity{
+		Sub:      "import:" + ref,
+		Issuer:   "complytime-gateway",
+		Type:     "import",
+		Verified: true,
+	}
+
+	var imported []ociImportedArtifact
 	for _, f := range allFiles {
+		detected, err := gemara.DetectType(f.Data)
+		if err != nil {
+			slog.Warn("skip unrecognized artifact", "name", f.Name, "error", err)
+			continue
+		}
+
+		logIndex, err := s.TesseraAppender.Add(ctx, f.Data)
+		if err != nil {
+			slog.Error("tessera append failed", "name", f.Name, "error", err)
+			continue
+		}
+
+		jobID := uuid.New().String()
+		s.IngestTracker.Create(jobID)
+
+		if err := s.IngestPublisher.PublishIngestRawWithBundle(
+			jobID, f.Data, logIndex, identity, bundleID, ref,
+		); err != nil {
+			slog.Error("nats publish failed", "name", f.Name, "error", err)
+		}
+
+		imported = append(imported, ociImportedArtifact{
+			Type: detected.String(),
+			Name: f.Name,
+		})
+	}
+
+	return c.JSON(http.StatusAccepted, map[string]any{
+		"bundle_id": bundleID,
+		"status":    "processing",
+		"digest":    bundle.Etag,
+		"artifacts": len(imported),
+	})
+}
+
+func ociImportLegacy(c echo.Context, s Stores, files []gemarabundle.File, etag string) error {
+	var resp ociImportResponse
+	resp.Digest = etag
+
+	ctx := c.Request().Context()
+	for _, f := range files {
 		art, err := storeArtifactFile(ctx, s, f)
 		if err != nil {
 			slog.Warn("import artifact failed", "name", f.Name, "error", err)
@@ -93,6 +147,12 @@ func ociImport(c echo.Context, s Stores, ref string) error {
 	}
 
 	return c.JSON(http.StatusCreated, resp)
+}
+
+// policyIngestOption carries Tessera provenance data for async-ingested policies.
+type policyIngestOption struct {
+	LogIndex uint64
+	BundleID string
 }
 
 func storeArtifactFile(ctx context.Context, s Stores, f gemarabundle.File) (ociImportedArtifact, error) {
@@ -116,7 +176,7 @@ func storeArtifactFile(ctx context.Context, s Stores, f gemarabundle.File) (ociI
 	}
 }
 
-func storePolicyFromContent(ctx context.Context, ps PolicyStore, ctrlS ControlStore, content string) (ociImportedArtifact, error) {
+func storePolicyFromContent(ctx context.Context, ps PolicyStore, ctrlS ControlStore, content string, opts ...policyIngestOption) (ociImportedArtifact, error) {
 	var pol gemara.Policy
 	if err := gemarapkg.UnmarshalYAML([]byte(content), &pol); err != nil {
 		return ociImportedArtifact{}, err
@@ -133,11 +193,35 @@ func storePolicyFromContent(ctx context.Context, ps PolicyStore, ctrlS ControlSt
 		pid = uuid.NewString()
 	}
 	p := Policy{
-		PolicyID: pid,
-		Title:    title,
-		Version:  pol.Metadata.Version,
-		Content:  content,
+		PolicyID:     pid,
+		Title:        title,
+		Version:      pol.Metadata.Version,
+		Content:      content,
+		Technologies: pol.Scope.In.Technologies,
+		Geopolitical: pol.Scope.In.Geopolitical,
+		Sensitivity:  pol.Scope.In.Sensitivity,
+		Users:        pol.Scope.In.Users,
+		Groups:       pol.Scope.In.Groups,
 	}
+
+	if len(opts) > 0 {
+		opt := opts[0]
+		p.TesseraLogIndex = &opt.LogIndex
+		p.BundleID = opt.BundleID
+	}
+
+	// Extract evaluation timeline
+	if start := string(pol.ImplementationPlan.EvaluationTimeline.Start); start != "" {
+		if t, err := time.Parse(time.RFC3339, start); err == nil {
+			p.EvaluationTimelineStart = &t
+		}
+	}
+	if end := string(pol.ImplementationPlan.EvaluationTimeline.End); end != "" {
+		if t, err := time.Parse(time.RFC3339, end); err == nil {
+			p.EvaluationTimelineEnd = &t
+		}
+	}
+
 	if err := ps.InsertPolicy(ctx, p); err != nil {
 		return ociImportedArtifact{}, err
 	}

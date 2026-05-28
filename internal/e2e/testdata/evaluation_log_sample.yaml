@@ -1,0 +1,21 @@
+metadata:
+  type: EvaluationLog
+  id: eval-test-001
+  version: 1.0.0
+  author:
+    name: test-engine
+    version: 1.0.0
+  date: "2026-05-26T00:00:00Z"
+target:
+  id: tgt-test-001
+  name: Test Target
+  type: Software
+evaluations:
+  - control:
+      entryId: AC-1
+      referenceId: nist-800-53
+    assessmentLogs:
+      - result: Passed
+        start: "2026-05-26T00:00:00Z"
+        requirement:
+          entryId: AC-1.1
