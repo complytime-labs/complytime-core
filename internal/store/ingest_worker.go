@@ -189,16 +189,18 @@ func handleTargetRegistration(
 		registeredAt = time.Now().UTC()
 	}
 
+	// Normalize nil slices to empty slices for database insert
+	// (nil slice is treated as NULL which violates NOT NULL constraint)
 	row := TargetRow{
 		TargetID:        reg.Target.ID,
 		TesseraLogIndex: evt.LogIndex,
 		TargetName:      reg.Target.Name,
 		TargetType:      reg.Target.Type,
-		Technologies:    reg.Dimensions.Technologies,
-		Geopolitical:    reg.Dimensions.Geopolitical,
-		Sensitivity:     reg.Dimensions.Sensitivity,
-		Users:           reg.Dimensions.Users,
-		Groups:          reg.Dimensions.Groups,
+		Technologies:    normalizeSlice(reg.Dimensions.Technologies),
+		Geopolitical:    normalizeSlice(reg.Dimensions.Geopolitical),
+		Sensitivity:     normalizeSlice(reg.Dimensions.Sensitivity),
+		Users:           normalizeSlice(reg.Dimensions.Users),
+		Groups:          normalizeSlice(reg.Dimensions.Groups),
 		RegisteredAt:    registeredAt,
 		RegisteredBy:    evt.PublisherIdentity.Sub,
 	}
@@ -219,4 +221,14 @@ func handleTargetRegistration(
 		"type", "TargetRegistration",
 		"target_id", reg.Target.ID,
 	)
+}
+
+// normalizeSlice returns an empty slice if the input is nil.
+// This prevents nil slices from being passed as NULL to PostgreSQL
+// which would violate NOT NULL constraints even when DEFAULT is set.
+func normalizeSlice(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }

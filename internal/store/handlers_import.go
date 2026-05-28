@@ -192,16 +192,18 @@ func storePolicyFromContent(ctx context.Context, ps PolicyStore, ctrlS ControlSt
 	if pid == "" {
 		pid = uuid.NewString()
 	}
+	// Normalize nil slices to empty slices for database insert
+	// (nil slice is treated as NULL which violates NOT NULL constraint)
 	p := Policy{
 		PolicyID:     pid,
 		Title:        title,
 		Version:      pol.Metadata.Version,
 		Content:      content,
-		Technologies: pol.Scope.In.Technologies,
-		Geopolitical: pol.Scope.In.Geopolitical,
-		Sensitivity:  pol.Scope.In.Sensitivity,
-		Users:        pol.Scope.In.Users,
-		Groups:       pol.Scope.In.Groups,
+		Technologies: normalizeSlice(pol.Scope.In.Technologies),
+		Geopolitical: normalizeSlice(pol.Scope.In.Geopolitical),
+		Sensitivity:  normalizeSlice(pol.Scope.In.Sensitivity),
+		Users:        normalizeSlice(pol.Scope.In.Users),
+		Groups:       normalizeSlice(pol.Scope.In.Groups),
 	}
 
 	if len(opts) > 0 {
