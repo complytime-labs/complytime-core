@@ -22,9 +22,9 @@ import (
 	"github.com/complytime-labs/complytime-core/internal/store"
 	"github.com/complytime-labs/complytime-core/internal/tessera"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/labstack/echo/v4"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/labstack/echo/v4"
 	natsserver "github.com/nats-io/nats-server/v2/server"
 )
 
@@ -40,27 +40,27 @@ type testingHelper interface {
 	Logf(format string, args ...any)
 }
 
-// startTestNATSServer creates an embedded NATS server for testing
+// startTestNATSServer creates an embedded NATS server with JetStream enabled.
 func startTestNATSServer(t testingHelper) *natsserver.Server {
 	t.Helper()
 
 	opts := &natsserver.Options{
-		Host:   "127.0.0.1",
-		Port:   -1, // Random port
-		NoLog:  true,
-		NoSigs: true,
+		Host:      "127.0.0.1",
+		Port:      -1, // Random port
+		NoLog:     true,
+		NoSigs:    true,
+		JetStream: true,
+		StoreDir:  t.TempDir(),
 	}
 
 	ns, err := natsserver.NewServer(opts)
 	Expect(err).NotTo(HaveOccurred(), "Failed to create NATS server")
 
-	// Start server in goroutine
 	go ns.Start()
 
-	// Wait for server to be ready
 	Eventually(func() bool {
 		return ns.ReadyForConnections(1 * time.Second)
-	}).WithTimeout(5 * time.Second).WithPolling(100 * time.Millisecond).Should(BeTrue(), "NATS server did not start")
+	}).WithTimeout(5*time.Second).WithPolling(100*time.Millisecond).Should(BeTrue(), "NATS server did not start")
 
 	t.Cleanup(func() {
 		ns.Shutdown()
@@ -85,6 +85,34 @@ func connectTestNATS(t testingHelper, url string) *events.Bus {
 	return bus
 }
 
+// setupJetStreamWorker creates the JetStream stream/consumer and starts the
+// ingest worker.
+func setupJetStreamWorker(
+	t testingHelper,
+	ctx context.Context,
+	bus *events.Bus,
+	stores store.Stores,
+	pub store.EventPublisher,
+	tracker *store.IngestTracker,
+	reader store.TesseraReader,
+) {
+	t.Helper()
+
+	err := bus.EnsureIngestStream(ctx, events.IngestStreamConfig{
+		MaxDeliver: 3,
+		AckWait:    5 * time.Second,
+	})
+	Expect(err).NotTo(HaveOccurred(), "Failed to create JetStream stream")
+
+	handler := store.IngestWorker(ctx, stores, pub, tracker, reader)
+	cc, err := bus.ConsumeIngest(ctx, handler)
+	Expect(err).NotTo(HaveOccurred(), "Failed to start JetStream consumer")
+
+	t.Cleanup(func() {
+		cc.Stop()
+	})
+}
+
 // newTestTessera creates an embedded Tessera client with temp storage
 func newTestTessera(t testingHelper) *tessera.Client {
 	t.Helper()
@@ -92,7 +120,7 @@ func newTestTessera(t testingHelper) *tessera.Client {
 	tmpDir := t.TempDir()
 	opts := tessera.Options{
 		CheckpointTime: 100 * time.Millisecond, // Fast checkpoints for E2E tests
-		CheckpointSize: 10,                      // Small batch size for E2E tests
+		CheckpointSize: 10,                     // Small batch size for E2E tests
 	}
 	client, err := tessera.NewClient(context.Background(), tmpDir, opts)
 	Expect(err).NotTo(HaveOccurred(), "Failed to create Tessera client")
@@ -296,4 +324,3 @@ func setupCertificationPipeline(st *store.Store, bus *events.Bus) {
 		debouncer.Push(evt)
 	})
 }
-

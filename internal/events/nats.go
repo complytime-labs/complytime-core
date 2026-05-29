@@ -3,12 +3,14 @@
 package events
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 )
 
 const (
@@ -17,6 +19,12 @@ const (
 	SubjectIngestRaw        = "core.ingest"
 	SubjectPolicyNew        = "core.policy.new"
 	SubjectTargetRegistered = "core.target.registered"
+
+	StreamIngest          = "INGEST"
+	ConsumerIngestWorker  = "ingest-worker"
+	DefaultMaxDeliver     = 5
+	DefaultAckWait        = 30 * time.Second
+	DefaultDedupeWindow   = 2 * time.Minute
 )
 
 // SubjectPrefix is the NATS subject namespace for studio events.
@@ -38,9 +46,16 @@ type DraftAuditLogEvent struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+// IngestStreamConfig holds tunable parameters for the JetStream ingest stream.
+type IngestStreamConfig struct {
+	MaxDeliver int
+	AckWait    time.Duration
+}
+
 // Bus wraps a NATS connection for studio event publishing and subscribing.
 type Bus struct {
 	conn *nats.Conn
+	js   jetstream.JetStream
 }
 
 // Connect creates a new Bus connected to the given NATS URL.
@@ -63,8 +78,63 @@ func Connect(natsURL string) (*Bus, error) {
 	if err != nil {
 		return nil, fmt.Errorf("nats connect: %w", err)
 	}
-	slog.Info("nats connected", "url", natsURL)
-	return &Bus{conn: nc}, nil
+
+	js, err := jetstream.New(nc)
+	if err != nil {
+		nc.Close()
+		return nil, fmt.Errorf("jetstream init: %w", err)
+	}
+
+	slog.Info("nats connected", "url", natsURL, "jetstream", true)
+	return &Bus{conn: nc, js: js}, nil
+}
+
+// EnsureIngestStream creates or updates the INGEST stream for durable ingest
+// processing. Idempotent — safe to call on every startup.
+func (b *Bus) EnsureIngestStream(ctx context.Context, cfg IngestStreamConfig) error {
+	if b == nil || b.js == nil {
+		return fmt.Errorf("jetstream not initialized")
+	}
+
+	maxDeliver := cfg.MaxDeliver
+	if maxDeliver <= 0 {
+		maxDeliver = DefaultMaxDeliver
+	}
+	ackWait := cfg.AckWait
+	if ackWait <= 0 {
+		ackWait = DefaultAckWait
+	}
+
+	_, err := b.js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+		Name:       StreamIngest,
+		Subjects:   []string{SubjectIngestRaw},
+		Retention:  jetstream.WorkQueuePolicy,
+		MaxMsgs:    -1,
+		MaxBytes:   -1,
+		Duplicates: DefaultDedupeWindow,
+	})
+	if err != nil {
+		return fmt.Errorf("create/update stream %s: %w", StreamIngest, err)
+	}
+
+	_, err = b.js.CreateOrUpdateConsumer(ctx, StreamIngest, jetstream.ConsumerConfig{
+		Durable:       ConsumerIngestWorker,
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		AckWait:       ackWait,
+		MaxDeliver:    maxDeliver,
+		FilterSubject: SubjectIngestRaw,
+	})
+	if err != nil {
+		return fmt.Errorf("create/update consumer %s: %w", ConsumerIngestWorker, err)
+	}
+
+	slog.Info("jetstream ingest stream ready",
+		"stream", StreamIngest,
+		"consumer", ConsumerIngestWorker,
+		"max_deliver", maxDeliver,
+		"ack_wait", ackWait,
+	)
+	return nil
 }
 
 // PublishEvidence publishes an evidence event. Errors are logged, never returned
@@ -120,14 +190,14 @@ type PublisherIdentity struct {
 	Verified bool   `json:"verified"` // Always true after JWT verification
 }
 
-// IngestRawEvent carries a raw Gemara artifact for async processing.
-type IngestRawEvent struct {
+// IngestRef is the slim JetStream message envelope for async ingest.
+// YAML is not included — worker fetches from Tessera by log_index.
+type IngestRef struct {
 	JobID             string            `json:"job_id"`
-	LogIndex          uint64            `json:"log_index"`          // Tessera transparency log position
-	YAML              []byte            `json:"yaml"`
+	LogIndex          uint64            `json:"log_index"`
 	PublisherIdentity PublisherIdentity `json:"publisher_identity"`
-	BundleID          string            `json:"bundle_id,omitempty"`     // OCI bundle ID (empty for direct ingest)
-	OCIReference      string            `json:"oci_reference,omitempty"` // Source OCI reference
+	BundleID          string            `json:"bundle_id,omitempty"`
+	OCIReference      string            `json:"oci_reference,omitempty"`
 	Timestamp         time.Time         `json:"timestamp"`
 }
 
@@ -146,51 +216,54 @@ type TargetRegisteredEvent struct {
 	Timestamp    time.Time `json:"timestamp"`
 }
 
-
-// PublishIngestRawWithContext publishes a raw artifact for async ingest with
-// JWT-verified publisher identity and Tessera log_index. Returns an error so
-// the HTTP handler can fail the job immediately on NATS issues.
-func (b *Bus) PublishIngestRawWithContext(jobID string, yaml []byte, logIndex uint64, identity PublisherIdentity) error {
-	return b.PublishIngestRawWithBundle(jobID, yaml, logIndex, identity, "", "")
-}
-
-// PublishIngestRawWithBundle publishes with bundle tracking for OCI imports.
-func (b *Bus) PublishIngestRawWithBundle(jobID string, yaml []byte, logIndex uint64, identity PublisherIdentity, bundleID, ociRef string) error {
-	if b == nil || b.conn == nil {
-		return fmt.Errorf("nats not connected")
+// PublishIngest publishes an IngestRef to the JetStream INGEST stream.
+// Uses job_id as Nats-Msg-Id for deduplication.
+func (b *Bus) PublishIngest(ctx context.Context, ref IngestRef) error {
+	if b == nil || b.js == nil {
+		return fmt.Errorf("jetstream not initialized")
 	}
-	evt := IngestRawEvent{
-		JobID:             jobID,
-		LogIndex:          logIndex,
-		YAML:              yaml,
-		PublisherIdentity: identity,
-		BundleID:          bundleID,
-		OCIReference:      ociRef,
-		Timestamp:         time.Now().UTC(),
-	}
-	data, err := json.Marshal(evt)
+	data, err := json.Marshal(ref)
 	if err != nil {
-		return fmt.Errorf("marshal ingest event: %w", err)
+		return fmt.Errorf("marshal ingest ref: %w", err)
 	}
-	if err := b.conn.Publish(SubjectIngestRaw, data); err != nil {
-		return fmt.Errorf("nats publish %s: %w", SubjectIngestRaw, err)
+	_, err = b.js.Publish(ctx, SubjectIngestRaw, data, jetstream.WithMsgID(ref.JobID))
+	if err != nil {
+		return fmt.Errorf("jetstream publish %s: %w", SubjectIngestRaw, err)
 	}
 	return nil
 }
 
-// SubscribeIngestRaw subscribes to raw ingest events for async processing.
-func (b *Bus) SubscribeIngestRaw(handler func(IngestRawEvent)) (*nats.Subscription, error) {
-	if b == nil || b.conn == nil {
-		return nil, nil
+// IngestMsgHandler processes a single JetStream ingest message.
+// Implementations must call msg.Ack(), msg.NakWithDelay(), or msg.Term().
+type IngestMsgHandler func(ctx context.Context, ref IngestRef, msg jetstream.Msg)
+
+// ConsumeIngest starts a durable pull consumer on the INGEST stream.
+// Returns a ConsumeContext that must be stopped on shutdown.
+func (b *Bus) ConsumeIngest(ctx context.Context, handler IngestMsgHandler) (jetstream.ConsumeContext, error) {
+	if b == nil || b.js == nil {
+		return nil, fmt.Errorf("jetstream not initialized")
 	}
-	return b.conn.Subscribe(SubjectIngestRaw, func(msg *nats.Msg) {
-		var evt IngestRawEvent
-		if err := json.Unmarshal(msg.Data, &evt); err != nil {
-			slog.Warn("nats unmarshal failed", "error", err)
+
+	consumer, err := b.js.Consumer(ctx, StreamIngest, ConsumerIngestWorker)
+	if err != nil {
+		return nil, fmt.Errorf("get consumer %s: %w", ConsumerIngestWorker, err)
+	}
+
+	cc, err := consumer.Consume(func(msg jetstream.Msg) {
+		var ref IngestRef
+		if err := json.Unmarshal(msg.Data(), &ref); err != nil {
+			slog.Warn("jetstream ingest unmarshal failed", "error", err)
+			_ = msg.Term()
 			return
 		}
-		handler(evt)
+		handler(ctx, ref, msg)
 	})
+	if err != nil {
+		return nil, fmt.Errorf("consume %s: %w", ConsumerIngestWorker, err)
+	}
+
+	slog.Info("jetstream ingest consumer started", "consumer", ConsumerIngestWorker)
+	return cc, nil
 }
 
 // SubscribeEvidence subscribes to all evidence events (core.evidence.>).

@@ -374,15 +374,7 @@ func (*nopEventPublisher) PublishTargetRegistered(uint64, string, string) {}
 
 type nopIngestPublisher struct{}
 
-func (*nopIngestPublisher) PublishIngestRaw(string, []byte) error { return nil }
-
-func (*nopIngestPublisher) PublishIngestRawWithContext(string, []byte, uint64, events.PublisherIdentity) error {
-	return nil
-}
-
-func (*nopIngestPublisher) PublishIngestRawWithBundle(string, []byte, uint64, events.PublisherIdentity, string, string) error {
-	return nil
-}
+func (*nopIngestPublisher) PublishIngest(_ context.Context, _ events.IngestRef) error { return nil }
 
 type nopHealthChecker struct{}
 

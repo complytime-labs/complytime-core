@@ -81,7 +81,7 @@ Studio UI ─→ posture dashboard, evidence explorer
 | Package | Responsibility |
 |:--|:--|
 | `internal/store` | Business logic, HTTP handlers, domain interfaces |
-| `internal/events` | NATS event bus (core.ingest, core.evidence, core.policy.new, core.target.registered) |
+| `internal/events` | NATS event bus — JetStream durable consumer for `core.ingest`, core pub/sub for other subjects |
 | `internal/tessera` | Transparency log client (Tessera — successor to Trillian) |
 | `internal/certifier` | Evidence validation pipeline (schema, provenance, executor) |
 | `internal/auth` | JWT verification with JWKS discovery, OAuth2 Proxy trust |
@@ -101,7 +101,7 @@ Studio UI ─→ posture dashboard, evidence explorer
 ```bash
 # Start dependencies
 podman run -d --name pg -e POSTGRES_USER=complytime -e POSTGRES_PASSWORD=complytime -e POSTGRES_DB=complytime -p 5432:5432 docker.io/library/postgres:16
-podman run -d --name nats -p 4222:4222 docker.io/library/nats:latest
+podman run -d --name nats -p 4222:4222 docker.io/library/nats:latest -js -sd /data
 
 # Build and run
 export POSTGRES_URL="postgres://complytime:complytime@localhost:5432/complytime?sslmode=disable"
