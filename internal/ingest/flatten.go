@@ -46,7 +46,7 @@ func FlattenEvaluationLog(log *gemara.EvaluationLog, policyID string) ([]Evidenc
 	}
 
 	var rows []EvidenceRow
-	for evalIdx, eval := range log.Evaluations {
+	for _, eval := range log.Evaluations {
 		if eval == nil {
 			continue
 		}
@@ -68,9 +68,6 @@ func FlattenEvaluationLog(log *gemara.EvaluationLog, policyID string) ([]Evidenc
 			reqID := al.Requirement.EntryId
 			steps := uint16(al.StepsExecuted)
 
-		ruleID := eval.Control.EntryId
-		fmt.Printf("DEBUG: flattening eval[%d] control.EntryId=%q\n", evalIdx, ruleID)
-
 		row := EvidenceRow{
 			EvidenceID: log.Metadata.Id,
 
@@ -83,7 +80,7 @@ func FlattenEvaluationLog(log *gemara.EvaluationLog, policyID string) ([]Evidenc
 			EngineName:    strPtr(log.Metadata.Author.Name),
 			EngineVersion: strPtr(log.Metadata.Version),
 
-			RuleID: ruleID,
+			RuleID: eval.Control.EntryId,
 
 				EvalResult:  al.Result.String(),
 				EvalMessage: strPtr(al.Message),

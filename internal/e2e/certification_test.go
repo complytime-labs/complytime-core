@@ -168,13 +168,13 @@ target:
   type: Software
 evaluations:
   - control:
-      entryId: AC-2
-      referenceId: nist-800-53
+      entry-id: AC-2
+      reference-id: nist-800-53
     assessment-logs:
       - result: Passed
         start: "2026-05-26T12:00:00Z"
         requirement:
-          entryId: AC-2.1
+          entry-id: AC-2.1
 `)
 
 			By("Generating JWT token")

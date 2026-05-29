@@ -16,10 +16,10 @@ target:
   type: Software
 evaluations:
   - control:
-      entryId: AC-1
-      referenceId: nist-800-53
+      entry-id: AC-1
+      reference-id: nist-800-53
     assessment-logs:
       - result: Passed
         start: "2026-05-26T00:00:00Z"
         requirement:
-          entryId: AC-1.1
+          entry-id: AC-1.1
