@@ -62,6 +62,7 @@ func CertificationHandler(
 		for _, row := range rows {
 			slog.Info("certifying evidence",
 				"evidence_id", row.EvidenceID,
+				"rule_id", row.RuleID,
 				"engine_name", row.EngineName,
 				"enrichment_status", row.EnrichmentStatus)
 			results := pipeline.Run(ctx, row)
