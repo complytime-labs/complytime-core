@@ -111,11 +111,14 @@ var _ = Describe("Certification Pipeline", func() {
 			// The certification pipeline fires after 100ms debounce and then
 			// queries evidence rows for the policy. We poll until certified=true.
 			Eventually(func() bool {
-				row, err := st.QueryEvidenceByLogIndex(ctx, logIndex)
-				if err != nil || row == nil {
+				rows, err := st.QueryEvidence(ctx, store.EvidenceFilter{
+					PolicyIDs: []string{"test-policy"},
+					Limit:     1,
+				})
+				if err != nil || len(rows) == 0 {
 					return false
 				}
-				return row.Certified
+				return rows[0].Certified
 			}).WithTimeout(5 * time.Second).WithPolling(200 * time.Millisecond).Should(
 				BeTrue(), "Evidence should be certified after pipeline runs",
 			)
@@ -217,20 +220,16 @@ evaluations:
 			)
 
 			By("Verifying evidence remains not certified")
-			row, err := st.QueryEvidenceByLogIndex(ctx, logIndex)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(row).NotTo(BeNil(), "Evidence should exist in database")
-			Expect(row.Certified).To(BeFalse(),
-				"Evidence with unknown engine should NOT be certified")
-
-			By("Verifying at least one certification verdict is 'fail'")
 			evRows, err := st.QueryEvidence(ctx, store.EvidenceFilter{
 				PolicyIDs: []string{"fail-policy"},
 				Limit:     10,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(evRows).NotTo(BeEmpty())
+			Expect(evRows).NotTo(BeEmpty(), "Evidence should exist in database")
+			Expect(evRows[0].Certified).To(BeFalse(),
+				"Evidence with unknown engine should NOT be certified")
 
+			By("Verifying at least one certification verdict is 'fail'")
 			certs, err := st.QueryCertifications(ctx, evRows[0].EvidenceID)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(certs).NotTo(BeEmpty())
