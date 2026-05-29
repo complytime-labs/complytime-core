@@ -115,7 +115,7 @@ func handleEvidenceIngest(
 		return
 	}
 
-	records := toEvidenceRecordsWithLogIndex(rows, evt.LogIndex, &evt.PublisherIdentity)
+	records := toEvidenceRecordsWithLogIndex(rows, &evt.LogIndex, &evt.PublisherIdentity)
 	count, err := evidence.InsertEvidence(ctx, records)
 	if err != nil {
 		tracker.Fail(evt.JobID, fmt.Sprintf("insert failed: %v", err))
