@@ -1,0 +1,61 @@
+name: Epic
+description: Create an epic to group related work
+labels: ["type/epic"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use epics to group related issues under a theme or feature area.
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: What does this epic accomplish? Why are we doing this?
+      placeholder: Replace X with Y to enable...
+    validations:
+      required: true
+
+  - type: textarea
+    id: tasks
+    attributes:
+      label: Tasks
+      description: Task list of issues under this epic
+      placeholder: |
+        - [ ] #XX — Description
+        - [ ] #YY — Description
+        - [ ] Create new issue for...
+      value: |
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Out of Scope
+      description: What is explicitly not part of this epic?
+      placeholder: |
+        - Feature A (deferred to later)
+        - Use case B (not a priority)
+    validations:
+      required: false
+
+  - type: textarea
+    id: decisions
+    attributes:
+      label: Key Decisions
+      description: Important architectural or design decisions for this epic
+      placeholder: |
+        - Use X over Y because...
+        - Defer Z until...
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other relevant information, links, or references
+    validations:
+      required: false

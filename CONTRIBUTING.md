@@ -98,9 +98,17 @@ All artifacts live in `openspec/changes/<change-name>/`. Templates are in `opens
 - Run `make test` locally before submitting a PR
 - Integration tests requiring PostgreSQL use `POSTGRES_TEST_URL`
 
-## Reporting Issues
+## Issues
 
-Use [GitHub Issues](https://github.com/complytime-labs/complytime-core/issues). For security vulnerabilities, follow [SECURITY.md](SECURITY.md).
+Use [GitHub Issues](https://github.com/complytime-labs/complytime-core/issues) with the appropriate template:
+
+- **Bug Report** — something isn't working
+- **Feature Request** — propose a new feature or enhancement  
+- **Epic** — group related work under a theme
+
+**Labels:** We use `type/`, `P0-P2` (priority), and `area/` labels. Maintainers will apply these during triage. Good labels for contributors: `good first issue`, `help wanted`.
+
+For security vulnerabilities, follow [SECURITY.md](SECURITY.md).
 
 ## License
 
