@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Contributing Guide
+    url: https://github.com/complytime-labs/complytime-core/blob/main/CONTRIBUTING.md
+    about: Read our contribution guidelines before opening an issue
+  - name: GitHub Discussions
+    url: https://github.com/complytime-labs/complytime-core/discussions
+    about: Ask questions and discuss ideas with the community
