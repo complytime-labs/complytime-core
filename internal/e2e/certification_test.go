@@ -170,7 +170,7 @@ evaluations:
   - control:
       entryId: AC-2
       referenceId: nist-800-53
-    assessmentLogs:
+    assessment-logs:
       - result: Passed
         start: "2026-05-26T12:00:00Z"
         requirement:
