@@ -60,10 +60,19 @@ func CertificationHandler(
 		}
 
 		for _, row := range rows {
+			slog.Info("certifying evidence",
+				"evidence_id", row.EvidenceID,
+				"engine_name", row.EngineName,
+				"enrichment_status", row.EnrichmentStatus)
 			results := pipeline.Run(ctx, row)
 
 			var certRows []CertificationRow
 			for _, r := range results {
+				slog.Info("certifier result",
+					"evidence_id", row.EvidenceID,
+					"certifier", r.Certifier,
+					"verdict", r.Verdict,
+					"reason", r.Reason)
 				certRows = append(certRows, CertificationRow{
 					EvidenceID:       row.EvidenceID,
 					Certifier:        r.Certifier,
