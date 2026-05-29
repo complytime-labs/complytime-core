@@ -1,7 +1,34 @@
 # OTel-Native Ingestion via Collector
 
-**Status:** Accepted
+**Status:** Superseded by [Unified Ingest Pipeline](unified-ingest-pipeline.md) and architecture clarification (2026-05-29)
 **Date:** 2026-04-21
+
+## Superseded By
+
+This ADR described evidence flowing from complyctl → OTel Collector → ClickHouse exporter → evidence table. The architecture has since changed:
+
+1. **PostgreSQL replaced ClickHouse** for evidence storage
+2. **Unified ingest pipeline** (`POST /api/ingest` → Tessera → NATS → worker) replaced direct database writes
+3. **OTLP path clarified** as observability-only (compliance metrics and scan traces for SRE dashboards), NOT evidence ingestion
+
+**Current architecture (2026-05-29):**
+
+```
+complyctl scan → Gemara EvaluationLog
+  ├─ POST /api/ingest → Tessera → PostgreSQL (evidence path)
+  └─ OTLP logs → Beacon → observability backend (telemetry path)
+```
+
+Evidence ingestion is Gemara-native via `POST /api/ingest`. OTLP provides observability metrics for SREs.
+
+See:
+- [Unified Ingest Pipeline](unified-ingest-pipeline.md) — all Gemara artifacts flow through a single async pipeline
+- [Import Through Tessera](import-through-tessera.md) — OCI bundles also route through Tessera
+- Issue #38 — Enrichment pipeline removal
+
+---
+
+**Original ADR text below for historical reference:**
 
 ## Decision
 
