@@ -16,12 +16,12 @@ import (
 )
 
 func toEvidenceRecords(rows []ingest.EvidenceRow) []EvidenceRecord {
-	return toEvidenceRecordsWithLogIndex(rows, 0, nil)
+	return toEvidenceRecordsWithLogIndex(rows, nil, nil)
 }
 
 // toEvidenceRecordsWithLogIndex converts ingest EvidenceRows to store EvidenceRecords,
 // optionally setting a log_index and publisher identity for all records (for Tessera transparency log tracking).
-func toEvidenceRecordsWithLogIndex(rows []ingest.EvidenceRow, logIndex uint64, publisherIdentity *events.PublisherIdentity) []EvidenceRecord {
+func toEvidenceRecordsWithLogIndex(rows []ingest.EvidenceRow, logIndex *uint64, publisherIdentity *events.PublisherIdentity) []EvidenceRecord {
 	records := make([]EvidenceRecord, len(rows))
 	for i, row := range rows {
 		rec := EvidenceRecord{
@@ -65,13 +65,12 @@ func toEvidenceRecordsWithLogIndex(rows []ingest.EvidenceRow, logIndex uint64, p
 		// Set log_index if provided (from IngestRawEvent)
 		if row.LogIndex != nil {
 			rec.LogIndex = row.LogIndex
-		} else if logIndex > 0 {
-			v := logIndex
-			rec.LogIndex = &v
+		} else if logIndex != nil {
+			rec.LogIndex = logIndex
 		}
 
 		// Set publisher identity if provided (from JWT-verified ingestion)
-		if publisherIdentity != nil {
+		if publisherIdentity != nil && publisherIdentity.Verified {
 			rec.PublisherIssuer = publisherIdentity.Issuer
 			rec.SubmittedBy = publisherIdentity.Sub
 			rec.PublisherType = publisherIdentity.Type

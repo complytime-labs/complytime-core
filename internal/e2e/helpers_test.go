@@ -12,23 +12,36 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"testing"
 	"time"
 
+	. "github.com/onsi/gomega"
+
 	"github.com/complytime-labs/complytime-core/internal/auth"
+	"github.com/complytime-labs/complytime-core/internal/certifier"
 	"github.com/complytime-labs/complytime-core/internal/events"
 	"github.com/complytime-labs/complytime-core/internal/store"
 	"github.com/complytime-labs/complytime-core/internal/tessera"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/labstack/echo/v4"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/labstack/echo/v4"
 	natsserver "github.com/nats-io/nats-server/v2/server"
-	"github.com/stretchr/testify/require"
 )
 
+// testingHelper is an interface satisfied by both *testing.T and GinkgoT().
+// It covers the methods used by our helper functions.
+type testingHelper interface {
+	Helper()
+	Cleanup(func())
+	TempDir() string
+	Fatalf(format string, args ...any)
+	Errorf(format string, args ...any)
+	FailNow()
+	Logf(format string, args ...any)
+}
+
 // startTestNATSServer creates an embedded NATS server for testing
-func startTestNATSServer(t *testing.T) *natsserver.Server {
+func startTestNATSServer(t testingHelper) *natsserver.Server {
 	t.Helper()
 
 	opts := &natsserver.Options{
@@ -39,15 +52,15 @@ func startTestNATSServer(t *testing.T) *natsserver.Server {
 	}
 
 	ns, err := natsserver.NewServer(opts)
-	require.NoError(t, err)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create NATS server")
 
 	// Start server in goroutine
 	go ns.Start()
 
 	// Wait for server to be ready
-	require.Eventually(t, func() bool {
+	Eventually(func() bool {
 		return ns.ReadyForConnections(1 * time.Second)
-	}, 5*time.Second, 100*time.Millisecond, "NATS server did not start")
+	}).WithTimeout(5 * time.Second).WithPolling(100 * time.Millisecond).Should(BeTrue(), "NATS server did not start")
 
 	t.Cleanup(func() {
 		ns.Shutdown()
@@ -58,12 +71,12 @@ func startTestNATSServer(t *testing.T) *natsserver.Server {
 }
 
 // connectTestNATS creates a NATS connection to the test server
-func connectTestNATS(t *testing.T, url string) *events.Bus {
+func connectTestNATS(t testingHelper, url string) *events.Bus {
 	t.Helper()
 
 	bus, err := events.Connect(url)
-	require.NoError(t, err)
-	require.NotNil(t, bus)
+	Expect(err).NotTo(HaveOccurred(), "Failed to connect to NATS")
+	Expect(bus).NotTo(BeNil(), "NATS bus is nil")
 
 	t.Cleanup(func() {
 		bus.Close()
@@ -73,12 +86,16 @@ func connectTestNATS(t *testing.T, url string) *events.Bus {
 }
 
 // newTestTessera creates an embedded Tessera client with temp storage
-func newTestTessera(t *testing.T) *tessera.Client {
+func newTestTessera(t testingHelper) *tessera.Client {
 	t.Helper()
 
 	tmpDir := t.TempDir()
-	client, err := tessera.NewClient(context.Background(), tmpDir, tessera.DefaultOptions())
-	require.NoError(t, err)
+	opts := tessera.Options{
+		CheckpointTime: 100 * time.Millisecond, // Fast checkpoints for E2E tests
+		CheckpointSize: 10,                      // Small batch size for E2E tests
+	}
+	client, err := tessera.NewClient(context.Background(), tmpDir, opts)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create Tessera client")
 
 	t.Cleanup(func() {
 		_ = client.Close()
@@ -96,22 +113,22 @@ type jwtTestContext struct {
 }
 
 // newTestJWTVerifier creates a mock JWT verifier with JWKS endpoint
-func newTestJWTVerifier(t *testing.T) *jwtTestContext {
+func newTestJWTVerifier(t testingHelper) *jwtTestContext {
 	t.Helper()
 
 	// Generate ECDSA key pair
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
+	Expect(err).NotTo(HaveOccurred(), "Failed to generate ECDSA key")
 
 	// Create JWK from public key
 	key, err := jwk.FromRaw(privateKey.PublicKey)
-	require.NoError(t, err)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create JWK")
 
 	err = key.Set(jwk.KeyIDKey, "test-key-id")
-	require.NoError(t, err)
+	Expect(err).NotTo(HaveOccurred())
 
 	err = key.Set(jwk.AlgorithmKey, jwa.ES256)
-	require.NoError(t, err)
+	Expect(err).NotTo(HaveOccurred())
 
 	// Create JWKS set
 	set := jwk.NewSet()
@@ -119,11 +136,9 @@ func newTestJWTVerifier(t *testing.T) *jwtTestContext {
 
 	// Create JWKS endpoint
 	jwksServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/.well-known/jwks" {
+		if r.URL.Path == "/.well-known/jwks.json" {
 			w.Header().Set("Content-Type", "application/json")
-			err := json.NewEncoder(w).Encode(map[string]any{
-				"keys": set,
-			})
+			err := json.NewEncoder(w).Encode(set)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
@@ -146,7 +161,7 @@ func newTestJWTVerifier(t *testing.T) *jwtTestContext {
 }
 
 // generateTestJWT creates a signed JWT token for testing
-func (ctx *jwtTestContext) generateTestJWT(t *testing.T, sub string) string {
+func (ctx *jwtTestContext) generateTestJWT(t testingHelper, sub string) string {
 	t.Helper()
 
 	now := time.Now()
@@ -163,29 +178,27 @@ func (ctx *jwtTestContext) generateTestJWT(t *testing.T, sub string) string {
 	token.Header["kid"] = "test-key-id"
 
 	signedToken, err := token.SignedString(ctx.PrivateKey)
-	require.NoError(t, err)
+	Expect(err).NotTo(HaveOccurred(), "Failed to sign JWT")
 
 	return signedToken
 }
 
-// waitForJobCompletion polls the tracker until the job completes
-func waitForJobCompletion(t *testing.T, tracker *store.IngestTracker, jobID string, timeout time.Duration) {
-	t.Helper()
-
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
+// waitForJob uses Gomega Eventually to poll for job completion
+func waitForJob(tracker *store.IngestTracker, jobID string) {
+	Eventually(func() string {
 		status := tracker.Get(jobID)
-		if status != nil && status.Status == "completed" {
-			return
+		if status == nil {
+			return ""
 		}
-		if status != nil && status.Status == "failed" {
-			t.Fatalf("Job %s failed: %s", jobID, status.Error)
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	t.Fatalf("Job %s did not complete within %v", jobID, timeout)
-}
+		return status.Status
+	}).WithTimeout(10 * time.Second).WithPolling(50 * time.Millisecond).Should(
+		SatisfyAny(Equal("completed"), Equal("failed")),
+	)
 
+	status := tracker.Get(jobID)
+	Expect(status).NotTo(BeNil())
+	Expect(status.Status).To(Equal("completed"), "Job failed: %s", status.Error)
+}
 
 // newTestEchoServer creates an Echo instance for E2E testing
 func newTestEchoServer() *echo.Echo {
@@ -196,21 +209,95 @@ func newTestEchoServer() *echo.Echo {
 }
 
 // submitEvidence submits evidence YAML to the ingest endpoint
-func submitEvidence(t *testing.T, serverURL string, token string, yamlContent []byte) (*http.Response, map[string]any) {
+func submitEvidence(t testingHelper, serverURL string, token string, yamlContent []byte) (*http.Response, map[string]any) {
 	t.Helper()
 
 	req, err := http.NewRequest("POST", serverURL, bytes.NewReader(yamlContent))
-	require.NoError(t, err)
+	Expect(err).NotTo(HaveOccurred())
 
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/x-yaml")
 
 	resp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
+	Expect(err).NotTo(HaveOccurred())
 
 	var result map[string]any
 	err = json.NewDecoder(resp.Body).Decode(&result)
-	require.NoError(t, err)
+	Expect(err).NotTo(HaveOccurred())
 
 	return resp, result
 }
+
+// certificationAdapter bridges store.Store to events.CertificationQuerier
+// and events.CertificationWriter interfaces. The store uses store-local types
+// while the events package uses certifier.EvidenceRow and events.CertificationRow.
+type certificationAdapter struct {
+	st *store.Store
+}
+
+func (a *certificationAdapter) QueryRecentEvidence(
+	ctx context.Context, policyID string, since time.Time,
+) ([]certifier.EvidenceRow, error) {
+	rows, err := a.st.QueryRecentEvidence(ctx, policyID, since)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]certifier.EvidenceRow, len(rows))
+	for i, r := range rows {
+		out[i] = certifier.EvidenceRow{
+			EvidenceID:       r.EvidenceID,
+			TargetID:         r.TargetID,
+			RuleID:           r.RuleID,
+			EvalResult:       r.EvalResult,
+			ComplianceStatus: r.ComplianceStatus,
+			EngineName:       r.EngineName,
+			SourceRegistry:   r.SourceRegistry,
+			AttestationRef:   r.AttestationRef,
+			EnrichmentStatus: r.EnrichmentStatus,
+			CollectedAt:      r.CollectedAt,
+		}
+	}
+	return out, nil
+}
+
+func (a *certificationAdapter) InsertCertifications(
+	ctx context.Context, rows []events.CertificationRow,
+) error {
+	storeRows := make([]store.CertificationRow, len(rows))
+	for i, r := range rows {
+		storeRows[i] = store.CertificationRow{
+			EvidenceID:       r.EvidenceID,
+			Certifier:        r.Certifier,
+			CertifierVersion: r.CertifierVersion,
+			Result:           r.Result,
+			Reason:           r.Reason,
+		}
+	}
+	return a.st.InsertCertifications(ctx, storeRows)
+}
+
+func (a *certificationAdapter) UpdateEvidenceCertified(
+	ctx context.Context, evidenceID string, certified bool,
+) error {
+	return a.st.UpdateEvidenceCertified(ctx, evidenceID, certified)
+}
+
+// setupCertificationPipeline wires the certifier pipeline (schema + executor)
+// to evidence events on the NATS bus with a fast 100ms debounce for E2E tests.
+// The ProvenanceCertifier is omitted because the EvaluationLog flattener does
+// not populate source_registry or attestation_ref from YAML, so provenance
+// would always fail. Tests that need provenance certification should set
+// source_registry directly in the DB before triggering the pipeline.
+func setupCertificationPipeline(st *store.Store, bus *events.Bus) {
+	pipeline := certifier.NewPipeline(
+		&certifier.SchemaCertifier{},
+		&certifier.ExecutorCertifier{KnownEngines: map[string]bool{"test-engine": true}},
+	)
+	adapter := &certificationAdapter{st: st}
+	handler := events.CertificationHandler(context.Background(), pipeline, adapter, adapter)
+	debouncer := events.NewDebouncer(100*time.Millisecond, handler)
+	_, _ = bus.SubscribeEvidence(func(evt events.EvidenceEvent) {
+		debouncer.Push(evt)
+	})
+}
+

@@ -14,6 +14,22 @@ jobs:
   go:
     name: Go
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: complytime_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      POSTGRES_TEST_URL: postgres://test:test@localhost:5432/complytime_test?sslmode=disable
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
@@ -25,6 +41,8 @@ jobs:
         run: go test -tags dev -v -race -cover ./...
       - name: Build gateway
         run: go build -o /dev/null ./cmd/gateway/
+      - name: Build witness
+        run: go build -o /dev/null ./cmd/witness/
 
   lint:
     name: Lint

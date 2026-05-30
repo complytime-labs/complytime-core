@@ -1,11 +1,11 @@
 metadata:
   type: EvaluationLog
-  id: eval-test-001
+  id: eval-certifiable-001
   version: 1.0.0
+  date: "2026-05-26T12:00:00Z"
   author:
     name: test-engine
     version: 1.0.0
-  date: "2026-05-26T00:00:00Z"
   mapping-references:
     - id: test-policy
       title: Test Policy
@@ -20,6 +20,6 @@ evaluations:
       reference-id: nist-800-53
     assessment-logs:
       - result: Passed
-        start: "2026-05-26T00:00:00Z"
+        start: "2026-05-26T12:00:00Z"
         requirement:
           entry-id: AC-1.1
