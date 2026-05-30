@@ -162,6 +162,12 @@ func TestIntegration_InsertAndListPolicies(t *testing.T) {
 		Version:      "1.0.0",
 		OCIReference: "oci://example.com/policies/test:1.0.0",
 		Content:      "policy: content",
+		// Dimensional metadata added by migration 024
+		Technologies: []string{},
+		Geopolitical: []string{},
+		Sensitivity:  []string{},
+		Users:        []string{},
+		Groups:       []string{},
 	}
 	if err := st.InsertPolicy(ctx, p); err != nil {
 		t.Fatalf("InsertPolicy: %v", err)
