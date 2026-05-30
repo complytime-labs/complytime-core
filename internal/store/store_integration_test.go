@@ -33,6 +33,7 @@ func testStore(t *testing.T) *Store {
 	t.Cleanup(func() {
 		bg := context.Background()
 		pool := client.Pool()
+		_, _ = pool.Exec(bg, "DELETE FROM trust_signals")
 		_, _ = pool.Exec(bg, "DELETE FROM evidence_assessments")
 		_, _ = pool.Exec(bg, "DELETE FROM workbench.jobs")
 		_, _ = pool.Exec(bg, "DELETE FROM workbench.programs")

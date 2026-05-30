@@ -133,6 +133,13 @@ type TargetStore interface {
 	ListTargets(ctx context.Context) ([]TargetRow, error)
 }
 
+// TrustSignalStore defines operations for trust signals (queryable certification checks).
+type TrustSignalStore interface {
+	InsertTrustSignals(ctx context.Context, signals []TrustSignalRow) error
+	QueryTrustSignals(ctx context.Context, evidenceID string) ([]TrustSignalRow, error)
+	AggregateCertified(ctx context.Context, evidenceID string) bool
+}
+
 // Store provides typed access to PostgreSQL tables for policies,
 // mapping documents, evidence, and audit logs. Implements all
 // domain store interfaces.
@@ -157,6 +164,7 @@ var (
 	_ GuidanceStore           = (*Store)(nil)
 	_ TargetStore             = (*Store)(nil)
 	_ PolicyDimensionStore    = (*Store)(nil)
+	_ TrustSignalStore        = (*Store)(nil)
 )
 
 // New wraps a PostgreSQL connection pool.
