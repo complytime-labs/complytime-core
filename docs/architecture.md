@@ -179,6 +179,50 @@ Full route registration: `internal/store/handlers.go`, `internal/auth/user_handl
 
 Single application database for all platform data: policies, evidence, catalogs, controls, mappings, certifications, posture, users, audit logs, targets, witnessed indices, bundle artifacts. Tessera is the source of truth for evidence; PostgreSQL is the queryable cache (rebuildable from the log).
 
+## Trust Signals
+
+Phase 1 of the stratified trust layers architecture introduces **queryable trust signals**.
+
+### Schema
+
+Each verification check writes one row to `trust_signals`:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| evidence_id | TEXT | Evidence row identifier |
+| layer | TEXT | Verification layer: `quality` (Phase 1), `identity`/`attestation` (future) |
+| check_name | TEXT | Check identifier: `schema`, `provenance`, `executor`, `freshness`, `relevance` |
+| result | TEXT | `pass`, `fail`, `skip`, `error` |
+| reason | TEXT | Human-readable explanation |
+| checked_at | TIMESTAMPTZ | When check ran |
+
+### Querying Trust Signals
+
+**Find evidence where freshness failed:**
+```sql
+SELECT evidence_id, target_id, collected_at
+FROM evidence e
+JOIN trust_signals ts ON ts.evidence_id = e.evidence_id
+WHERE ts.check_name = 'freshness'
+AND ts.result = 'fail';
+```
+
+**Trust signal distribution:**
+```sql
+SELECT check_name, result, COUNT(*)
+FROM trust_signals
+WHERE checked_at > NOW() - INTERVAL '7 days'
+GROUP BY check_name, result
+ORDER BY check_name, result;
+```
+
+### Backward Compatibility
+
+Phase 1 is fully backward compatible:
+- `evidence.certified` still exists (computed from trust signals aggregate)
+- `certifications` table still populated (legacy)
+- Existing queries work unchanged
+
 ## Testing
 
 Integration tests in `internal/store/` and `internal/postgres/` require a live PostgreSQL instance. Set `POSTGRES_TEST_URL` to enable them. E2E tests in `internal/e2e/` also require PostgreSQL. The E2E enrollment test script (`scripts/e2e-enrollment-test.sh`) starts its own containers.

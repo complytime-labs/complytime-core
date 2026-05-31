@@ -45,10 +45,12 @@ func TestInsertAndQueryTrustSignals(t *testing.T) {
 			PolicyID:         "test-policy",
 			TargetID:         "test-target",
 			RuleID:           "test-rule",
-			EvalResult:       "pass",
-			ComplianceStatus: "compliant",
-			EngineName:       "test-engine",
 			ControlID:        "test-control",
+			RequirementID:    "test-req",
+			EvalResult:       "Passed",
+			ComplianceStatus: "Compliant",
+			EnrichmentStatus: "Success",
+			CollectedAt:      time.Now(),
 		},
 	})
 	require.NoError(t, err)
