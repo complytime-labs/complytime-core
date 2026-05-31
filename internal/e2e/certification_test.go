@@ -43,7 +43,7 @@ var _ = Describe("Certification Pipeline", func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to run migrations")
 
 		By("Cleaning up evidence from previous tests")
-		_, err = pgClient.Pool().Exec(ctx, "TRUNCATE evidence, witnessed_indices, certifications CASCADE")
+		_, err = pgClient.Pool().Exec(ctx, "TRUNCATE evidence, witnessed_indices, certifications, trust_signals CASCADE")
 		Expect(err).NotTo(HaveOccurred(), "Failed to truncate evidence tables")
 
 		st = store.New(pgClient.Pool())
@@ -247,6 +247,85 @@ evaluations:
 				}
 			}
 			Expect(hasFail).To(BeTrue(), "At least one certifier should have verdict=fail")
+		})
+	})
+
+	Context("trust signals", func() {
+		It("writes trust signals during certification and aggregates to evidence.certified", func() {
+			By("Loading certifiable evaluation log fixture")
+			evalLogYAML, err := os.ReadFile("testdata/evaluation_log_certifiable.yaml")
+			Expect(err).NotTo(HaveOccurred(), "Failed to read certifiable test YAML")
+
+			By("Generating JWT token")
+			testSubject := "repo:org/test-repo:ref:refs/heads/main"
+			token := jwtCtx.generateTestJWT(GinkgoT(), testSubject)
+
+			By("Submitting evidence via HTTP POST")
+			resp, result := submitEvidence(GinkgoT(), server.URL, token, evalLogYAML)
+			Expect(resp.StatusCode).To(Equal(http.StatusAccepted), "Expected 202 Accepted")
+
+			jobID, ok := result["job_id"].(string)
+			Expect(ok).To(BeTrue(), "job_id not found in response")
+
+			logIndex := uint64(result["log_index"].(float64))
+			GinkgoWriter.Printf("Submitted certifiable evidence: job_id=%s, log_index=%d\n", jobID, logIndex)
+
+			By("Waiting for worker to process")
+			waitForJob(tracker, jobID)
+
+			By("Waiting for certification pipeline to complete")
+			Eventually(func() bool {
+				rows, err := st.QueryEvidence(ctx, store.EvidenceFilter{
+					PolicyIDs: []string{"test-policy"},
+					Limit:     1,
+				})
+				if err != nil || len(rows) == 0 {
+					return false
+				}
+				return rows[0].Certified
+			}).WithTimeout(5 * time.Second).WithPolling(200 * time.Millisecond).Should(
+				BeTrue(), "Evidence should be certified after pipeline runs",
+			)
+
+			By("Querying trust signals from the database")
+			// Get the evidence ID from the first evidence row
+			evidenceRows, err := st.QueryEvidence(ctx, store.EvidenceFilter{
+				PolicyIDs: []string{"test-policy"},
+				Limit:     1,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(evidenceRows).NotTo(BeEmpty(), "Expected at least one evidence row")
+			evidenceID := evidenceRows[0].EvidenceID
+
+			signals, err := st.QueryTrustSignals(ctx, evidenceID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(signals).NotTo(BeEmpty(), "Should have trust signals for evidence")
+
+			GinkgoWriter.Printf("Found %d trust signals for evidence %s\n", len(signals), evidenceID)
+
+			By("Verifying schema trust signal exists and passes")
+			var hasSchema bool
+			for _, sig := range signals {
+				GinkgoWriter.Printf("  Signal: layer=%s check=%s result=%s reason=%s\n",
+					sig.Layer, sig.CheckName, sig.Result, sig.Reason)
+				if sig.CheckName == "schema" {
+					hasSchema = true
+					Expect(sig.Layer).To(Equal("quality"), "Schema check should be in quality layer")
+					Expect(string(sig.Result)).To(Equal("pass"), "Schema check should pass for valid YAML")
+				}
+			}
+			Expect(hasSchema).To(BeTrue(), "Should have schema trust signal")
+
+			By("Verifying evidence.certified matches aggregate of trust signals")
+			allPass := true
+			for _, sig := range signals {
+				if string(sig.Result) == "fail" || string(sig.Result) == "error" {
+					allPass = false
+					break
+				}
+			}
+			Expect(evidenceRows[0].Certified).To(Equal(allPass),
+				"evidence.certified should match aggregate of trust signals")
 		})
 	})
 })
