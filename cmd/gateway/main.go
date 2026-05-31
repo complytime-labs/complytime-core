@@ -379,6 +379,8 @@ type certificationAdapter struct {
 		) ([]store.EvidenceRowLite, error)
 		InsertCertifications(ctx context.Context, rows []store.CertificationRow) error
 		UpdateEvidenceCertified(ctx context.Context, evidenceID string, certified bool) error
+		InsertTrustSignals(ctx context.Context, signals []store.TrustSignalRow) error
+		AggregateCertified(ctx context.Context, evidenceID string) bool
 	}
 }
 
@@ -427,4 +429,28 @@ func (a *certificationAdapter) UpdateEvidenceCertified(
 	ctx context.Context, evidenceID string, certified bool,
 ) error {
 	return a.store.UpdateEvidenceCertified(ctx, evidenceID, certified)
+}
+
+func (a *certificationAdapter) InsertTrustSignals(
+	ctx context.Context, signals []events.TrustSignalRow,
+) error {
+	// Convert events.TrustSignalRow to store.TrustSignalRow
+	storeSignals := make([]store.TrustSignalRow, len(signals))
+	for i, s := range signals {
+		storeSignals[i] = store.TrustSignalRow{
+			EvidenceID: s.EvidenceID,
+			Layer:      s.Layer,
+			CheckName:  s.CheckName,
+			Result:     certifier.Result(s.Result),
+			Reason:     s.Reason,
+			CheckedAt:  s.CheckedAt,
+		}
+	}
+	return a.store.InsertTrustSignals(ctx, storeSignals)
+}
+
+func (a *certificationAdapter) AggregateCertified(
+	ctx context.Context, evidenceID string,
+) bool {
+	return a.store.AggregateCertified(ctx, evidenceID)
 }

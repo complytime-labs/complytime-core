@@ -28,6 +28,25 @@ type CertificationWriter interface {
 	) error
 }
 
+// TrustSignalWriter persists trust signal results from certifiers.
+// This interface is optional; if the writer does not implement it,
+// trust signals are not written (for backward compatibility).
+type TrustSignalWriter interface {
+	InsertTrustSignals(ctx context.Context, signals []TrustSignalRow) error
+	AggregateCertified(ctx context.Context, evidenceID string) bool
+}
+
+// TrustSignalRow represents a trust signal for database insertion.
+// This mirrors store.TrustSignalRow but avoids import cycles.
+type TrustSignalRow struct {
+	EvidenceID string
+	Layer      string
+	CheckName  string
+	Result     string
+	Reason     string
+	CheckedAt  time.Time
+}
+
 // CertificationRow is the insert shape for the certifications table.
 type CertificationRow struct {
 	EvidenceID       string
@@ -35,6 +54,23 @@ type CertificationRow struct {
 	CertifierVersion string
 	Result           string
 	Reason           string
+}
+
+// inferLayer maps certifier names to trust signal layers.
+// This provides a default mapping; certifiers can be enhanced to
+// return layer information directly in the future.
+func inferLayer(certifierName string) string {
+	// Map common certifier names to layers
+	switch certifierName {
+	case "schema", "quality", "freshness", "relevance":
+		return "quality"
+	case "provenance", "executor", "identity":
+		return "identity"
+	case "publisher_auth", "attestation", "signature":
+		return "attestation"
+	default:
+		return "quality" // default layer
+	}
 }
 
 // CertificationHandler returns a debounce-compatible handler that runs the
@@ -63,6 +99,7 @@ func CertificationHandler(
 			results := pipeline.Run(ctx, row)
 
 			var certRows []CertificationRow
+			var trustSignals []TrustSignalRow
 			for _, r := range results {
 				certRows = append(certRows, CertificationRow{
 					EvidenceID:       row.EvidenceID,
@@ -70,6 +107,17 @@ func CertificationHandler(
 					CertifierVersion: r.Version,
 					Result:           string(r.Verdict),
 					Reason:           r.Reason,
+				})
+
+				// Convert certifier results to trust signals
+				// Each certifier check becomes a trust signal
+				trustSignals = append(trustSignals, TrustSignalRow{
+					EvidenceID: row.EvidenceID,
+					Layer:      inferLayer(r.Certifier),
+					CheckName:  r.Certifier,
+					Result:     string(r.Verdict),
+					Reason:     r.Reason,
+					CheckedAt:  time.Now(),
 				})
 			}
 
@@ -79,18 +127,43 @@ func CertificationHandler(
 				continue
 			}
 
-			certified := certifier.IsCertified(results)
-			if err := writer.UpdateEvidenceCertified(
-				ctx, row.EvidenceID, certified,
-			); err != nil {
-				slog.Warn("evidence certified update failed",
-					"evidence_id", row.EvidenceID, "error", err)
+			// Write trust signals if the writer supports it
+			if tsWriter, ok := writer.(TrustSignalWriter); ok {
+				if err := tsWriter.InsertTrustSignals(ctx, trustSignals); err != nil {
+					slog.Warn("trust signal insert failed - continuing",
+						"evidence_id", row.EvidenceID, "error", err)
+					// Don't fail the whole certification on trust signal errors
+				}
+
+				// Use aggregate trust signals to determine certification status
+				certified := tsWriter.AggregateCertified(ctx, row.EvidenceID)
+				if err := writer.UpdateEvidenceCertified(
+					ctx, row.EvidenceID, certified,
+				); err != nil {
+					slog.Warn("evidence certified update failed",
+						"evidence_id", row.EvidenceID, "error", err)
+				} else {
+					slog.Info("evidence certified",
+						"evidence_id", row.EvidenceID,
+						"certified", fmt.Sprintf("%t", certified),
+						"policy_id", evt.PolicyID,
+					)
+				}
 			} else {
-				slog.Info("evidence certified",
-					"evidence_id", row.EvidenceID,
-					"certified", fmt.Sprintf("%t", certified),
-					"policy_id", evt.PolicyID,
-				)
+				// Fallback to legacy certifier.IsCertified for backward compatibility
+				certified := certifier.IsCertified(results)
+				if err := writer.UpdateEvidenceCertified(
+					ctx, row.EvidenceID, certified,
+				); err != nil {
+					slog.Warn("evidence certified update failed",
+						"evidence_id", row.EvidenceID, "error", err)
+				} else {
+					slog.Info("evidence certified",
+						"evidence_id", row.EvidenceID,
+						"certified", fmt.Sprintf("%t", certified),
+						"policy_id", evt.PolicyID,
+					)
+				}
 			}
 		}
 	}

@@ -282,6 +282,30 @@ func (a *certificationAdapter) UpdateEvidenceCertified(
 	return a.st.UpdateEvidenceCertified(ctx, evidenceID, certified)
 }
 
+func (a *certificationAdapter) InsertTrustSignals(
+	ctx context.Context, signals []events.TrustSignalRow,
+) error {
+	// Convert events.TrustSignalRow to store.TrustSignalRow
+	storeSignals := make([]store.TrustSignalRow, len(signals))
+	for i, s := range signals {
+		storeSignals[i] = store.TrustSignalRow{
+			EvidenceID: s.EvidenceID,
+			Layer:      s.Layer,
+			CheckName:  s.CheckName,
+			Result:     certifier.Result(s.Result),
+			Reason:     s.Reason,
+			CheckedAt:  s.CheckedAt,
+		}
+	}
+	return a.st.InsertTrustSignals(ctx, storeSignals)
+}
+
+func (a *certificationAdapter) AggregateCertified(
+	ctx context.Context, evidenceID string,
+) bool {
+	return a.st.AggregateCertified(ctx, evidenceID)
+}
+
 // setupCertificationPipeline wires the certifier pipeline (schema + executor)
 // to evidence events on the NATS bus with a fast 100ms debounce for E2E tests.
 // The ProvenanceCertifier is omitted because the EvaluationLog flattener does
