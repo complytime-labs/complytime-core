@@ -113,7 +113,8 @@ var _ = Describe("Certification Pipeline", func() {
 
 			By("Waiting for certification pipeline to complete (debounce + processing)")
 			// The certification pipeline fires after 100ms debounce and then
-			// queries evidence rows for the policy. We poll until certified=true.
+			// queries evidence rows for the policy. We poll until trust signals exist.
+			var evidenceID string
 			Eventually(func() bool {
 				rows, err := st.QueryEvidence(ctx, store.EvidenceFilter{
 					PolicyIDs: []string{"test-policy"},
@@ -122,9 +123,15 @@ var _ = Describe("Certification Pipeline", func() {
 				if err != nil || len(rows) == 0 {
 					return false
 				}
-				return rows[0].Certified
+				evidenceID = rows[0].EvidenceID
+				// Check if trust signals exist (pipeline has run)
+				signals, err := st.QueryTrustSignals(ctx, evidenceID)
+				if err != nil {
+					return false
+				}
+				return len(signals) > 0
 			}).WithTimeout(5 * time.Second).WithPolling(200 * time.Millisecond).Should(
-				BeTrue(), "Evidence should be certified after pipeline runs",
+				BeTrue(), "Evidence should have trust signals after pipeline runs",
 			)
 
 			By("Verifying certification verdicts in the certifications table")
@@ -223,15 +230,18 @@ evaluations:
 				BeTrue(), "Certification pipeline should have processed the evidence",
 			)
 
-			By("Verifying evidence remains not certified")
+			By("Verifying evidence has failed trust signals")
 			evRows, err := st.QueryEvidence(ctx, store.EvidenceFilter{
 				PolicyIDs: []string{"fail-policy"},
 				Limit:     10,
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(evRows).NotTo(BeEmpty(), "Evidence should exist in database")
-			Expect(evRows[0].Certified).To(BeFalse(),
-				"Evidence with unknown engine should NOT be certified")
+
+			hasFailed, err := st.HasFailedTrustSignals(ctx, evRows[0].EvidenceID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hasFailed).To(BeTrue(),
+				"Evidence with unknown engine should have failed trust signals")
 
 			By("Verifying at least one certification verdict is 'fail'")
 			certs, err := st.QueryCertifications(ctx, evRows[0].EvidenceID)
@@ -274,6 +284,7 @@ evaluations:
 			waitForJob(tracker, jobID)
 
 			By("Waiting for certification pipeline to complete")
+			var evidenceIDForTrust string
 			Eventually(func() bool {
 				rows, err := st.QueryEvidence(ctx, store.EvidenceFilter{
 					PolicyIDs: []string{"test-policy"},
@@ -282,9 +293,15 @@ evaluations:
 				if err != nil || len(rows) == 0 {
 					return false
 				}
-				return rows[0].Certified
+				evidenceIDForTrust = rows[0].EvidenceID
+				// Check if trust signals exist (pipeline has run)
+				signals, err := st.QueryTrustSignals(ctx, evidenceIDForTrust)
+				if err != nil {
+					return false
+				}
+				return len(signals) > 0
 			}).WithTimeout(5 * time.Second).WithPolling(200 * time.Millisecond).Should(
-				BeTrue(), "Evidence should be certified after pipeline runs",
+				BeTrue(), "Evidence should have trust signals after pipeline runs",
 			)
 
 			By("Querying trust signals from the database")
@@ -316,16 +333,11 @@ evaluations:
 			}
 			Expect(hasSchema).To(BeTrue(), "Should have schema trust signal")
 
-			By("Verifying evidence.certified matches aggregate of trust signals")
-			allPass := true
-			for _, sig := range signals {
-				if string(sig.Result) == "fail" || string(sig.Result) == "error" {
-					allPass = false
-					break
-				}
-			}
-			Expect(evidenceRows[0].Certified).To(Equal(allPass),
-				"evidence.certified should match aggregate of trust signals")
+			By("Verifying no failed trust signals")
+			hasFailed, err := st.HasFailedTrustSignals(ctx, evidenceID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hasFailed).To(BeFalse(),
+				"Should have no failed trust signals for valid evidence")
 		})
 	})
 })

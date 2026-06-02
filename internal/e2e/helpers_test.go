@@ -276,12 +276,6 @@ func (a *certificationAdapter) InsertCertifications(
 	return a.st.InsertCertifications(ctx, storeRows)
 }
 
-func (a *certificationAdapter) UpdateEvidenceCertified(
-	ctx context.Context, evidenceID string, certified bool,
-) error {
-	return a.st.UpdateEvidenceCertified(ctx, evidenceID, certified)
-}
-
 func (a *certificationAdapter) InsertTrustSignals(
 	ctx context.Context, signals []events.TrustSignalRow,
 ) error {
@@ -298,12 +292,6 @@ func (a *certificationAdapter) InsertTrustSignals(
 		}
 	}
 	return a.st.InsertTrustSignals(ctx, storeSignals)
-}
-
-func (a *certificationAdapter) AggregateCertified(
-	ctx context.Context, evidenceID string,
-) bool {
-	return a.st.AggregateCertified(ctx, evidenceID)
 }
 
 // setupCertificationPipeline wires the certifier pipeline (schema + executor)

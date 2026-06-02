@@ -102,26 +102,4 @@ func TestInsertAndQueryTrustSignals(t *testing.T) {
 		assert.True(t, checkNames["deployment-frequency"], "Expected deployment-frequency signal")
 		assert.True(t, checkNames["provenance"], "Expected provenance signal")
 	}
-
-	// Test AggregateCertified - should be true since all signals passed
-	certified := st.AggregateCertified(ctx, evidenceID)
-	assert.True(t, certified, "Expected evidence to be certified when all signals pass")
-
-	// Insert a failing signal
-	failingSignal := []TrustSignalRow{
-		{
-			EvidenceID: evidenceID,
-			Layer:      "attestation",
-			CheckName:  "signature",
-			Result:     certifier.ResultFail,
-			Reason:     "Invalid signature",
-			CheckedAt:  time.Now(),
-		},
-	}
-	err = st.InsertTrustSignals(ctx, failingSignal)
-	require.NoError(t, err)
-
-	// AggregateCertified should now be false
-	certified = st.AggregateCertified(ctx, evidenceID)
-	assert.False(t, certified, "Expected evidence to not be certified when any signal fails")
 }

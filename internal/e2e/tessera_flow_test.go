@@ -131,7 +131,7 @@ var _ = Describe("Tessera Evidence Flow", func() {
 			GinkgoWriter.Printf("  - PublisherIssuer: %s\n", evidenceRow.PublisherIssuer)
 			GinkgoWriter.Printf("  - SubmittedBy: %s\n", evidenceRow.SubmittedBy)
 			GinkgoWriter.Printf("  - PublisherType: %s\n", evidenceRow.PublisherType)
-			GinkgoWriter.Printf("  - Certified: %v\n", evidenceRow.Certified)
+			GinkgoWriter.Printf("  - EvidenceID: %s\n", evidenceRow.EvidenceID)
 
 			By("Simulating witness service marking index as witnessed")
 			witnessName := "test-witness"
