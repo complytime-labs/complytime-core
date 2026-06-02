@@ -43,7 +43,7 @@ var _ = Describe("Tessera Evidence Flow", func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to run migrations")
 
 		By("Cleaning up evidence from previous tests")
-		_, err = pgClient.Pool().Exec(ctx, "TRUNCATE evidence, witnessed_indices, certifications CASCADE")
+		_, err = pgClient.Pool().Exec(ctx, "TRUNCATE evidence, witnessed_indices, trust_signals CASCADE")
 		Expect(err).NotTo(HaveOccurred(), "Failed to truncate evidence tables")
 
 		st = store.New(pgClient.Pool())
