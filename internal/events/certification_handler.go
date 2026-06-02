@@ -17,11 +17,8 @@ type CertificationQuerier interface {
 	) ([]certifier.EvidenceRow, error)
 }
 
-// CertificationWriter persists certification results.
+// CertificationWriter persists certification results as trust signals.
 type CertificationWriter interface {
-	InsertCertifications(
-		ctx context.Context, results []CertificationRow,
-	) error
 	InsertTrustSignals(ctx context.Context, signals []TrustSignalRow) error
 }
 
@@ -34,15 +31,6 @@ type TrustSignalRow struct {
 	Result     string
 	Reason     string
 	CheckedAt  time.Time
-}
-
-// CertificationRow is the insert shape for the certifications table.
-type CertificationRow struct {
-	EvidenceID       string
-	Certifier        string
-	CertifierVersion string
-	Result           string
-	Reason           string
 }
 
 // inferLayer maps certifier names to trust signal layers.
@@ -87,17 +75,8 @@ func CertificationHandler(
 		for _, row := range rows {
 			results := pipeline.Run(ctx, row)
 
-			var certRows []CertificationRow
 			var trustSignals []TrustSignalRow
 			for _, r := range results {
-				certRows = append(certRows, CertificationRow{
-					EvidenceID:       row.EvidenceID,
-					Certifier:        r.Certifier,
-					CertifierVersion: r.Version,
-					Result:           string(r.Verdict),
-					Reason:           r.Reason,
-				})
-
 				// Convert certifier results to trust signals
 				// Each certifier check becomes a trust signal
 				trustSignals = append(trustSignals, TrustSignalRow{
@@ -108,12 +87,6 @@ func CertificationHandler(
 					Reason:     r.Reason,
 					CheckedAt:  time.Now(),
 				})
-			}
-
-			if err := writer.InsertCertifications(ctx, certRows); err != nil {
-				slog.Warn("certification insert failed",
-					"evidence_id", row.EvidenceID, "error", err)
-				continue
 			}
 
 			// Write trust signals

@@ -260,22 +260,6 @@ func (a *certificationAdapter) QueryRecentEvidence(
 	return out, nil
 }
 
-func (a *certificationAdapter) InsertCertifications(
-	ctx context.Context, rows []events.CertificationRow,
-) error {
-	storeRows := make([]store.CertificationRow, len(rows))
-	for i, r := range rows {
-		storeRows[i] = store.CertificationRow{
-			EvidenceID:       r.EvidenceID,
-			Certifier:        r.Certifier,
-			CertifierVersion: r.CertifierVersion,
-			Result:           r.Result,
-			Reason:           r.Reason,
-		}
-	}
-	return a.st.InsertCertifications(ctx, storeRows)
-}
-
 func (a *certificationAdapter) InsertTrustSignals(
 	ctx context.Context, signals []events.TrustSignalRow,
 ) error {
