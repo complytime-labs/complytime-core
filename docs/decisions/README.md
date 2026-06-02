@@ -29,6 +29,7 @@ Data platform decisions. Other repos maintain their own ADRs:
 | 0037 | [Witness Service](witness-service.md) | Accepted | 2026-05-23 |
 | 0038 | [Policy Enrollment and Discovery](policy-enrollment.md) | Accepted | 2026-05-26 |
 | 0039 | [OCI Import Through Tessera](import-through-tessera.md) | Accepted | 2026-05-26 |
+| 0040 | [Trust Signals Replace Binary Certified Flag](trust-signals-certification.md) | Accepted | 2026-06-01 |
 
 ## Active Workarounds
 
