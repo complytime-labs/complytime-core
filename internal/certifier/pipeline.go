@@ -24,18 +24,3 @@ func (p *Pipeline) Run(ctx context.Context, row EvidenceRow) []CertResult {
 	}
 	return results
 }
-
-// IsCertified computes the denormalized bool from a set of results:
-// true when at least one pass exists and zero fails exist.
-func IsCertified(results []CertResult) bool {
-	hasPass := false
-	for _, r := range results {
-		if r.Verdict == VerdictFail {
-			return false
-		}
-		if r.Verdict == VerdictPass {
-			hasPass = true
-		}
-	}
-	return hasPass
-}

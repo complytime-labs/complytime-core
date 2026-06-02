@@ -95,19 +95,17 @@ func (s *Store) QueryTrustSignals(ctx context.Context, evidenceID string) ([]Tru
 	return out, rows.Err()
 }
 
-// AggregateCertified returns true if all trust signals for an evidence row have
-// result='pass' or 'skip'. Returns false if any signal is fail/error, or if there are no signals.
-// Used to update the denormalized evidence.certified column.
-func (s *Store) AggregateCertified(ctx context.Context, evidenceID string) bool {
-	var allPass bool
+// HasFailedTrustSignals returns true if any trust signal for this evidence has result='fail' or 'error'.
+// Used by witness to determine if evidence passed certification.
+func (s *Store) HasFailedTrustSignals(ctx context.Context, evidenceID string) (bool, error) {
+	var hasFailed bool
 	err := s.pool.QueryRow(ctx, `
-		SELECT COUNT(*) > 0
-		AND COUNT(*) FILTER (WHERE result NOT IN ('pass', 'skip')) = 0
-		FROM trust_signals
-		WHERE evidence_id = $1
-	`, evidenceID).Scan(&allPass)
-	if err != nil {
-		return false // fail closed on error
-	}
-	return allPass
+		SELECT EXISTS(
+			SELECT 1 FROM trust_signals
+			WHERE evidence_id = $1
+			AND result IN ('fail', 'error')
+		)
+	`, evidenceID).Scan(&hasFailed)
+	return hasFailed, err
 }
+

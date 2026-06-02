@@ -50,7 +50,6 @@ type EvidenceRow struct {
 	SourceRegistry *string
 	BlobRef        *string
 
-	Certified bool
 	Owner     *string
 
 	CollectedAt time.Time

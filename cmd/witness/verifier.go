@@ -21,10 +21,11 @@ type PostgresQuerier interface {
 	IsIndexWitnessed(ctx context.Context, index uint64) bool
 	IsTargetRegistered(ctx context.Context, targetID string) bool
 	PolicyExistsByID(ctx context.Context, policyID string) bool
+	HasFailedTrustSignals(ctx context.Context, evidenceID string) (bool, error)
 }
 
 type EvidenceRow struct {
-	Certified       bool
+	EvidenceID      string
 	PublisherIssuer string
 	SubmittedBy     string
 }
@@ -90,10 +91,18 @@ func (v *Verifier) verifyEvidence(ctx context.Context, logIndex uint64, entry []
 		slog.Warn("evidence not yet in PostgreSQL", "log_index", logIndex)
 		return false
 	}
-	if !evidenceRow.Certified {
-		slog.Warn("evidence failed certification", "log_index", logIndex)
+
+	// Check trust signals - evidence fails if any signal is fail/error
+	hasFailed, err := v.db.HasFailedTrustSignals(ctx, evidenceRow.EvidenceID)
+	if err != nil {
+		slog.Warn("trust signal query failed", "log_index", logIndex, "error", err)
 		return false
 	}
+	if hasFailed {
+		slog.Warn("evidence has failed trust signals", "log_index", logIndex, "evidence_id", evidenceRow.EvidenceID)
+		return false
+	}
+
 	if !v.isPublisherTrusted(evidenceRow.PublisherIssuer, evidenceRow.SubmittedBy, artifactType) {
 		slog.Warn("publisher not trusted",
 			"log_index", logIndex,
