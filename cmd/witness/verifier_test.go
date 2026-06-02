@@ -93,7 +93,7 @@ func TestVerifier_VerifyEntry_AllChecksPass(t *testing.T) {
 	mockDB := &mockPostgres{
 		evidenceRows: map[uint64]evidenceRow{
 			42: {
-				evidenceID: "test-ev", hasFailed:       true,
+				evidenceID: "test-ev", hasFailed:       false,
 				publisherIssuer: "https://token.actions.githubusercontent.com",
 				submittedBy:     "repo:complytime/scanner:ref:refs/heads/main",
 			},
@@ -251,12 +251,12 @@ results:
 	mockDB := &mockPostgres{
 		evidenceRows: map[uint64]evidenceRow{
 			0: {
-				evidenceID: "test-ev", hasFailed:       true,
+				evidenceID: "test-ev", hasFailed:       false,
 				publisherIssuer: "https://kubernetes.default.svc",
 				submittedBy:     "system:serviceaccount:complytime:admin",
 			},
 			42: {
-				evidenceID: "test-ev", hasFailed:       true,
+				evidenceID: "test-ev", hasFailed:       false,
 				publisherIssuer: "https://token.actions.githubusercontent.com",
 				submittedBy:     "repo:complytime/scanner:ref:refs/heads/main",
 			},
