@@ -42,7 +42,7 @@ var _ = Describe("Evidence Chain", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Cleaning up evidence from previous tests")
-		_, err = pgClient.Pool().Exec(ctx, "TRUNCATE evidence, witnessed_indices, certifications CASCADE")
+		_, err = pgClient.Pool().Exec(ctx, "TRUNCATE evidence, witnessed_indices, trust_signals CASCADE")
 		Expect(err).NotTo(HaveOccurred(), "Failed to truncate evidence tables")
 
 		st = store.New(pgClient.Pool())

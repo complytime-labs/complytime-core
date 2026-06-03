@@ -22,6 +22,43 @@ const (
 	VerdictError Verdict = "error"
 )
 
+// Result represents the outcome of a trust signal check.
+type Result string
+
+const (
+	ResultPass  Result = "pass"
+	ResultFail  Result = "fail"
+	ResultSkip  Result = "skip"
+	ResultError Result = "error"
+)
+
+// TrustSignal represents the outcome of a single verification check.
+// Trust signals replace the binary certified flag with queryable,
+// per-check results that can be filtered and analyzed.
+type TrustSignal struct {
+	Layer     string // 'identity', 'quality', 'attestation'
+	CheckName string // 'schema', 'provenance', 'executor', 'freshness', 'relevance', 'publisher_auth'
+	Result    Result // pass, fail, skip, error
+	Reason    string // Human-readable explanation
+}
+
+// ToVerdict converts a TrustSignal Result to the legacy Verdict type.
+// Used for backward compatibility with existing certifier infrastructure.
+func (r Result) ToVerdict() Verdict {
+	switch r {
+	case ResultPass:
+		return VerdictPass
+	case ResultFail:
+		return VerdictFail
+	case ResultSkip:
+		return VerdictSkip
+	case ResultError:
+		return VerdictError
+	default:
+		return VerdictError
+	}
+}
+
 // CertResult holds the outcome of a single certifier run against one evidence row.
 type CertResult struct {
 	Certifier string

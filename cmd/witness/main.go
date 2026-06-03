@@ -131,7 +131,7 @@ func (p *postgresAdapter) QueryEvidenceByLogIndex(ctx context.Context, logIndex 
 		return nil, nil
 	}
 	return &EvidenceRow{
-		Certified:       row.Certified,
+		EvidenceID:      row.EvidenceID,
 		PublisherIssuer: row.PublisherIssuer,
 		SubmittedBy:     row.SubmittedBy,
 	}, nil
@@ -147,6 +147,10 @@ func (p *postgresAdapter) IsTargetRegistered(ctx context.Context, targetID strin
 
 func (p *postgresAdapter) PolicyExistsByID(ctx context.Context, policyID string) bool {
 	return p.store.PolicyExistsByID(ctx, policyID)
+}
+
+func (p *postgresAdapter) HasFailedTrustSignals(ctx context.Context, evidenceID string) (bool, error) {
+	return p.store.HasFailedTrustSignals(ctx, evidenceID)
 }
 
 // verificationLoop polls Tessera for new entries and verifies them

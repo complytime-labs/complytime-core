@@ -43,7 +43,7 @@ var _ = Describe("Certification Pipeline", func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to run migrations")
 
 		By("Cleaning up evidence from previous tests")
-		_, err = pgClient.Pool().Exec(ctx, "TRUNCATE evidence, witnessed_indices, certifications CASCADE")
+		_, err = pgClient.Pool().Exec(ctx, "TRUNCATE evidence, witnessed_indices, trust_signals CASCADE")
 		Expect(err).NotTo(HaveOccurred(), "Failed to truncate evidence tables")
 
 		st = store.New(pgClient.Pool())
@@ -113,7 +113,8 @@ var _ = Describe("Certification Pipeline", func() {
 
 			By("Waiting for certification pipeline to complete (debounce + processing)")
 			// The certification pipeline fires after 100ms debounce and then
-			// queries evidence rows for the policy. We poll until certified=true.
+			// queries evidence rows for the policy. We poll until trust signals exist.
+			var evidenceID string
 			Eventually(func() bool {
 				rows, err := st.QueryEvidence(ctx, store.EvidenceFilter{
 					PolicyIDs: []string{"test-policy"},
@@ -122,12 +123,18 @@ var _ = Describe("Certification Pipeline", func() {
 				if err != nil || len(rows) == 0 {
 					return false
 				}
-				return rows[0].Certified
+				evidenceID = rows[0].EvidenceID
+				// Check if trust signals exist (pipeline has run)
+				signals, err := st.QueryTrustSignals(ctx, evidenceID)
+				if err != nil {
+					return false
+				}
+				return len(signals) > 0
 			}).WithTimeout(5 * time.Second).WithPolling(200 * time.Millisecond).Should(
-				BeTrue(), "Evidence should be certified after pipeline runs",
+				BeTrue(), "Evidence should have trust signals after pipeline runs",
 			)
 
-			By("Verifying certification verdicts in the certifications table")
+			By("Verifying all trust signals are passing")
 			evidenceRows, err := st.QueryEvidence(ctx, store.EvidenceFilter{
 				PolicyIDs: []string{"test-policy"},
 				Limit:     10,
@@ -136,15 +143,15 @@ var _ = Describe("Certification Pipeline", func() {
 			Expect(evidenceRows).NotTo(BeEmpty(), "Expected evidence rows for test-policy")
 
 			for _, evRow := range evidenceRows {
-				certs, err := st.QueryCertifications(ctx, evRow.EvidenceID)
+				signals, err := st.QueryTrustSignals(ctx, evRow.EvidenceID)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(certs).NotTo(BeEmpty(), "Expected certification rows for evidence %s", evRow.EvidenceID)
+				Expect(signals).NotTo(BeEmpty(), "Expected trust signals for evidence %s", evRow.EvidenceID)
 
-				for _, cert := range certs {
-					GinkgoWriter.Printf("  Certification: certifier=%s verdict=%s reason=%s\n",
-						cert.Certifier, cert.Result, cert.Reason)
-					Expect(cert.Result).To(Equal("pass"),
-						"Certifier %s should pass for certifiable evidence", cert.Certifier)
+				for _, sig := range signals {
+					GinkgoWriter.Printf("  Trust signal: layer=%s check=%s result=%s reason=%s\n",
+						sig.Layer, sig.CheckName, sig.Result, sig.Reason)
+					Expect(string(sig.Result)).To(Equal("pass"),
+						"Check %s should pass for certifiable evidence", sig.CheckName)
 				}
 			}
 		})
@@ -202,11 +209,11 @@ evaluations:
 
 			By("Waiting for certification pipeline to complete")
 			// Give the debouncer time to fire (100ms) plus some margin for processing.
-			// After processing, evidence should still be NOT certified because
+			// After processing, evidence should have failed trust signals because
 			// unknown-engine is not in the KnownEngines map.
+			var failedEvidenceID string
 			Eventually(func() bool {
-				// Check that certifications table has been populated (indicating
-				// the pipeline ran), but certified flag is false.
+				// Check that trust signals exist (pipeline ran)
 				evRows, err := st.QueryEvidence(ctx, store.EvidenceFilter{
 					PolicyIDs: []string{"fail-policy"},
 					Limit:     10,
@@ -214,39 +221,124 @@ evaluations:
 				if err != nil || len(evRows) == 0 {
 					return false
 				}
-				certs, err := st.QueryCertifications(ctx, evRows[0].EvidenceID)
+				failedEvidenceID = evRows[0].EvidenceID
+				signals, err := st.QueryTrustSignals(ctx, failedEvidenceID)
 				if err != nil {
 					return false
 				}
-				return len(certs) > 0 // Pipeline ran
+				return len(signals) > 0 // Pipeline ran
 			}).WithTimeout(5 * time.Second).WithPolling(200 * time.Millisecond).Should(
 				BeTrue(), "Certification pipeline should have processed the evidence",
 			)
 
-			By("Verifying evidence remains not certified")
+			By("Verifying evidence has failed trust signals")
 			evRows, err := st.QueryEvidence(ctx, store.EvidenceFilter{
 				PolicyIDs: []string{"fail-policy"},
 				Limit:     10,
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(evRows).NotTo(BeEmpty(), "Evidence should exist in database")
-			Expect(evRows[0].Certified).To(BeFalse(),
-				"Evidence with unknown engine should NOT be certified")
 
-			By("Verifying at least one certification verdict is 'fail'")
-			certs, err := st.QueryCertifications(ctx, evRows[0].EvidenceID)
+			hasFailed, err := st.HasFailedTrustSignals(ctx, evRows[0].EvidenceID)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(certs).NotTo(BeEmpty())
+			Expect(hasFailed).To(BeTrue(),
+				"Evidence with unknown engine should have failed trust signals")
+
+			By("Verifying at least one trust signal is 'fail'")
+			signals, err := st.QueryTrustSignals(ctx, failedEvidenceID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(signals).NotTo(BeEmpty())
 
 			hasFail := false
-			for _, cert := range certs {
-				GinkgoWriter.Printf("  Certification: certifier=%s verdict=%s reason=%s\n",
-					cert.Certifier, cert.Result, cert.Reason)
-				if cert.Result == "fail" {
+			for _, sig := range signals {
+				GinkgoWriter.Printf("  Trust signal: layer=%s check=%s result=%s reason=%s\n",
+					sig.Layer, sig.CheckName, sig.Result, sig.Reason)
+				if string(sig.Result) == "fail" {
 					hasFail = true
 				}
 			}
-			Expect(hasFail).To(BeTrue(), "At least one certifier should have verdict=fail")
+			Expect(hasFail).To(BeTrue(), "At least one trust signal should have result=fail")
+		})
+	})
+
+	Context("trust signals", func() {
+		It("writes trust signals during certification and aggregates to evidence.certified", func() {
+			By("Loading certifiable evaluation log fixture")
+			evalLogYAML, err := os.ReadFile("testdata/evaluation_log_certifiable.yaml")
+			Expect(err).NotTo(HaveOccurred(), "Failed to read certifiable test YAML")
+
+			By("Generating JWT token")
+			testSubject := "repo:org/test-repo:ref:refs/heads/main"
+			token := jwtCtx.generateTestJWT(GinkgoT(), testSubject)
+
+			By("Submitting evidence via HTTP POST")
+			resp, result := submitEvidence(GinkgoT(), server.URL, token, evalLogYAML)
+			Expect(resp.StatusCode).To(Equal(http.StatusAccepted), "Expected 202 Accepted")
+
+			jobID, ok := result["job_id"].(string)
+			Expect(ok).To(BeTrue(), "job_id not found in response")
+
+			logIndex := uint64(result["log_index"].(float64))
+			GinkgoWriter.Printf("Submitted certifiable evidence: job_id=%s, log_index=%d\n", jobID, logIndex)
+
+			By("Waiting for worker to process")
+			waitForJob(tracker, jobID)
+
+			By("Waiting for certification pipeline to complete")
+			var evidenceIDForTrust string
+			Eventually(func() bool {
+				rows, err := st.QueryEvidence(ctx, store.EvidenceFilter{
+					PolicyIDs: []string{"test-policy"},
+					Limit:     1,
+				})
+				if err != nil || len(rows) == 0 {
+					return false
+				}
+				evidenceIDForTrust = rows[0].EvidenceID
+				// Check if trust signals exist (pipeline has run)
+				signals, err := st.QueryTrustSignals(ctx, evidenceIDForTrust)
+				if err != nil {
+					return false
+				}
+				return len(signals) > 0
+			}).WithTimeout(5 * time.Second).WithPolling(200 * time.Millisecond).Should(
+				BeTrue(), "Evidence should have trust signals after pipeline runs",
+			)
+
+			By("Querying trust signals from the database")
+			// Get the evidence ID from the first evidence row
+			evidenceRows, err := st.QueryEvidence(ctx, store.EvidenceFilter{
+				PolicyIDs: []string{"test-policy"},
+				Limit:     1,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(evidenceRows).NotTo(BeEmpty(), "Expected at least one evidence row")
+			evidenceID := evidenceRows[0].EvidenceID
+
+			signals, err := st.QueryTrustSignals(ctx, evidenceID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(signals).NotTo(BeEmpty(), "Should have trust signals for evidence")
+
+			GinkgoWriter.Printf("Found %d trust signals for evidence %s\n", len(signals), evidenceID)
+
+			By("Verifying schema trust signal exists and passes")
+			var hasSchema bool
+			for _, sig := range signals {
+				GinkgoWriter.Printf("  Signal: layer=%s check=%s result=%s reason=%s\n",
+					sig.Layer, sig.CheckName, sig.Result, sig.Reason)
+				if sig.CheckName == "schema" {
+					hasSchema = true
+					Expect(sig.Layer).To(Equal("quality"), "Schema check should be in quality layer")
+					Expect(string(sig.Result)).To(Equal("pass"), "Schema check should pass for valid YAML")
+				}
+			}
+			Expect(hasSchema).To(BeTrue(), "Should have schema trust signal")
+
+			By("Verifying no failed trust signals")
+			hasFailed, err := st.HasFailedTrustSignals(ctx, evidenceID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hasFailed).To(BeFalse(),
+				"Should have no failed trust signals for valid evidence")
 		})
 	})
 })

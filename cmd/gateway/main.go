@@ -377,8 +377,7 @@ type certificationAdapter struct {
 		QueryRecentEvidence(
 			ctx context.Context, policyID string, since time.Time,
 		) ([]store.EvidenceRowLite, error)
-		InsertCertifications(ctx context.Context, rows []store.CertificationRow) error
-		UpdateEvidenceCertified(ctx context.Context, evidenceID string, certified bool) error
+		InsertTrustSignals(ctx context.Context, signals []store.TrustSignalRow) error
 	}
 }
 
@@ -407,24 +406,20 @@ func (a *certificationAdapter) QueryRecentEvidence(
 	return out, nil
 }
 
-func (a *certificationAdapter) InsertCertifications(
-	ctx context.Context, rows []events.CertificationRow,
+func (a *certificationAdapter) InsertTrustSignals(
+	ctx context.Context, signals []events.TrustSignalRow,
 ) error {
-	storeRows := make([]store.CertificationRow, len(rows))
-	for i, r := range rows {
-		storeRows[i] = store.CertificationRow{
-			EvidenceID:       r.EvidenceID,
-			Certifier:        r.Certifier,
-			CertifierVersion: r.CertifierVersion,
-			Result:           r.Result,
-			Reason:           r.Reason,
+	// Convert events.TrustSignalRow to store.TrustSignalRow
+	storeSignals := make([]store.TrustSignalRow, len(signals))
+	for i, s := range signals {
+		storeSignals[i] = store.TrustSignalRow{
+			EvidenceID: s.EvidenceID,
+			Layer:      s.Layer,
+			CheckName:  s.CheckName,
+			Result:     certifier.Result(s.Result),
+			Reason:     s.Reason,
+			CheckedAt:  s.CheckedAt,
 		}
 	}
-	return a.store.InsertCertifications(ctx, storeRows)
-}
-
-func (a *certificationAdapter) UpdateEvidenceCertified(
-	ctx context.Context, evidenceID string, certified bool,
-) error {
-	return a.store.UpdateEvidenceCertified(ctx, evidenceID, certified)
+	return a.store.InsertTrustSignals(ctx, storeSignals)
 }

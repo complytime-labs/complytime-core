@@ -4,7 +4,6 @@ package events
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -18,23 +17,37 @@ type CertificationQuerier interface {
 	) ([]certifier.EvidenceRow, error)
 }
 
-// CertificationWriter persists certification results and updates evidence.
+// CertificationWriter persists certification results as trust signals.
 type CertificationWriter interface {
-	InsertCertifications(
-		ctx context.Context, results []CertificationRow,
-	) error
-	UpdateEvidenceCertified(
-		ctx context.Context, evidenceID string, certified bool,
-	) error
+	InsertTrustSignals(ctx context.Context, signals []TrustSignalRow) error
 }
 
-// CertificationRow is the insert shape for the certifications table.
-type CertificationRow struct {
-	EvidenceID       string
-	Certifier        string
-	CertifierVersion string
-	Result           string
-	Reason           string
+// TrustSignalRow represents a trust signal for database insertion.
+// This mirrors store.TrustSignalRow but avoids import cycles.
+type TrustSignalRow struct {
+	EvidenceID string
+	Layer      string
+	CheckName  string
+	Result     string
+	Reason     string
+	CheckedAt  time.Time
+}
+
+// inferLayer maps certifier names to trust signal layers.
+// This provides a default mapping; certifiers can be enhanced to
+// return layer information directly in the future.
+func inferLayer(certifierName string) string {
+	// Map common certifier names to layers
+	switch certifierName {
+	case "schema", "quality", "freshness", "relevance":
+		return "quality"
+	case "provenance", "executor", "identity":
+		return "identity"
+	case "publisher_auth", "attestation", "signature":
+		return "attestation"
+	default:
+		return "quality" // default layer
+	}
 }
 
 // CertificationHandler returns a debounce-compatible handler that runs the
@@ -62,36 +75,32 @@ func CertificationHandler(
 		for _, row := range rows {
 			results := pipeline.Run(ctx, row)
 
-			var certRows []CertificationRow
+			var trustSignals []TrustSignalRow
 			for _, r := range results {
-				certRows = append(certRows, CertificationRow{
-					EvidenceID:       row.EvidenceID,
-					Certifier:        r.Certifier,
-					CertifierVersion: r.Version,
-					Result:           string(r.Verdict),
-					Reason:           r.Reason,
+				// Convert certifier results to trust signals
+				// Each certifier check becomes a trust signal
+				trustSignals = append(trustSignals, TrustSignalRow{
+					EvidenceID: row.EvidenceID,
+					Layer:      inferLayer(r.Certifier),
+					CheckName:  r.Certifier,
+					Result:     string(r.Verdict),
+					Reason:     r.Reason,
+					CheckedAt:  time.Now(),
 				})
 			}
 
-			if err := writer.InsertCertifications(ctx, certRows); err != nil {
-				slog.Warn("certification insert failed",
+			// Write trust signals
+			if err := writer.InsertTrustSignals(ctx, trustSignals); err != nil {
+				slog.Warn("trust signal insert failed",
 					"evidence_id", row.EvidenceID, "error", err)
 				continue
 			}
 
-			certified := certifier.IsCertified(results)
-			if err := writer.UpdateEvidenceCertified(
-				ctx, row.EvidenceID, certified,
-			); err != nil {
-				slog.Warn("evidence certified update failed",
-					"evidence_id", row.EvidenceID, "error", err)
-			} else {
-				slog.Info("evidence certified",
-					"evidence_id", row.EvidenceID,
-					"certified", fmt.Sprintf("%t", certified),
-					"policy_id", evt.PolicyID,
-				)
-			}
+			slog.Info("evidence certification complete",
+				"evidence_id", row.EvidenceID,
+				"trust_signals", len(trustSignals),
+				"policy_id", evt.PolicyID,
+			)
 		}
 	}
 }

@@ -59,7 +59,6 @@ func toEvidenceRecordsWithLogIndex(rows []ingest.EvidenceRow, logIndex *uint64, 
 			AttestationRef:       derefStr(row.AttestationRef),
 			SourceRegistry:       derefStr(row.SourceRegistry),
 			BlobRef:              derefStr(row.BlobRef),
-			Certified:            row.Certified,
 			CollectedAt:          row.CollectedAt,
 		}
 		// Set log_index if provided (from IngestRawEvent)

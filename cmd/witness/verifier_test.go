@@ -29,9 +29,10 @@ func (m *mockTesseraReader) ReadCheckpoint(_ context.Context) ([]byte, error) {
 }
 
 type evidenceRow struct {
-	certified       bool
+	evidenceID      string
 	publisherIssuer string
 	submittedBy     string
+	hasFailed       bool // whether trust signals have failed
 }
 
 type mockPostgres struct {
@@ -47,10 +48,19 @@ func (m *mockPostgres) QueryEvidenceByLogIndex(ctx context.Context, logIndex uin
 		return nil, nil
 	}
 	return &EvidenceRow{
-		Certified:       row.certified,
+		EvidenceID:      row.evidenceID,
 		PublisherIssuer: row.publisherIssuer,
 		SubmittedBy:     row.submittedBy,
 	}, nil
+}
+
+func (m *mockPostgres) HasFailedTrustSignals(ctx context.Context, evidenceID string) (bool, error) {
+	for _, row := range m.evidenceRows {
+		if row.evidenceID == evidenceID {
+			return row.hasFailed, nil
+		}
+	}
+	return false, nil
 }
 
 func (m *mockPostgres) IsIndexWitnessed(ctx context.Context, index uint64) bool {
@@ -83,7 +93,7 @@ func TestVerifier_VerifyEntry_AllChecksPass(t *testing.T) {
 	mockDB := &mockPostgres{
 		evidenceRows: map[uint64]evidenceRow{
 			42: {
-				certified:       true,
+				evidenceID: "test-ev", hasFailed:       false,
 				publisherIssuer: "https://token.actions.githubusercontent.com",
 				submittedBy:     "repo:complytime/scanner:ref:refs/heads/main",
 			},
@@ -119,7 +129,7 @@ func TestVerifier_VerifyEntry_CertificationFailed(t *testing.T) {
 	mockDB := &mockPostgres{
 		evidenceRows: map[uint64]evidenceRow{
 			42: {
-				certified:       false, // Failed certification
+				evidenceID: "test-ev", hasFailed:       true, // Failed trust signals
 				publisherIssuer: "https://token.actions.githubusercontent.com",
 				submittedBy:     "repo:complytime/scanner:ref:refs/heads/main",
 			},
@@ -143,7 +153,7 @@ func TestVerifier_VerifyEntry_PublisherNotTrusted(t *testing.T) {
 	mockDB := &mockPostgres{
 		evidenceRows: map[uint64]evidenceRow{
 			42: {
-				certified:       true,
+				evidenceID: "test-ev", hasFailed:       true,
 				publisherIssuer: "https://untrusted-issuer.example.com",
 				submittedBy:     "malicious-actor",
 			},
@@ -241,12 +251,12 @@ results:
 	mockDB := &mockPostgres{
 		evidenceRows: map[uint64]evidenceRow{
 			0: {
-				certified:       true,
+				evidenceID: "test-ev", hasFailed:       false,
 				publisherIssuer: "https://kubernetes.default.svc",
 				submittedBy:     "system:serviceaccount:complytime:admin",
 			},
 			42: {
-				certified:       true,
+				evidenceID: "test-ev", hasFailed:       false,
 				publisherIssuer: "https://token.actions.githubusercontent.com",
 				submittedBy:     "repo:complytime/scanner:ref:refs/heads/main",
 			},
@@ -295,8 +305,8 @@ target:
 
 	mockDB := &mockPostgres{
 		evidenceRows: map[uint64]evidenceRow{
-			0:  {certified: true, publisherIssuer: "https://kubernetes.default.svc", submittedBy: "system:serviceaccount:complytime:admin"},
-			42: {certified: true, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/scanner:ref:refs/heads/main"},
+			0:  {evidenceID: "test-ev", hasFailed: false, publisherIssuer: "https://kubernetes.default.svc", submittedBy: "system:serviceaccount:complytime:admin"},
+			42: {evidenceID: "test-ev", hasFailed: false, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/scanner:ref:refs/heads/main"},
 		},
 		witnessedIndices: map[uint64]bool{
 			// Policy NOT witnessed
@@ -344,8 +354,8 @@ results:
 
 	mockDB := &mockPostgres{
 		evidenceRows: map[uint64]evidenceRow{
-			1: {certified: true, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
-			42: {certified: true, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
+			1: {evidenceID: "test-ev", hasFailed: false, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
+			42: {evidenceID: "test-ev", hasFailed: false, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
 		},
 		witnessedIndices: map[uint64]bool{
 			1: true, // Evidence is witnessed
@@ -391,8 +401,8 @@ results:
 
 	mockDB := &mockPostgres{
 		evidenceRows: map[uint64]evidenceRow{
-			1:  {certified: true, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
-			42: {certified: true, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
+			1:  {evidenceID: "test-ev", hasFailed: false, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
+			42: {evidenceID: "test-ev", hasFailed: false, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
 		},
 		witnessedIndices: map[uint64]bool{1: true},
 	}
@@ -436,8 +446,8 @@ results:
 
 	mockDB := &mockPostgres{
 		evidenceRows: map[uint64]evidenceRow{
-			1:  {certified: true, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
-			42: {certified: true, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
+			1:  {evidenceID: "test-ev", hasFailed: false, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
+			42: {evidenceID: "test-ev", hasFailed: false, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
 		},
 		witnessedIndices: map[uint64]bool{1: true},
 	}

@@ -94,7 +94,6 @@ type EvidenceAssessmentStore interface {
 // CertificationStore defines read/write operations for evidence certifications.
 type CertificationStore interface {
 	InsertCertifications(ctx context.Context, rows []CertificationRow) error
-	UpdateEvidenceCertified(ctx context.Context, evidenceID string, certified bool) error
 	QueryCertifications(ctx context.Context, evidenceID string) ([]CertificationRow, error)
 	QueryRecentEvidence(
 		ctx context.Context, policyID string, since time.Time,
@@ -133,6 +132,13 @@ type TargetStore interface {
 	ListTargets(ctx context.Context) ([]TargetRow, error)
 }
 
+// TrustSignalStore defines operations for trust signals (queryable certification checks).
+type TrustSignalStore interface {
+	InsertTrustSignals(ctx context.Context, signals []TrustSignalRow) error
+	QueryTrustSignals(ctx context.Context, evidenceID string) ([]TrustSignalRow, error)
+	HasFailedTrustSignals(ctx context.Context, evidenceID string) (bool, error)
+}
+
 // Store provides typed access to PostgreSQL tables for policies,
 // mapping documents, evidence, and audit logs. Implements all
 // domain store interfaces.
@@ -157,6 +163,7 @@ var (
 	_ GuidanceStore           = (*Store)(nil)
 	_ TargetStore             = (*Store)(nil)
 	_ PolicyDimensionStore    = (*Store)(nil)
+	_ TrustSignalStore        = (*Store)(nil)
 )
 
 // New wraps a PostgreSQL connection pool.

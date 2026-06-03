@@ -60,8 +60,6 @@ type EvidenceRecord struct {
 	SourceRegistry string `json:"source_registry,omitempty"`
 	BlobRef        string `json:"blob_ref,omitempty"`
 
-	Certified bool `json:"certified"`
-
 	Owner          string    `json:"owner,omitempty"`
 	CollectedAt    time.Time `json:"collected_at"`
 	Classification string    `json:"classification,omitempty"`
@@ -239,7 +237,6 @@ func (s *Store) QueryEvidence(ctx context.Context, f EvidenceFilter) ([]Evidence
 		"COALESCE(e.attestation_ref, '') AS attestation_ref",
 		"COALESCE(e.source_registry, '') AS source_registry",
 		"COALESCE(e.blob_ref, '') AS blob_ref",
-		"e.certified",
 		"e.collected_at",
 		"e.log_index",
 		"COALESCE(ea_latest.classification, '') AS classification",
@@ -314,7 +311,6 @@ func (s *Store) QueryEvidence(ctx context.Context, f EvidenceFilter) ([]Evidence
 			&r.RiskLevel, &r.Requirements,
 			&r.EnrichmentStatus,
 			&r.AttestationRef, &r.SourceRegistry, &r.BlobRef,
-			&r.Certified,
 			&r.CollectedAt,
 			&r.LogIndex,
 			&r.Classification,
@@ -382,16 +378,6 @@ DO UPDATE SET certifier_version = EXCLUDED.certifier_version,
 	return nil
 }
 
-// UpdateEvidenceCertified sets the denormalized certified flag on an evidence row.
-func (s *Store) UpdateEvidenceCertified(
-	ctx context.Context, evidenceID string, certified bool,
-) error {
-	_, err := s.pool.Exec(ctx,
-		`UPDATE evidence SET certified = $1 WHERE evidence_id = $2`,
-		certified, evidenceID)
-	return err
-}
-
 // QueryCertifications returns certification verdicts for a given evidence row.
 func (s *Store) QueryCertifications(
 	ctx context.Context, evidenceID string,
@@ -451,24 +437,24 @@ func (s *Store) QueryRecentEvidence(
 	return out, rows.Err()
 }
 
-// WitnessEvidenceRow contains publisher and certification data for witness verification.
+// WitnessEvidenceRow contains publisher data for witness verification.
 type WitnessEvidenceRow struct {
-	Certified       bool
+	EvidenceID      string
 	PublisherIssuer string
 	SubmittedBy     string
 	PublisherType   string
 }
 
-// QueryEvidenceByLogIndex retrieves certification and publisher data for a given Tessera log index.
+// QueryEvidenceByLogIndex retrieves publisher data for a given Tessera log index.
 // Returns nil if the evidence is not yet in PostgreSQL (async processing delay).
 func (s *Store) QueryEvidenceByLogIndex(ctx context.Context, logIndex uint64) (*WitnessEvidenceRow, error) {
-	const q = `SELECT certified, publisher_issuer, submitted_by, publisher_type
+	const q = `SELECT evidence_id, publisher_issuer, submitted_by, publisher_type
 	           FROM evidence
 	           WHERE log_index = $1
 	           LIMIT 1`
 
 	var row WitnessEvidenceRow
-	err := s.pool.QueryRow(ctx, q, logIndex).Scan(&row.Certified, &row.PublisherIssuer, &row.SubmittedBy, &row.PublisherType)
+	err := s.pool.QueryRow(ctx, q, logIndex).Scan(&row.EvidenceID, &row.PublisherIssuer, &row.SubmittedBy, &row.PublisherType)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
