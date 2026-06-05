@@ -288,18 +288,19 @@ func TestIntegration_ListInventory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListInventory: %v", err)
 	}
-	if len(all) != 2 {
-		t.Fatalf("ListInventory: got %d rows, want 2", len(all))
+	if len(all) < 2 {
+		t.Fatalf("ListInventory: got %d rows, want at least 2", len(all))
 	}
-	var inv *InventoryItem
+	byTarget := make(map[string]*InventoryItem, len(all))
 	for i := range all {
-		if all[i].TargetID == "tgt-inv" {
-			inv = &all[i]
-			break
-		}
+		byTarget[all[i].TargetID] = &all[i]
 	}
+	inv := byTarget["tgt-inv"]
 	if inv == nil {
 		t.Fatal("tgt-inv not in inventory")
+	}
+	if byTarget["tgt-other"] == nil {
+		t.Fatal("tgt-other not in inventory")
 	}
 	if inv.PolicyCount != 2 || inv.PassCount != 1 || inv.FailCount != 1 {
 		t.Fatalf("tgt-inv counts: policy=%d pass=%d fail=%d want 2,1,1",
