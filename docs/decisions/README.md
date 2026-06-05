@@ -1,6 +1,11 @@
 # Architecture Decision Records
 
-Data platform decisions. Other repos maintain their own ADRs:
+Data platform decisions. ADRs crystallize specific decisions — propose one via
+a PR when a [design discussion](https://github.com/complytime-labs/complytime-core/issues/new?template=design_discussion.yml)
+converges on a decision. Use the [template](0000-template.md). Once accepted,
+ADR content is frozen — write a new ADR to supersede.
+
+Other repos maintain their own ADRs:
 
 - [studio-ui](https://github.com/complytime-labs/studio-ui/tree/main/docs/decisions) — UI/UX patterns
 - [complytime-studio](https://github.com/complytime-labs/complytime-studio/tree/main/docs/decisions) — agent and workbench

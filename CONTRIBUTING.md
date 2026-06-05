@@ -19,6 +19,35 @@ make seed
 
 When running in Kubernetes, `make seed` auto-extracts the API token from the cluster secret. For Docker Compose, the token is `studio-dev-token`.
 
+## Issue-Driven Development
+
+Every PR must reference a GitHub issue. No one-off PRs. Issues are the entry
+point for all work — they provide context, enable discussion before
+implementation, and keep the backlog visible.
+
+**Workflow:**
+
+```
+Issue → Branch → PR (references issue) → Review → Merge
+```
+
+**Where does my contribution go?**
+
+| If you have... | Then... |
+|:--|:--|
+| A bug | File a [Bug Report](https://github.com/complytime-labs/complytime-core/issues/new?template=bug_report.yml) |
+| A feature idea | File a [Feature Request](https://github.com/complytime-labs/complytime-core/issues/new?template=feature_request.yml) |
+| An architectural question | File a [Design Discussion](https://github.com/complytime-labs/complytime-core/issues/new?template=design_discussion.yml) |
+| Related work to group | File an [Epic](https://github.com/complytime-labs/complytime-core/issues/new?template=epic.yml) |
+
+When in doubt, start with an issue.
+
+**Design discussions** explore architectural questions before implementation. When
+a design discussion converges on a decision, propose an
+[ADR](docs/decisions/) via a PR. ADRs are frozen once accepted — if a decision
+needs to change, write a new ADR that supersedes the old one. See the
+[ADR template](docs/decisions/0000-template.md).
+
 ## Code Contributions
 
 **Branching:** Create feature branches from `main`. Keep PRs atomic — reviewable in one sitting.
@@ -100,13 +129,14 @@ All artifacts live in `openspec/changes/<change-name>/`. Templates are in `opens
 
 ## Issues
 
-Use [GitHub Issues](https://github.com/complytime-labs/complytime-core/issues) with the appropriate template:
+All work starts with a [GitHub Issue](https://github.com/complytime-labs/complytime-core/issues).
+See [Issue-Driven Development](#issue-driven-development) for templates and
+the contribution routing table.
 
-- **Bug Report** — something isn't working
-- **Feature Request** — propose a new feature or enhancement  
-- **Epic** — group related work under a theme
-
-**Labels:** We use `type/`, `P0-P2` (priority), and `area/` labels. Maintainers will apply these during triage. Good labels for contributors: `good first issue`, `help wanted`.
+**Labels:** We use `type/` (bug, feature, epic, design, chore), `P0-P2`
+(priority), and `area/` (api, auth, certifier, ingest, store, witness) labels.
+Maintainers apply these during triage. Good labels for contributors:
+`good first issue`, `help wanted`.
 
 For security vulnerabilities, follow [SECURITY.md](SECURITY.md).
 
