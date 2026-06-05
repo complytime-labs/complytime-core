@@ -33,8 +33,11 @@ func TestInsertAndQueryTrustSignals(t *testing.T) {
 
 	st := New(pgClient.Pool())
 
-	// Clean up any existing test data
-	_, err = pgClient.Pool().Exec(ctx, "TRUNCATE trust_signals, evidence CASCADE")
+	// Clean up test data scoped to this test only — avoid TRUNCATE evidence
+	// which races with E2E tests running in a parallel package.
+	_, err = pgClient.Pool().Exec(ctx, "DELETE FROM trust_signals WHERE evidence_id LIKE 'test-evidence-ts-%'")
+	require.NoError(t, err)
+	_, err = pgClient.Pool().Exec(ctx, "DELETE FROM evidence WHERE evidence_id LIKE 'test-evidence-ts-%'")
 	require.NoError(t, err)
 
 	// Insert test evidence
