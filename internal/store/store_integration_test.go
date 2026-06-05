@@ -33,12 +33,12 @@ func testStore(t *testing.T) *Store {
 	t.Cleanup(func() {
 		bg := context.Background()
 		pool := client.Pool()
-		_, _ = pool.Exec(bg, "DELETE FROM trust_signals")
-		_, _ = pool.Exec(bg, "DELETE FROM evidence_assessments")
+		_, _ = pool.Exec(bg, "DELETE FROM trust_signals WHERE evidence_id LIKE 'ev-%'")
+		_, _ = pool.Exec(bg, "DELETE FROM evidence_assessments WHERE evidence_id LIKE 'ev-%'")
 		_, _ = pool.Exec(bg, "DELETE FROM workbench.jobs")
 		_, _ = pool.Exec(bg, "DELETE FROM workbench.programs")
-		_, _ = pool.Exec(bg, "DELETE FROM evidence")
-		_, _ = pool.Exec(bg, "DELETE FROM policies")
+		_, _ = pool.Exec(bg, "DELETE FROM evidence WHERE evidence_id LIKE 'ev-%'")
+		_, _ = pool.Exec(bg, "DELETE FROM policies WHERE policy_id LIKE 'pol-%'")
 		client.Close()
 	})
 	return New(client.Pool())
@@ -288,18 +288,19 @@ func TestIntegration_ListInventory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListInventory: %v", err)
 	}
-	if len(all) != 2 {
-		t.Fatalf("ListInventory: got %d rows, want 2", len(all))
+	if len(all) < 2 {
+		t.Fatalf("ListInventory: got %d rows, want at least 2", len(all))
 	}
-	var inv *InventoryItem
+	byTarget := make(map[string]*InventoryItem, len(all))
 	for i := range all {
-		if all[i].TargetID == "tgt-inv" {
-			inv = &all[i]
-			break
-		}
+		byTarget[all[i].TargetID] = &all[i]
 	}
+	inv := byTarget["tgt-inv"]
 	if inv == nil {
 		t.Fatal("tgt-inv not in inventory")
+	}
+	if byTarget["tgt-other"] == nil {
+		t.Fatal("tgt-other not in inventory")
 	}
 	if inv.PolicyCount != 2 || inv.PassCount != 1 || inv.FailCount != 1 {
 		t.Fatalf("tgt-inv counts: policy=%d pass=%d fail=%d want 2,1,1",
