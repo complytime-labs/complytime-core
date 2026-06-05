@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Scheduled Jobs
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+
+permissions:
+  contents: read
+  actions: none
+  id-token: none
+  security-events: none
+
+jobs:
+  call_reusable_scheduled:
+    name: OSV-Scanner and Scorecards
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+      id-token: write
+    uses: complytime/org-infra/.github/workflows/reusable_scheduled.yml@15476efc3c2837fa9564943a1f8714cd71ddc288 # v0.3.0
