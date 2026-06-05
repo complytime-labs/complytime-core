@@ -1,0 +1,49 @@
+name: Design Discussion
+description: Propose a design exploration or raise an architectural question
+labels: ["type/design"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for design questions that need exploration before implementation.
+        If this leads to a decision, it may graduate into an
+        [ADR](https://github.com/complytime-labs/complytime-core/tree/main/docs/decisions).
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Design Question
+      description: What design question or architectural tension needs exploration?
+      placeholder: How should we handle X given that Y and Z are in tension?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why does this matter now? What triggered this question?
+      placeholder: |
+        We're implementing X and need to decide between...
+        The current approach has these limitations...
+    validations:
+      required: true
+
+  - type: textarea
+    id: options
+    attributes:
+      label: Options Considered
+      description: What approaches have you thought about? (even rough ideas)
+      placeholder: |
+        - Option A: ...
+        - Option B: ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: related
+    attributes:
+      label: Related
+      description: Links to related issues, ADRs, or external references
+    validations:
+      required: false
