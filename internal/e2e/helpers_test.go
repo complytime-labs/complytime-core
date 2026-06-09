@@ -246,7 +246,7 @@ func submitEvidence(t testingHelper, serverURL string, token string, yamlContent
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/x-yaml")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // G704: test helper, URL from test server
 	Expect(err).NotTo(HaveOccurred())
 
 	var result map[string]any

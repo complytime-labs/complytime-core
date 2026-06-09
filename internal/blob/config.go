@@ -13,7 +13,7 @@ import (
 type Config struct {
 	Endpoint  string
 	Bucket    string
-	AccessKey string
+	AccessKey string //nolint:gosec // G117: struct field name, not a credential
 	SecretKey string
 	UseSSL    bool
 }

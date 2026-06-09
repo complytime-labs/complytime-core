@@ -48,7 +48,7 @@ type PolicyWithDimensions struct {
 
 // PolicyQueryResponse is returned by the policy discovery endpoint.
 type PolicyQueryResponse struct {
-	Target             TargetSummary         `json:"target"`
+	Target             TargetSummary          `json:"target"`
 	ApplicablePolicies []PolicyWithDimensions `json:"applicable_policies"`
 }
 
@@ -92,7 +92,7 @@ func policyQueryHandler(targets TargetStore, policies PolicyDimensionStore) echo
 
 		if policies == nil {
 			return c.JSON(http.StatusOK, PolicyQueryResponse{
-				Target: targetToSummary(target),
+				Target:             targetToSummary(target),
 				ApplicablePolicies: []PolicyWithDimensions{},
 			})
 		}

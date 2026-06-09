@@ -55,7 +55,6 @@ func NewHandler() *Handler {
 	return &Handler{}
 }
 
-
 // SetUserStore configures the persistent user/role store.
 func (h *Handler) SetUserStore(us UserStore) {
 	h.users = us
@@ -288,4 +287,3 @@ func RejectUnlessWriterOrAdmin(c echo.Context, users UserStore) bool {
 	}
 	return false
 }
-

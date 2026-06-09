@@ -107,18 +107,18 @@ func (p *immediateIngestPublisher) PublishIngest(ctx context.Context, ref events
 // mockJetStreamMsg satisfies jetstream.Msg for synchronous test execution.
 type mockJetStreamMsg struct{}
 
-func (m *mockJetStreamMsg) Ack() error                                     { return nil }
-func (m *mockJetStreamMsg) DoubleAck(context.Context) error                { return nil }
-func (m *mockJetStreamMsg) Nak() error                                     { return nil }
-func (m *mockJetStreamMsg) NakWithDelay(time.Duration) error               { return nil }
-func (m *mockJetStreamMsg) InProgress() error                              { return nil }
-func (m *mockJetStreamMsg) Term() error                                    { return nil }
-func (m *mockJetStreamMsg) TermWithReason(string) error                    { return nil }
-func (m *mockJetStreamMsg) Metadata() (*jetstream.MsgMetadata, error)      { return nil, nil }
-func (m *mockJetStreamMsg) Data() []byte                                   { return nil }
-func (m *mockJetStreamMsg) Subject() string                                { return "" }
-func (m *mockJetStreamMsg) Reply() string                                  { return "" }
-func (m *mockJetStreamMsg) Headers() nats.Header                           { return nil }
+func (m *mockJetStreamMsg) Ack() error                                { return nil }
+func (m *mockJetStreamMsg) DoubleAck(context.Context) error           { return nil }
+func (m *mockJetStreamMsg) Nak() error                                { return nil }
+func (m *mockJetStreamMsg) NakWithDelay(time.Duration) error          { return nil }
+func (m *mockJetStreamMsg) InProgress() error                         { return nil }
+func (m *mockJetStreamMsg) Term() error                               { return nil }
+func (m *mockJetStreamMsg) TermWithReason(string) error               { return nil }
+func (m *mockJetStreamMsg) Metadata() (*jetstream.MsgMetadata, error) { return nil, nil }
+func (m *mockJetStreamMsg) Data() []byte                              { return nil }
+func (m *mockJetStreamMsg) Subject() string                           { return "" }
+func (m *mockJetStreamMsg) Reply() string                             { return "" }
+func (m *mockJetStreamMsg) Headers() nats.Header                      { return nil }
 
 // Mock Tessera appender for tests
 type mockTesseraAppender struct {

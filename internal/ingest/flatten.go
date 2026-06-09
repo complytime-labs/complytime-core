@@ -66,21 +66,21 @@ func FlattenEvaluationLog(log *gemara.EvaluationLog, policyID string) ([]Evidenc
 			}
 
 			reqID := al.Requirement.EntryId
-			steps := uint16(al.StepsExecuted)
+			steps := uint16(al.StepsExecuted) //nolint:gosec // G115: parsed YAML value
 
-		row := EvidenceRow{
-			EvidenceID: log.Metadata.Id,
+			row := EvidenceRow{
+				EvidenceID: log.Metadata.Id,
 
-			TargetID:   log.Target.Id,
-			TargetName: strPtr(log.Target.Name),
-			TargetType: strPtr(log.Target.Type.String()),
-			TargetEnv:  strPtr(log.Target.Environment),
-			Owner:      strPtr(log.Target.Owner.Name),
+				TargetID:   log.Target.Id,
+				TargetName: strPtr(log.Target.Name),
+				TargetType: strPtr(log.Target.Type.String()),
+				TargetEnv:  strPtr(log.Target.Environment),
+				Owner:      strPtr(log.Target.Owner.Name),
 
-			EngineName:    strPtr(log.Metadata.Author.Name),
-			EngineVersion: strPtr(log.Metadata.Version),
+				EngineName:    strPtr(log.Metadata.Author.Name),
+				EngineVersion: strPtr(log.Metadata.Version),
 
-			RuleID: eval.Control.EntryId,
+				RuleID: eval.Control.EntryId,
 
 				EvalResult:  al.Result.String(),
 				EvalMessage: strPtr(al.Message),

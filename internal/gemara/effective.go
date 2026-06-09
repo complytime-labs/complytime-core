@@ -77,7 +77,7 @@ func ResolveGuidanceRefsFromPolicy(pol sdk.Policy) []string {
 func ResolveGuidanceRefs(content string) []string {
 	var partial struct {
 		Metadata struct {
-			Type              string              `yaml:"type"`
+			Type              string                 `yaml:"type"`
 			MappingReferences []sdk.MappingReference `yaml:"mapping-references"`
 		} `yaml:"metadata"`
 		Imports struct {

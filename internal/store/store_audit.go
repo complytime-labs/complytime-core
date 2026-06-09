@@ -48,7 +48,7 @@ func (s *Store) ListAuditLogs(ctx context.Context, policyID string, start, end t
 		From("audit_logs").
 		Where(sq.Eq{"policy_id": policyID}).
 		OrderBy("audit_start DESC").
-		Limit(uint64(consts.ClampLimit(limit)))
+		Limit(uint64(consts.ClampLimit(limit))) //nolint:gosec // G115: clamped positive
 	if !start.IsZero() {
 		qb = qb.Where(sq.GtOrEq{"audit_start": start})
 	}
@@ -185,7 +185,7 @@ func (s *Store) ListDraftAuditLogs(ctx context.Context, status string, limit int
 		"reviewed_by", "promoted_at", "reviewer_edits").
 		From("draft_audit_logs").
 		OrderBy("created_at DESC").
-		Limit(uint64(consts.ClampLimit(limit)))
+		Limit(uint64(consts.ClampLimit(limit))) //nolint:gosec // G115: clamped positive
 	if status != "" {
 		qb = qb.Where(sq.Eq{"status": status})
 	}

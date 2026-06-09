@@ -80,7 +80,7 @@ func IngestAsyncHandler(pub IngestPublisher, tracker *IngestTracker, appender Te
 		tracker.Create(jobID)
 
 		ref := events.IngestRef{
-			JobID: jobID,
+			JobID:    jobID,
 			LogIndex: logIndex,
 			PublisherIdentity: events.PublisherIdentity{
 				Sub:      claims.Sub,

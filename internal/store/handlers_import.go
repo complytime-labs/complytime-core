@@ -299,4 +299,3 @@ func storeCatalogFromContent(ctx context.Context, s Stores, artType, content str
 // rawBodyImport, importPolicyFromArtifactBody, importMappingFromArtifactBody,
 // importCatalogFromArtifactBody removed — see ADR #0034. All raw artifact
 // ingestion now flows through POST /api/ingest → NATS → IngestWorker.
-

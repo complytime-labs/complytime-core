@@ -16,11 +16,11 @@ import (
 )
 
 type Client struct {
-	appender   *tesserapkg.Appender
-	reader     tesserapkg.LogReader
-	shutdown   func(context.Context) error
+	appender    *tesserapkg.Appender
+	reader      tesserapkg.LogReader
+	shutdown    func(context.Context) error
 	appenderCtx context.Context
-	cancel     context.CancelFunc
+	cancel      context.CancelFunc
 }
 
 // NewClient creates a new Tessera client.
@@ -56,7 +56,7 @@ func NewClient(ctx context.Context, storagePath string, opts Options) (*Client, 
 
 	// Create append options
 	appendOpts := tesserapkg.NewAppendOptions().
-		WithBatching(uint(opts.CheckpointSize), opts.CheckpointTime).
+		WithBatching(uint(opts.CheckpointSize), opts.CheckpointTime). //nolint:gosec // G115: config value
 		WithCheckpointInterval(opts.CheckpointTime).
 		WithCheckpointSigner(signer)
 

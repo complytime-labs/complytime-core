@@ -21,7 +21,7 @@ func u16(v int) *uint16 {
 	if v <= 0 {
 		return nil
 	}
-	u := uint16(v)
+	u := uint16(v) //nolint:gosec // G115: test value
 	return &u
 }
 

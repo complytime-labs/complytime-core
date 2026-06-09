@@ -20,11 +20,11 @@ const (
 	SubjectPolicyNew        = "core.policy.new"
 	SubjectTargetRegistered = "core.target.registered"
 
-	StreamIngest          = "INGEST"
-	ConsumerIngestWorker  = "ingest-worker"
-	DefaultMaxDeliver     = 5
-	DefaultAckWait        = 30 * time.Second
-	DefaultDedupeWindow   = 2 * time.Minute
+	StreamIngest         = "INGEST"
+	ConsumerIngestWorker = "ingest-worker"
+	DefaultMaxDeliver    = 5
+	DefaultAckWait       = 30 * time.Second
+	DefaultDedupeWindow  = 2 * time.Minute
 )
 
 // SubjectPrefix is the NATS subject namespace for studio events.

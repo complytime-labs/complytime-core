@@ -50,7 +50,7 @@ type EvidenceRow struct {
 	SourceRegistry *string
 	BlobRef        *string
 
-	Owner     *string
+	Owner *string
 
 	CollectedAt time.Time
 	LogIndex    *uint64 // Tessera transparency log position (optional)

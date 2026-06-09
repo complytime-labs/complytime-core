@@ -14,11 +14,11 @@ import (
 
 // JWTClaims represents the standard JWT claims we extract and validate
 type JWTClaims struct {
-	Iss string   // Issuer
-	Sub string   // Subject
-	Aud string   // Audience (first one if multiple)
-	Exp int64   // Expiration time (Unix timestamp)
-	Iat int64   // Issued at (Unix timestamp)
+	Iss string // Issuer
+	Sub string // Subject
+	Aud string // Audience (first one if multiple)
+	Exp int64  // Expiration time (Unix timestamp)
+	Iat int64  // Issued at (Unix timestamp)
 }
 
 // JWTVerifier handles JWT verification with JWKS discovery and caching

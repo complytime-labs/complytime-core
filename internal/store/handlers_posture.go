@@ -228,4 +228,3 @@ func listRiskThreatsHandler(s RiskStore) echo.HandlerFunc {
 		return c.JSON(http.StatusOK, rows)
 	}
 }
-
