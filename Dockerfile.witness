@@ -12,6 +12,8 @@ RUN GOFIPS140=${GOFIPS140} CGO_ENABLED=0 go build -o /studio-witness ./cmd/witne
 
 FROM gcr.io/distroless/static-debian12:nonroot
 
+USER 65532
+
 COPY --from=builder /studio-witness /studio-witness
 
 ENTRYPOINT ["/studio-witness"]
