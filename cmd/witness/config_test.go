@@ -32,7 +32,7 @@ trusted_publishers:
 
 	tmpfile, err := os.CreateTemp("", "witness-config-*.yaml")
 	require.NoError(t, err)
-	defer func() { _ = os.Remove(tmpfile.Name()) }()
+	defer func() { _ = os.Remove(tmpfile.Name()) }() //nolint:gosec // G703: test temp file
 
 	_, err = tmpfile.WriteString(yamlContent)
 	require.NoError(t, err)

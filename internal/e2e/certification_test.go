@@ -72,9 +72,7 @@ var _ = Describe("Certification Pipeline", func() {
 			Mappings: st,
 		}
 
-		worker := store.IngestWorker(workerCtx, stores, bus, tracker)
-		_, err = bus.SubscribeIngestRaw(worker)
-		Expect(err).NotTo(HaveOccurred(), "Failed to subscribe worker to NATS")
+		setupJetStreamWorker(GinkgoT(), workerCtx, bus, stores, bus, tracker, tesseraClient)
 
 		By("Setting up certification pipeline with 100ms debounce")
 		certBus := connectTestNATS(GinkgoT(), natsURL)
@@ -130,7 +128,7 @@ var _ = Describe("Certification Pipeline", func() {
 					return false
 				}
 				return len(signals) > 0
-			}).WithTimeout(5 * time.Second).WithPolling(200 * time.Millisecond).Should(
+			}).WithTimeout(5*time.Second).WithPolling(200*time.Millisecond).Should(
 				BeTrue(), "Evidence should have trust signals after pipeline runs",
 			)
 
@@ -227,7 +225,7 @@ evaluations:
 					return false
 				}
 				return len(signals) > 0 // Pipeline ran
-			}).WithTimeout(5 * time.Second).WithPolling(200 * time.Millisecond).Should(
+			}).WithTimeout(5*time.Second).WithPolling(200*time.Millisecond).Should(
 				BeTrue(), "Certification pipeline should have processed the evidence",
 			)
 
@@ -301,7 +299,7 @@ evaluations:
 					return false
 				}
 				return len(signals) > 0
-			}).WithTimeout(5 * time.Second).WithPolling(200 * time.Millisecond).Should(
+			}).WithTimeout(5*time.Second).WithPolling(200*time.Millisecond).Should(
 				BeTrue(), "Evidence should have trust signals after pipeline runs",
 			)
 

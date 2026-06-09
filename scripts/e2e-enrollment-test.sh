@@ -93,10 +93,10 @@ $CONTAINER_RT run -d --name "$PG_CONTAINER" \
     -p "$PG_PORT":5432 \
     docker.io/library/postgres:16 >/dev/null
 
-log "Starting NATS on port $NATS_PORT..."
+log "Starting NATS (JetStream enabled) on port $NATS_PORT..."
 $CONTAINER_RT run -d --name "$NATS_CONTAINER" \
     -p "$NATS_PORT":4222 \
-    docker.io/library/nats:latest >/dev/null
+    docker.io/library/nats:latest -js -sd /data >/dev/null
 
 log "Waiting for PostgreSQL..."
 wait_for_port "$PG_PORT"

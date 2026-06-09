@@ -20,7 +20,7 @@ type Pinger interface {
 }
 
 type pingResult struct {
-	degraded []string
+	degraded  []string
 	checkedAt time.Time
 }
 

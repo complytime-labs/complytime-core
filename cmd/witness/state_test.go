@@ -14,7 +14,7 @@ import (
 func TestState_SaveAndLoad(t *testing.T) {
 	tmpfile, err := os.CreateTemp("", "witness-state-*.json")
 	require.NoError(t, err)
-	defer func() { _ = os.Remove(tmpfile.Name()) }()
+	defer func() { _ = os.Remove(tmpfile.Name()) }() //nolint:gosec // G703: test temp file
 	require.NoError(t, tmpfile.Close())
 
 	// Create state

@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -107,7 +108,15 @@ func main() {
 		os.Exit(1)
 	}
 	defer bus.Close()
-	slog.Info("nats ready")
+
+	ingestStreamCfg := events.IngestStreamConfig{
+		MaxDeliver: envInt("NATS_INGEST_MAX_DELIVER", events.DefaultMaxDeliver),
+		AckWait:    envDuration("NATS_INGEST_ACK_WAIT", events.DefaultAckWait),
+	}
+	if err := bus.EnsureIngestStream(ctx, ingestStreamCfg); err != nil {
+		slog.Error("jetstream stream setup failed", "error", err)
+		os.Exit(1)
+	}
 
 	var pub store.EventPublisher = bus
 	ingestTracker := store.NewIngestTracker()
@@ -185,14 +194,13 @@ func main() {
 	defer func() { _ = sub.Unsubscribe() }()
 	slog.Info("nats evidence subscription active", "subject", events.SubjectEvidence+".>")
 
-	ingestWorker := store.IngestWorker(ctx, stores, pub, ingestTracker)
-	ingestSub, ingestSubErr := bus.SubscribeIngestRaw(ingestWorker)
-	if ingestSubErr != nil {
-		slog.Error("nats ingest subscribe failed", "error", ingestSubErr)
+	ingestHandler := store.IngestWorker(ctx, stores, pub, ingestTracker, tesseraClient)
+	ingestCC, ingestCCErr := bus.ConsumeIngest(ctx, ingestHandler)
+	if ingestCCErr != nil {
+		slog.Error("jetstream ingest consumer failed", "error", ingestCCErr)
 		os.Exit(1)
 	}
-	defer func() { _ = ingestSub.Unsubscribe() }()
-	slog.Info("nats async ingest subscription active", "subject", events.SubjectIngestRaw)
+	defer ingestCC.Stop()
 
 	authHandler := auth.NewHandler()
 	authHandler.SetUserStore(pgClient)
@@ -331,6 +339,32 @@ func splitComma(raw string) []string {
 		}
 	}
 	return out
+}
+
+func envInt(key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		slog.Warn("invalid int env", "key", key, "value", v, "fallback", fallback)
+		return fallback
+	}
+	return n
+}
+
+func envDuration(key string, fallback time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		slog.Warn("invalid duration env", "key", key, "value", v, "fallback", fallback)
+		return fallback
+	}
+	return d
 }
 
 // writeProtect gates POST/PUT/PATCH/DELETE on /api/* through adminGuard.

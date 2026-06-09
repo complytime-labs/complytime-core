@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -108,10 +109,18 @@ func ociImport(c echo.Context, s Stores, ref string) error {
 		jobID := uuid.New().String()
 		s.IngestTracker.Create(jobID)
 
-		if err := s.IngestPublisher.PublishIngestRawWithBundle(
-			jobID, f.Data, logIndex, identity, bundleID, ref,
-		); err != nil {
-			slog.Error("nats publish failed", "name", f.Name, "error", err)
+		ingestRef := events.IngestRef{
+			JobID:             jobID,
+			LogIndex:          logIndex,
+			PublisherIdentity: identity,
+			BundleID:          bundleID,
+			OCIReference:      ref,
+			Timestamp:         time.Now().UTC(),
+		}
+		if err := s.IngestPublisher.PublishIngest(ctx, ingestRef); err != nil {
+			s.IngestTracker.Fail(jobID, fmt.Sprintf("publish failed: %v", err))
+			slog.Error("jetstream publish failed", "name", f.Name, "error", err)
+			continue
 		}
 
 		imported = append(imported, ociImportedArtifact{
@@ -290,4 +299,3 @@ func storeCatalogFromContent(ctx context.Context, s Stores, artType, content str
 // rawBodyImport, importPolicyFromArtifactBody, importMappingFromArtifactBody,
 // importCatalogFromArtifactBody removed — see ADR #0034. All raw artifact
 // ingestion now flows through POST /api/ingest → NATS → IngestWorker.
-

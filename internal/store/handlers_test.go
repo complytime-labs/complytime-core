@@ -73,4 +73,3 @@ func TestQueryEvidenceHandler_SourceRegistryJSON(t *testing.T) {
 		t.Fatalf("source_registry field: %v", got[0]["source_registry"])
 	}
 }
-

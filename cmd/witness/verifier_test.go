@@ -36,10 +36,10 @@ type evidenceRow struct {
 }
 
 type mockPostgres struct {
-	evidenceRows       map[uint64]evidenceRow
-	witnessedIndices   map[uint64]bool
-	registeredTargets  map[string]bool
-	existingPolicies   map[string]bool
+	evidenceRows      map[uint64]evidenceRow
+	witnessedIndices  map[uint64]bool
+	registeredTargets map[string]bool
+	existingPolicies  map[string]bool
 }
 
 func (m *mockPostgres) QueryEvidenceByLogIndex(ctx context.Context, logIndex uint64) (*EvidenceRow, error) {
@@ -93,7 +93,7 @@ func TestVerifier_VerifyEntry_AllChecksPass(t *testing.T) {
 	mockDB := &mockPostgres{
 		evidenceRows: map[uint64]evidenceRow{
 			42: {
-				evidenceID: "test-ev", hasFailed:       false,
+				evidenceID: "test-ev", hasFailed: false,
 				publisherIssuer: "https://token.actions.githubusercontent.com",
 				submittedBy:     "repo:complytime/scanner:ref:refs/heads/main",
 			},
@@ -129,7 +129,7 @@ func TestVerifier_VerifyEntry_CertificationFailed(t *testing.T) {
 	mockDB := &mockPostgres{
 		evidenceRows: map[uint64]evidenceRow{
 			42: {
-				evidenceID: "test-ev", hasFailed:       true, // Failed trust signals
+				evidenceID: "test-ev", hasFailed: true, // Failed trust signals
 				publisherIssuer: "https://token.actions.githubusercontent.com",
 				submittedBy:     "repo:complytime/scanner:ref:refs/heads/main",
 			},
@@ -153,7 +153,7 @@ func TestVerifier_VerifyEntry_PublisherNotTrusted(t *testing.T) {
 	mockDB := &mockPostgres{
 		evidenceRows: map[uint64]evidenceRow{
 			42: {
-				evidenceID: "test-ev", hasFailed:       true,
+				evidenceID: "test-ev", hasFailed: true,
 				publisherIssuer: "https://untrusted-issuer.example.com",
 				submittedBy:     "malicious-actor",
 			},
@@ -251,12 +251,12 @@ results:
 	mockDB := &mockPostgres{
 		evidenceRows: map[uint64]evidenceRow{
 			0: {
-				evidenceID: "test-ev", hasFailed:       false,
+				evidenceID: "test-ev", hasFailed: false,
 				publisherIssuer: "https://kubernetes.default.svc",
 				submittedBy:     "system:serviceaccount:complytime:admin",
 			},
 			42: {
-				evidenceID: "test-ev", hasFailed:       false,
+				evidenceID: "test-ev", hasFailed: false,
 				publisherIssuer: "https://token.actions.githubusercontent.com",
 				submittedBy:     "repo:complytime/scanner:ref:refs/heads/main",
 			},
@@ -354,7 +354,7 @@ results:
 
 	mockDB := &mockPostgres{
 		evidenceRows: map[uint64]evidenceRow{
-			1: {evidenceID: "test-ev", hasFailed: false, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
+			1:  {evidenceID: "test-ev", hasFailed: false, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
 			42: {evidenceID: "test-ev", hasFailed: false, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
 		},
 		witnessedIndices: map[uint64]bool{

@@ -41,7 +41,7 @@ func ParseMappingEntries(content, mappingID, sourceCatalogID, targetCatalogID, f
 		for _, t := range m.Targets {
 			strength := uint8(0)
 			if t.Strength > 0 && t.Strength <= 10 {
-				strength = uint8(t.Strength)
+				strength = uint8(t.Strength) //nolint:gosec // G115: strength is 0-100
 			}
 			entries = append(entries, MappingEntry{
 				MappingID:       mappingID,
@@ -59,4 +59,3 @@ func ParseMappingEntries(content, mappingID, sourceCatalogID, targetCatalogID, f
 	}
 	return entries, nil
 }
-

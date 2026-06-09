@@ -241,7 +241,7 @@ func (s *Store) QueryThreats(ctx context.Context, catalogID, policyID string, li
 	qb := psql.Select("catalog_id", "threat_id", "title", "description", "group_id", "policy_id").
 		From("threats").
 		OrderBy("catalog_id", "threat_id").
-		Limit(uint64(consts.ClampLimit(limit)))
+		Limit(uint64(consts.ClampLimit(limit))) //nolint:gosec // G115: clamped positive
 	if catalogID != "" {
 		qb = qb.Where(sq.Eq{"catalog_id": catalogID})
 	}
@@ -274,7 +274,7 @@ func (s *Store) QueryControlThreats(ctx context.Context, catalogID, controlID st
 	qb := psql.Select("catalog_id", "control_id", "threat_reference_id", "threat_entry_id").
 		From("control_threats").
 		OrderBy("catalog_id", "control_id", "threat_reference_id").
-		Limit(uint64(consts.ClampLimit(limit)))
+		Limit(uint64(consts.ClampLimit(limit))) //nolint:gosec // G115: clamped positive
 	if catalogID != "" {
 		qb = qb.Where(sq.Eq{"catalog_id": catalogID})
 	}
@@ -365,7 +365,7 @@ func (s *Store) QueryRisks(ctx context.Context, catalogID, policyID string, limi
 	qb := psql.Select("catalog_id", "risk_id", "title", "description", "severity", "group_id", "impact", "policy_id").
 		From("risks").
 		OrderBy("catalog_id", "risk_id").
-		Limit(uint64(consts.ClampLimit(limit)))
+		Limit(uint64(consts.ClampLimit(limit))) //nolint:gosec // G115: clamped positive
 	if catalogID != "" {
 		qb = qb.Where(sq.Eq{"catalog_id": catalogID})
 	}
@@ -398,7 +398,7 @@ func (s *Store) QueryRiskThreats(ctx context.Context, catalogID, riskID string, 
 	qb := psql.Select("catalog_id", "risk_id", "threat_reference_id", "threat_entry_id").
 		From("risk_threats").
 		OrderBy("catalog_id", "risk_id", "threat_reference_id").
-		Limit(uint64(consts.ClampLimit(limit)))
+		Limit(uint64(consts.ClampLimit(limit))) //nolint:gosec // G115: clamped positive
 	if catalogID != "" {
 		qb = qb.Where(sq.Eq{"catalog_id": catalogID})
 	}

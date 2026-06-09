@@ -180,9 +180,9 @@ func TestTrustSignals_Indexes(t *testing.T) {
 
 	// Query pg_indexes to verify our indexes exist
 	expectedIndexes := []string{
-		"trust_signals_pkey",            // Primary key
-		"idx_trust_signals_result",      // (evidence_id, result)
-		"idx_trust_signals_layer",       // (layer, check_name, result)
+		"trust_signals_pkey",       // Primary key
+		"idx_trust_signals_result", // (evidence_id, result)
+		"idx_trust_signals_layer",  // (layer, check_name, result)
 	}
 
 	for _, idxName := range expectedIndexes {

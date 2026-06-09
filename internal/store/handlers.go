@@ -57,7 +57,7 @@ type Stores struct {
 	Users               identity.UserStore
 	Registry            *RegistryConfig
 	IngestTracker       *IngestTracker
-	IngestPublisher     IngestRawPublisher
+	IngestPublisher     IngestPublisher
 	TesseraAppender     TesseraAppender
 	JWTVerifier         JWTVerifier
 	Targets             TargetStore

@@ -176,8 +176,8 @@ func TestSpecDrift(t *testing.T) {
 		wildcardSpecPaths[specPath] = true
 	}
 
-	var missing []string  // in spec but not in code
-	var undoced []string   // in code but not in spec
+	var missing []string // in spec but not in code
+	var undoced []string // in code but not in spec
 
 	for k := range spec {
 		if wildcardSpecPaths[k.Path] {
@@ -328,9 +328,9 @@ func (*nopThreatStore) QueryControlThreats(context.Context, string, string, int)
 
 type nopRiskStore struct{}
 
-func (*nopRiskStore) InsertRisks(context.Context, []gemara.RiskRow) error        { panic("nop") }
+func (*nopRiskStore) InsertRisks(context.Context, []gemara.RiskRow) error             { panic("nop") }
 func (*nopRiskStore) InsertRiskThreats(context.Context, []gemara.RiskThreatRow) error { panic("nop") }
-func (*nopRiskStore) CountRisks(context.Context, string) (int, error)            { panic("nop") }
+func (*nopRiskStore) CountRisks(context.Context, string) (int, error)                 { panic("nop") }
 func (*nopRiskStore) QueryRisks(context.Context, string, string, int) ([]gemara.RiskRow, error) {
 	panic("nop")
 }
@@ -374,15 +374,7 @@ func (*nopEventPublisher) PublishTargetRegistered(uint64, string, string) {}
 
 type nopIngestPublisher struct{}
 
-func (*nopIngestPublisher) PublishIngestRaw(string, []byte) error { return nil }
-
-func (*nopIngestPublisher) PublishIngestRawWithContext(string, []byte, uint64, events.PublisherIdentity) error {
-	return nil
-}
-
-func (*nopIngestPublisher) PublishIngestRawWithBundle(string, []byte, uint64, events.PublisherIdentity, string, string) error {
-	return nil
-}
+func (*nopIngestPublisher) PublishIngest(_ context.Context, _ events.IngestRef) error { return nil }
 
 type nopHealthChecker struct{}
 
@@ -411,17 +403,17 @@ func (*nopUserStore) GetUser(context.Context, string) (*auth.User, error) {
 func (*nopUserStore) GetUserBySub(context.Context, string, string) (*auth.User, error) {
 	return nil, fmt.Errorf("nop")
 }
-func (*nopUserStore) ListUsers(context.Context) ([]auth.User, error)         { return nil, nil }
-func (*nopUserStore) SetRole(context.Context, string, string) (string, error) { return "", nil }
-func (*nopUserStore) CountUsers(context.Context) (int, error)                { return 0, nil }
-func (*nopUserStore) CountAdmins(context.Context) (int, error)               { return 0, nil }
-func (*nopUserStore) InsertRoleChange(context.Context, auth.RoleChange) error { return nil }
+func (*nopUserStore) ListUsers(context.Context) ([]auth.User, error)             { return nil, nil }
+func (*nopUserStore) SetRole(context.Context, string, string) (string, error)    { return "", nil }
+func (*nopUserStore) CountUsers(context.Context) (int, error)                    { return 0, nil }
+func (*nopUserStore) CountAdmins(context.Context) (int, error)                   { return 0, nil }
+func (*nopUserStore) InsertRoleChange(context.Context, auth.RoleChange) error    { return nil }
 func (*nopUserStore) ListRoleChanges(context.Context) ([]auth.RoleChange, error) { return nil, nil }
-func (*nopUserStore) BootstrapAdmin(context.Context, string) (string, error)  { return "", nil }
+func (*nopUserStore) BootstrapAdmin(context.Context, string) (string, error)     { return "", nil }
 
 type nopTargetStore struct{}
 
-func (*nopTargetStore) InsertTarget(context.Context, store.TargetRow) error              { panic("nop") }
+func (*nopTargetStore) InsertTarget(context.Context, store.TargetRow) error { panic("nop") }
 func (*nopTargetStore) GetLatestTarget(context.Context, string, time.Time) (*store.TargetRow, error) {
 	panic("nop")
 }

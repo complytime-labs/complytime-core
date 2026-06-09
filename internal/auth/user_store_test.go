@@ -342,7 +342,7 @@ func TestTokenFromRequest_XForwardedAccessToken(t *testing.T) {
 	req.Header.Set("X-Forwarded-Access-Token", "ya29.access-token-123")
 
 	token, ok := h.TokenFromRequest(req)
-	if !ok || token != "ya29.access-token-123" {
+	if !ok || token != "ya29.access-token-123" { //nolint:gosec // G101: test fixture, not a real credential
 		t.Fatalf("TokenFromRequest = (%q, %v), want (ya29.access-token-123, true)", token, ok)
 	}
 }

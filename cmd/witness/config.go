@@ -61,7 +61,7 @@ func (c *Config) Validate() error {
 }
 
 func LoadConfig(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G703: path from operator-controlled config
 	if err != nil {
 		return nil, fmt.Errorf("read config file: %w", err)
 	}

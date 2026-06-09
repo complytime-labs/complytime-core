@@ -72,9 +72,7 @@ var _ = Describe("Tessera Evidence Flow", func() {
 			Mappings: st,
 		}
 
-		worker := store.IngestWorker(workerCtx, stores, bus, tracker)
-		_, err = bus.SubscribeIngestRaw(worker)
-		Expect(err).NotTo(HaveOccurred(), "Failed to subscribe worker to NATS")
+		setupJetStreamWorker(GinkgoT(), workerCtx, bus, stores, bus, tracker, tesseraClient)
 
 		By("Starting HTTP server")
 		ingestHandler := store.IngestAsyncHandler(bus, tracker, tesseraClient, jwtCtx.Verifier)

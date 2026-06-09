@@ -63,11 +63,11 @@ func TestJWTVerifierValidToken(t *testing.T) {
 	now := time.Now()
 
 	claims := jwt.RegisteredClaims{
-		Issuer:   issuer,
-		Subject:  subject,
-		Audience: jwt.ClaimStrings{audience},
+		Issuer:    issuer,
+		Subject:   subject,
+		Audience:  jwt.ClaimStrings{audience},
 		ExpiresAt: jwt.NewNumericDate(now.Add(1 * time.Hour)),
-		IssuedAt: jwt.NewNumericDate(now),
+		IssuedAt:  jwt.NewNumericDate(now),
 	}
 
 	// Sign token
@@ -133,11 +133,11 @@ func TestJWTVerifierExpiredToken(t *testing.T) {
 	now := time.Now()
 
 	claims := jwt.RegisteredClaims{
-		Issuer:   issuer,
-		Subject:  subject,
-		Audience: jwt.ClaimStrings{audience},
+		Issuer:    issuer,
+		Subject:   subject,
+		Audience:  jwt.ClaimStrings{audience},
 		ExpiresAt: jwt.NewNumericDate(now.Add(-1 * time.Hour)), // Expired
-		IssuedAt: jwt.NewNumericDate(now.Add(-2 * time.Hour)),
+		IssuedAt:  jwt.NewNumericDate(now.Add(-2 * time.Hour)),
 	}
 
 	// Sign token
@@ -202,11 +202,11 @@ func TestJWTVerifierUnknownIssuer(t *testing.T) {
 	now := time.Now()
 
 	claims := jwt.RegisteredClaims{
-		Issuer:   unknownIssuer,
-		Subject:  subject,
-		Audience: jwt.ClaimStrings{audience},
+		Issuer:    unknownIssuer,
+		Subject:   subject,
+		Audience:  jwt.ClaimStrings{audience},
 		ExpiresAt: jwt.NewNumericDate(now.Add(1 * time.Hour)),
-		IssuedAt: jwt.NewNumericDate(now),
+		IssuedAt:  jwt.NewNumericDate(now),
 	}
 
 	// Sign token

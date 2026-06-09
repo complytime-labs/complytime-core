@@ -25,7 +25,8 @@ Other repos maintain their own ADRs:
 | 0016 | [PII in Structured Logs](pii-in-logs.md) | Accepted (revisit at RACI Phase 3) | 2026-04-27 |
 | 0025 | [Data Platform + Workbench Split](data-platform-workbench-split.md) | Accepted | 2026-05-13 |
 | 0027 | [JWT Bearer Authentication for Headless API Access](jwt-bearer-headless-auth.md) | Accepted | 2026-05-13 |
-| 0028 | [Async Evidence Ingest: Accept-the-Loss Durability](async-ingest-durability.md) | Accepted | 2026-05-13 |
+| 0028 | [Async Evidence Ingest: Accept-the-Loss Durability](async-ingest-durability.md) | Superseded by #0040 | 2026-05-13 |
+| 0040 | [JetStream Durable Consumer for Ingest Pipeline](jetstream-ingest-consumer.md) | Accepted | 2026-05-28 |
 | 0031 | [Three-Protocol Serving Layer](serving-layer-protocols.md) | Accepted | 2026-05-15 |
 | 0033 | [Evidence Quality Boundary](evidence-quality-boundary.md) | Accepted | 2026-05-15 |
 | 0034 | [Unified Ingest Pipeline](unified-ingest-pipeline.md) | Accepted | 2026-05-16 |

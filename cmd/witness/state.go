@@ -22,18 +22,18 @@ func SaveState(path string, state *State) error {
 		return fmt.Errorf("marshal state: %w", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil { //nolint:gosec // G703: path from operator-controlled state dir
 		return fmt.Errorf("create state directory: %w", err)
 	}
 
 	// Write to temp file first for atomicity
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0600); err != nil {
+	if err := os.WriteFile(tmp, data, 0600); err != nil { //nolint:gosec // G703: path from operator-controlled state dir
 		return fmt.Errorf("write temp state file: %w", err)
 	}
 
 	// Atomic rename ensures state file is never corrupted
-	if err := os.Rename(tmp, path); err != nil {
+	if err := os.Rename(tmp, path); err != nil { //nolint:gosec // G703: operator-controlled state dir
 		return fmt.Errorf("rename state file: %w", err)
 	}
 
@@ -41,7 +41,7 @@ func SaveState(path string, state *State) error {
 }
 
 func LoadState(path string) (*State, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G703: operator-controlled state file
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Return zero state if file doesn't exist

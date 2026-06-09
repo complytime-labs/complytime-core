@@ -12,12 +12,12 @@ import (
 
 // TrustSignalRow represents a single trust signal record in the database.
 type TrustSignalRow struct {
-	EvidenceID string          `json:"evidence_id"`
-	Layer      string          `json:"layer"`
-	CheckName  string          `json:"check_name"`
+	EvidenceID string           `json:"evidence_id"`
+	Layer      string           `json:"layer"`
+	CheckName  string           `json:"check_name"`
 	Result     certifier.Result `json:"result"`
-	Reason     string          `json:"reason"`
-	CheckedAt  time.Time       `json:"checked_at"`
+	Reason     string           `json:"reason"`
+	CheckedAt  time.Time        `json:"checked_at"`
 }
 
 // TrustSignalFilter holds query parameters for trust signal queries.
@@ -108,4 +108,3 @@ func (s *Store) HasFailedTrustSignals(ctx context.Context, evidenceID string) (b
 	`, evidenceID).Scan(&hasFailed)
 	return hasFailed, err
 }
-

@@ -70,9 +70,7 @@ var _ = Describe("Policy Enrollment", func() {
 			PolicyDimensions: st,
 		}
 
-		worker := store.IngestWorker(workerCtx, stores, bus, tracker)
-		_, err = bus.SubscribeIngestRaw(worker)
-		Expect(err).NotTo(HaveOccurred())
+		setupJetStreamWorker(GinkgoT(), workerCtx, bus, stores, bus, tracker, tesseraClient)
 
 		By("Starting HTTP server")
 		ingestHandler := store.IngestAsyncHandler(bus, tracker, tesseraClient, jwtCtx.Verifier)
@@ -221,7 +219,7 @@ dimensions:
 
 			By("Querying for applicable policies")
 			queryURL := fmt.Sprintf("%s/api/policies/discover?target_id=prod-cluster&timestamp=2026-05-26T10:00:00Z", apiServer.URL)
-			queryResp, err := http.Get(queryURL)
+			queryResp, err := http.Get(queryURL) //nolint:gosec // G107: test server URL
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = queryResp.Body.Close() }()
 			Expect(queryResp.StatusCode).To(Equal(http.StatusOK))
@@ -239,7 +237,7 @@ dimensions:
 
 			By("Querying with non-existent target")
 			queryURL = fmt.Sprintf("%s/api/policies/discover?target_id=nonexistent&timestamp=2026-05-26T10:00:00Z", apiServer.URL)
-			queryResp2, err := http.Get(queryURL)
+			queryResp2, err := http.Get(queryURL) //nolint:gosec // G107: test server URL
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = queryResp2.Body.Close() }()
 			Expect(queryResp2.StatusCode).To(Equal(http.StatusNotFound))

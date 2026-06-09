@@ -69,9 +69,7 @@ var _ = Describe("Evidence Chain", func() {
 			PolicyDimensions: st,
 		}
 
-		worker := store.IngestWorker(workerCtx, stores, bus, tracker)
-		_, err = bus.SubscribeIngestRaw(worker)
-		Expect(err).NotTo(HaveOccurred())
+		setupJetStreamWorker(GinkgoT(), workerCtx, bus, stores, bus, tracker, tesseraClient)
 
 		By("Starting HTTP server")
 		ingestHandler := store.IngestAsyncHandler(bus, tracker, tesseraClient, jwtCtx.Verifier)

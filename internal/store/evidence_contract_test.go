@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/complytime-labs/complytime-core/internal/auth"
 	"github.com/complytime-labs/complytime-core/internal/events"
@@ -92,42 +95,56 @@ actions:
 `
 
 type immediateIngestPublisher struct {
-	worker func(events.IngestRawEvent)
+	handler events.IngestMsgHandler
+	reader  TesseraReader
 }
 
-func (p *immediateIngestPublisher) PublishIngestRaw(jobID string, yaml []byte) error {
-	p.worker(events.IngestRawEvent{
-		JobID:     jobID,
-		YAML:      yaml,
-		Timestamp: time.Now().UTC(),
-	})
+func (p *immediateIngestPublisher) PublishIngest(ctx context.Context, ref events.IngestRef) error {
+	p.handler(ctx, ref, &mockJetStreamMsg{})
 	return nil
 }
 
-func (p *immediateIngestPublisher) PublishIngestRawWithContext(jobID string, yaml []byte, logIndex uint64, identity events.PublisherIdentity) error {
-	p.worker(events.IngestRawEvent{
-		JobID:             jobID,
-		LogIndex:          logIndex,
-		YAML:              yaml,
-		PublisherIdentity: identity,
-		Timestamp:         time.Now().UTC(),
-	})
-	return nil
-}
+// mockJetStreamMsg satisfies jetstream.Msg for synchronous test execution.
+type mockJetStreamMsg struct{}
 
-func (p *immediateIngestPublisher) PublishIngestRawWithBundle(jobID string, yaml []byte, logIndex uint64, identity events.PublisherIdentity, bundleID, ociRef string) error {
-	return p.PublishIngestRawWithContext(jobID, yaml, logIndex, identity)
-}
+func (m *mockJetStreamMsg) Ack() error                                { return nil }
+func (m *mockJetStreamMsg) DoubleAck(context.Context) error           { return nil }
+func (m *mockJetStreamMsg) Nak() error                                { return nil }
+func (m *mockJetStreamMsg) NakWithDelay(time.Duration) error          { return nil }
+func (m *mockJetStreamMsg) InProgress() error                         { return nil }
+func (m *mockJetStreamMsg) Term() error                               { return nil }
+func (m *mockJetStreamMsg) TermWithReason(string) error               { return nil }
+func (m *mockJetStreamMsg) Metadata() (*jetstream.MsgMetadata, error) { return nil, nil }
+func (m *mockJetStreamMsg) Data() []byte                              { return nil }
+func (m *mockJetStreamMsg) Subject() string                           { return "" }
+func (m *mockJetStreamMsg) Reply() string                             { return "" }
+func (m *mockJetStreamMsg) Headers() nats.Header                      { return nil }
 
 // Mock Tessera appender for tests
 type mockTesseraAppender struct {
 	nextIndex uint64
+	entries   map[uint64][]byte
 }
 
 func (m *mockTesseraAppender) Add(ctx context.Context, entry []byte) (uint64, error) {
+	if m.entries == nil {
+		m.entries = make(map[uint64][]byte)
+	}
 	idx := m.nextIndex
+	m.entries[idx] = entry
 	m.nextIndex++
 	return idx, nil
+}
+
+func (m *mockTesseraAppender) Read(ctx context.Context, index uint64) ([]byte, error) {
+	if m.entries == nil {
+		return nil, fmt.Errorf("index %d not yet integrated (log size: 0)", index)
+	}
+	data, ok := m.entries[index]
+	if !ok {
+		return nil, fmt.Errorf("index %d not yet integrated (log size: %d)", index, m.nextIndex)
+	}
+	return data, nil
 }
 
 // Mock JWT verifier for tests that always succeeds
@@ -147,18 +164,17 @@ func echoWithSyncIngest(t *testing.T, ev EvidenceStore) (*echo.Echo, *IngestTrac
 	t.Helper()
 	ctx := context.Background()
 	tracker := NewIngestTracker()
-	var st Stores
-	pub := &immediateIngestPublisher{}
 	tessera := &mockTesseraAppender{}
 	jwt := &mockJWTVerifier{}
-	st = Stores{
+	pub := &immediateIngestPublisher{reader: tessera}
+	st := Stores{
 		Evidence:        ev,
 		IngestTracker:   tracker,
 		IngestPublisher: pub,
 		TesseraAppender: tessera,
 		JWTVerifier:     jwt,
 	}
-	pub.worker = IngestWorker(ctx, st, nil, tracker)
+	pub.handler = IngestWorker(ctx, st, nil, tracker, tessera)
 
 	e := echo.New()
 	g := e.Group("/api")

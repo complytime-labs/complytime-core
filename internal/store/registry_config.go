@@ -90,7 +90,7 @@ func LoadRegistryConfig() *RegistryConfig {
 	}
 
 	if path := os.Getenv("REGISTRY_CREDENTIALS_FILE"); path != "" {
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) //nolint:gosec // G703: env var path
 		if err == nil {
 			var creds map[string]string
 			if err := json.Unmarshal(data, &creds); err == nil {

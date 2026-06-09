@@ -21,15 +21,15 @@ type Policy struct {
 	ImportedBy   string    `json:"imported_by,omitempty"`
 
 	// Dimensional metadata for policy enrollment
-	Technologies         []string   `json:"technologies,omitempty"`
-	Geopolitical         []string   `json:"geopolitical,omitempty"`
-	Sensitivity          []string   `json:"sensitivity,omitempty"`
-	Users                []string   `json:"users,omitempty"`
-	Groups               []string   `json:"groups,omitempty"`
+	Technologies            []string   `json:"technologies,omitempty"`
+	Geopolitical            []string   `json:"geopolitical,omitempty"`
+	Sensitivity             []string   `json:"sensitivity,omitempty"`
+	Users                   []string   `json:"users,omitempty"`
+	Groups                  []string   `json:"groups,omitempty"`
 	EvaluationTimelineStart *time.Time `json:"evaluation_timeline_start,omitempty"`
 	EvaluationTimelineEnd   *time.Time `json:"evaluation_timeline_end,omitempty"`
-	BundleID             string     `json:"bundle_id,omitempty"`
-	TesseraLogIndex      *uint64    `json:"tessera_log_index,omitempty"`
+	BundleID                string     `json:"bundle_id,omitempty"`
+	TesseraLogIndex         *uint64    `json:"tessera_log_index,omitempty"`
 }
 
 // InsertPolicy stores a policy artifact (upsert on policy_id).
@@ -147,7 +147,7 @@ func (s *Store) QueryPoliciesByDimensions(ctx context.Context, dims DimensionQue
 			return nil, fmt.Errorf("scan policy dimension row: %w", err)
 		}
 		if logIndex != nil {
-			p.LogIndex = uint64(*logIndex)
+			p.LogIndex = uint64(*logIndex) //nolint:gosec // G115: DB value
 		}
 		out = append(out, p)
 	}
