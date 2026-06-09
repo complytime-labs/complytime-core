@@ -4,7 +4,7 @@ go 1.25.8
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
-	github.com/gemaraproj/go-gemara v0.4.0
+	github.com/gemaraproj/go-gemara v0.5.0
 	github.com/getkin/kin-openapi v0.138.0
 	github.com/goccy/go-yaml v1.19.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -15,6 +15,8 @@ require (
 	github.com/minio/minio-go/v7 v7.0.100
 	github.com/nats-io/nats-server/v2 v2.14.1
 	github.com/nats-io/nats.go v1.51.0
+	github.com/onsi/ginkgo/v2 v2.29.0
+	github.com/onsi/gomega v1.41.0
 	github.com/stretchr/testify v1.11.1
 	github.com/transparency-dev/tessera v1.0.2
 	golang.org/x/mod v0.36.0
@@ -68,8 +70,6 @@ require (
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/oasdiff/yaml v0.0.9 // indirect
 	github.com/oasdiff/yaml3 v0.0.12 // indirect
-	github.com/onsi/ginkgo/v2 v2.29.0 // indirect
-	github.com/onsi/gomega v1.41.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/perimeterx/marshmallow v1.1.5 // indirect
