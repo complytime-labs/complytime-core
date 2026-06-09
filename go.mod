@@ -15,11 +15,13 @@ require (
 	github.com/minio/minio-go/v7 v7.0.100
 	github.com/nats-io/nats-server/v2 v2.14.1
 	github.com/nats-io/nats.go v1.51.0
+	github.com/onsi/ginkgo/v2 v2.29.0
+	github.com/onsi/gomega v1.41.0
 	github.com/stretchr/testify v1.11.1
 	github.com/transparency-dev/tessera v1.0.2
 	golang.org/x/mod v0.36.0
 	gopkg.in/yaml.v3 v3.0.1
-	oras.land/oras-go/v2 v2.6.0
+	oras.land/oras-go/v2 v2.6.1
 )
 
 require (
@@ -68,8 +70,6 @@ require (
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/oasdiff/yaml v0.0.9 // indirect
 	github.com/oasdiff/yaml3 v0.0.12 // indirect
-	github.com/onsi/ginkgo/v2 v2.29.0 // indirect
-	github.com/onsi/gomega v1.41.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/perimeterx/marshmallow v1.1.5 // indirect
