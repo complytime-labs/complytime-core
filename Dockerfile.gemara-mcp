@@ -2,10 +2,12 @@
 #
 # Bridges gemara-mcp (stdio-only) to HTTP/SSE via mcp-proxy.
 
-FROM ghcr.io/gemaraproj/gemara-mcp:latest AS gemara-mcp
+FROM ghcr.io/gemaraproj/gemara-mcp:0.3.0 AS gemara-mcp
 
-FROM ghcr.io/sparfenyuk/mcp-proxy:latest
+FROM ghcr.io/sparfenyuk/mcp-proxy:v0.12.0
 
 COPY --from=gemara-mcp /bin/gemara-mcp /usr/local/bin/gemara-mcp
+
+USER 65534
 
 ENTRYPOINT ["catatonit", "--", "mcp-proxy"]
