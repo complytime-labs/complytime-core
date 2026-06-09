@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-FROM golang:1.25 AS builder
+FROM golang:1.25@sha256:dd7d32e19b28621cd982082397fc0510d396805b717d5e77466aa2dd692340de AS builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
@@ -10,7 +10,9 @@ COPY . .
 ARG GOFIPS140=
 RUN GOFIPS140=${GOFIPS140} CGO_ENABLED=0 go build -o /studio-witness ./cmd/witness/
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:d093aa3e30dbadd3efe1310db061a14da60299baff8450a17fe0ccc514a16639
+
+USER 65532
 
 COPY --from=builder /studio-witness /studio-witness
 
