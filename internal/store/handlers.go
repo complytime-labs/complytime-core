@@ -9,7 +9,6 @@ import (
 
 	"github.com/complytime-labs/complytime-core/internal/auth"
 	"github.com/complytime-labs/complytime-core/internal/blob"
-	"github.com/complytime-labs/complytime-core/internal/identity"
 )
 
 func jsonError(c echo.Context, code int, msg string) error {
@@ -54,7 +53,7 @@ type Stores struct {
 	EventPublisher      EventPublisher
 	HealthChecker       HealthChecker
 	Inventory           InventoryStore
-	Users               identity.UserStore
+	Users               auth.UserStore
 	Registry            *RegistryConfig
 	IngestTracker       *IngestTracker
 	IngestPublisher     IngestPublisher

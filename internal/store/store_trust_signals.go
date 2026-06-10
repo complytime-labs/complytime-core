@@ -7,17 +7,17 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/complytime-labs/complytime-core/internal/certifier"
+	"github.com/complytime-labs/complytime-core/internal/certify"
 )
 
 // TrustSignalRow represents a single trust signal record in the database.
 type TrustSignalRow struct {
-	EvidenceID string           `json:"evidence_id"`
-	Layer      string           `json:"layer"`
-	CheckName  string           `json:"check_name"`
-	Result     certifier.Result `json:"result"`
-	Reason     string           `json:"reason"`
-	CheckedAt  time.Time        `json:"checked_at"`
+	EvidenceID string         `json:"evidence_id"`
+	Layer      string         `json:"layer"`
+	CheckName  string         `json:"check_name"`
+	Result     certify.Result `json:"result"`
+	Reason     string         `json:"reason"`
+	CheckedAt  time.Time      `json:"checked_at"`
 }
 
 // TrustSignalFilter holds query parameters for trust signal queries.
@@ -25,7 +25,7 @@ type TrustSignalFilter struct {
 	EvidenceID string
 	Layer      string
 	CheckName  string
-	Result     certifier.Result
+	Result     certify.Result
 	Limit      int
 	Offset     int
 }

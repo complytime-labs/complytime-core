@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package events_test
+package bus_test
 
 import (
 	"encoding/json"
 	"testing"
 	"time"
 
-	"github.com/complytime-labs/complytime-core/internal/events"
+	"github.com/complytime-labs/complytime-core/internal/bus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestIngestRef_JSONSerialization(t *testing.T) {
 	now := time.Now().UTC()
-	original := events.IngestRef{
+	original := bus.IngestRef{
 		JobID:    "job-123",
 		LogIndex: 42,
-		PublisherIdentity: events.PublisherIdentity{
+		PublisherIdentity: bus.PublisherIdentity{
 			Sub:      "repo:complytime/scanner:ref:refs/heads/main",
 			Issuer:   "https://token.actions.githubusercontent.com",
 			Type:     "pipeline",
@@ -29,7 +29,7 @@ func TestIngestRef_JSONSerialization(t *testing.T) {
 	data, err := json.Marshal(original)
 	require.NoError(t, err)
 
-	var decoded events.IngestRef
+	var decoded bus.IngestRef
 	err = json.Unmarshal(data, &decoded)
 	require.NoError(t, err)
 
@@ -41,10 +41,10 @@ func TestIngestRef_JSONSerialization(t *testing.T) {
 
 func TestIngestRef_WithBundleFields(t *testing.T) {
 	now := time.Now().UTC()
-	original := events.IngestRef{
+	original := bus.IngestRef{
 		JobID:    "job-bundle",
 		LogIndex: 99,
-		PublisherIdentity: events.PublisherIdentity{
+		PublisherIdentity: bus.PublisherIdentity{
 			Sub:      "import:ghcr.io/org/policy:v1",
 			Issuer:   "complytime-gateway",
 			Type:     "import",
@@ -58,7 +58,7 @@ func TestIngestRef_WithBundleFields(t *testing.T) {
 	data, err := json.Marshal(original)
 	require.NoError(t, err)
 
-	var decoded events.IngestRef
+	var decoded bus.IngestRef
 	err = json.Unmarshal(data, &decoded)
 	require.NoError(t, err)
 
@@ -67,7 +67,7 @@ func TestIngestRef_WithBundleFields(t *testing.T) {
 }
 
 func TestPublisherIdentity_JSONSerialization(t *testing.T) {
-	original := events.PublisherIdentity{
+	original := bus.PublisherIdentity{
 		Sub:      "repo:complytime/scanner:ref:refs/heads/main",
 		Issuer:   "https://token.actions.githubusercontent.com",
 		Type:     "pipeline",
@@ -77,7 +77,7 @@ func TestPublisherIdentity_JSONSerialization(t *testing.T) {
 	data, err := json.Marshal(original)
 	require.NoError(t, err)
 
-	var decoded events.PublisherIdentity
+	var decoded bus.PublisherIdentity
 	err = json.Unmarshal(data, &decoded)
 	require.NoError(t, err)
 
@@ -88,17 +88,17 @@ func TestPublisherIdentity_JSONSerialization(t *testing.T) {
 }
 
 func TestIngestRef_WithEmptyPublisherIdentity(t *testing.T) {
-	original := events.IngestRef{
+	original := bus.IngestRef{
 		JobID:             "job-456",
 		LogIndex:          100,
-		PublisherIdentity: events.PublisherIdentity{},
+		PublisherIdentity: bus.PublisherIdentity{},
 		Timestamp:         time.Now().UTC(),
 	}
 
 	data, err := json.Marshal(original)
 	require.NoError(t, err)
 
-	var decoded events.IngestRef
+	var decoded bus.IngestRef
 	err = json.Unmarshal(data, &decoded)
 	require.NoError(t, err)
 

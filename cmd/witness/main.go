@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/complytime-labs/complytime-core/internal/postgres"
+	"github.com/complytime-labs/complytime-core/internal/db"
 	"github.com/complytime-labs/complytime-core/internal/store"
 	"github.com/complytime-labs/complytime-core/internal/tessera"
 )
@@ -67,7 +67,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	pgClient, err := postgres.New(ctx, postgres.Config{URL: pgURL})
+	pgClient, err := db.New(ctx, db.Config{URL: pgURL})
 	if err != nil {
 		slog.Error("failed to connect to PostgreSQL", "error", err)
 		os.Exit(1)

@@ -14,8 +14,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
+	"github.com/complytime-labs/complytime-core/internal/bus"
 	"github.com/complytime-labs/complytime-core/internal/consts"
-	"github.com/complytime-labs/complytime-core/internal/events"
 	"github.com/complytime-labs/complytime-core/internal/httputil"
 )
 
@@ -26,7 +26,7 @@ func registerIngestRoutes(g *echo.Group, s Stores) {
 
 // IngestPublisher publishes an IngestRef to JetStream for durable async processing.
 type IngestPublisher interface {
-	PublishIngest(ctx context.Context, ref events.IngestRef) error
+	PublishIngest(ctx context.Context, ref bus.IngestRef) error
 }
 
 // IngestAsyncHandler returns an http.HandlerFunc that accepts raw Gemara
@@ -79,10 +79,10 @@ func IngestAsyncHandler(pub IngestPublisher, tracker *IngestTracker, appender Te
 		jobID := generateJobID()
 		tracker.Create(jobID)
 
-		ref := events.IngestRef{
+		ref := bus.IngestRef{
 			JobID:    jobID,
 			LogIndex: logIndex,
-			PublisherIdentity: events.PublisherIdentity{
+			PublisherIdentity: bus.PublisherIdentity{
 				Sub:      claims.Sub,
 				Issuer:   claims.Iss,
 				Type:     publisherType,

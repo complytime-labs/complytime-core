@@ -11,7 +11,7 @@ import (
 	gemara "github.com/gemaraproj/go-gemara"
 	"github.com/goccy/go-yaml"
 
-	"github.com/complytime-labs/complytime-core/internal/events"
+	"github.com/complytime-labs/complytime-core/internal/bus"
 	"github.com/complytime-labs/complytime-core/internal/ingest"
 )
 
@@ -21,7 +21,7 @@ func toEvidenceRecords(rows []ingest.EvidenceRow) []EvidenceRecord {
 
 // toEvidenceRecordsWithLogIndex converts ingest EvidenceRows to store EvidenceRecords,
 // optionally setting a log_index and publisher identity for all records (for Tessera transparency log tracking).
-func toEvidenceRecordsWithLogIndex(rows []ingest.EvidenceRow, logIndex *uint64, publisherIdentity *events.PublisherIdentity) []EvidenceRecord {
+func toEvidenceRecordsWithLogIndex(rows []ingest.EvidenceRow, logIndex *uint64, publisherIdentity *bus.PublisherIdentity) []EvidenceRecord {
 	records := make([]EvidenceRecord, len(rows))
 	for i, row := range rows {
 		rec := EvidenceRecord{

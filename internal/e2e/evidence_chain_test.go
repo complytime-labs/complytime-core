@@ -11,7 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/complytime-labs/complytime-core/internal/postgres"
+	"github.com/complytime-labs/complytime-core/internal/db"
 	"github.com/complytime-labs/complytime-core/internal/store"
 	"github.com/complytime-labs/complytime-core/internal/tessera"
 )
@@ -19,7 +19,7 @@ import (
 var _ = Describe("Evidence Chain", func() {
 	var (
 		ctx           context.Context
-		pgClient      *postgres.Client
+		pgClient      *db.Client
 		st            *store.Store
 		tracker       *store.IngestTracker
 		ingestServer  *httptest.Server
@@ -33,7 +33,7 @@ var _ = Describe("Evidence Chain", func() {
 
 		By("Connecting to PostgreSQL")
 		var err error
-		pgClient, err = postgres.New(ctx, postgres.Config{URL: pgURL})
+		pgClient, err = db.New(ctx, db.Config{URL: pgURL})
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(pgClient.Close)
 

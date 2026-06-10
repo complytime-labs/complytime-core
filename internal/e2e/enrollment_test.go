@@ -14,8 +14,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/complytime-labs/complytime-core/internal/events"
-	"github.com/complytime-labs/complytime-core/internal/postgres"
+	eventbus "github.com/complytime-labs/complytime-core/internal/bus"
+	"github.com/complytime-labs/complytime-core/internal/db"
 	"github.com/complytime-labs/complytime-core/internal/store"
 	"github.com/complytime-labs/complytime-core/internal/tessera"
 )
@@ -23,7 +23,7 @@ import (
 var _ = Describe("Policy Enrollment", func() {
 	var (
 		ctx           context.Context
-		pgClient      *postgres.Client
+		pgClient      *db.Client
 		st            *store.Store
 		tracker       *store.IngestTracker
 		ingestServer  *httptest.Server
@@ -38,7 +38,7 @@ var _ = Describe("Policy Enrollment", func() {
 
 		By("Connecting to PostgreSQL")
 		var err error
-		pgClient, err = postgres.New(ctx, postgres.Config{URL: pgURL})
+		pgClient, err = db.New(ctx, db.Config{URL: pgURL})
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(pgClient.Close)
 
@@ -84,8 +84,8 @@ var _ = Describe("Policy Enrollment", func() {
 		It("stores target with correct dimensions in PostgreSQL", func() {
 			By("Subscribing to target registration events")
 			eventBus := connectTestNATS(GinkgoT(), natsURL)
-			eventCh := make(chan events.TargetRegisteredEvent, 1)
-			_, err := eventBus.SubscribeTargetRegistered(func(evt events.TargetRegisteredEvent) {
+			eventCh := make(chan eventbus.TargetRegisteredEvent, 1)
+			_, err := eventBus.SubscribeTargetRegistered(func(evt eventbus.TargetRegisteredEvent) {
 				eventCh <- evt
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -130,9 +130,9 @@ var _ = Describe("Policy Enrollment", func() {
 
 			By("Verifying NATS event received")
 			Eventually(eventCh).WithTimeout(5 * time.Second).Should(Receive(SatisfyAll(
-				WithTransform(func(e events.TargetRegisteredEvent) string { return e.TargetID }, Equal("prod-cluster")),
-				WithTransform(func(e events.TargetRegisteredEvent) uint64 { return e.LogIndex }, Equal(logIndex)),
-				WithTransform(func(e events.TargetRegisteredEvent) string { return e.RegisteredBy }, Equal(testSubject)),
+				WithTransform(func(e eventbus.TargetRegisteredEvent) string { return e.TargetID }, Equal("prod-cluster")),
+				WithTransform(func(e eventbus.TargetRegisteredEvent) uint64 { return e.LogIndex }, Equal(logIndex)),
+				WithTransform(func(e eventbus.TargetRegisteredEvent) string { return e.RegisteredBy }, Equal(testSubject)),
 			)))
 		})
 

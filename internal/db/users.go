@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package postgres
+package db
 
 import (
 	"context"
@@ -9,11 +9,11 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/complytime-labs/complytime-core/internal/auth"
 	"github.com/complytime-labs/complytime-core/internal/consts"
-	"github.com/complytime-labs/complytime-core/internal/identity"
 )
 
-var _ identity.UserStore = (*Client)(nil)
+var _ auth.UserStore = (*Client)(nil)
 
 func (c *Client) UpsertUser(ctx context.Context, sub, issuer, email, name, avatarURL string) error {
 	_, err := c.pool.Exec(ctx, `
@@ -32,35 +32,35 @@ func (c *Client) UpsertUser(ctx context.Context, sub, issuer, email, name, avata
 	return nil
 }
 
-func (c *Client) GetUser(ctx context.Context, email string) (*identity.User, error) {
+func (c *Client) GetUser(ctx context.Context, email string) (*auth.User, error) {
 	row := c.pool.QueryRow(ctx, `
 		SELECT sub, issuer, email, name, avatar_url, role, created_at
 		FROM users WHERE email = $1`, email)
-	var u identity.User
+	var u auth.User
 	if err := row.Scan(&u.Sub, &u.Issuer, &u.Email, &u.Name, &u.AvatarURL, &u.Role, &u.CreatedAt); err != nil {
 		if err == pgx.ErrNoRows {
-			return nil, fmt.Errorf("get user %s: %w", email, identity.ErrUserNotFound)
+			return nil, fmt.Errorf("get user %s: %w", email, auth.ErrUserNotFound)
 		}
 		return nil, fmt.Errorf("get user %s: %w", email, err)
 	}
 	return &u, nil
 }
 
-func (c *Client) GetUserBySub(ctx context.Context, sub, issuer string) (*identity.User, error) {
+func (c *Client) GetUserBySub(ctx context.Context, sub, issuer string) (*auth.User, error) {
 	row := c.pool.QueryRow(ctx, `
 		SELECT sub, issuer, email, name, avatar_url, role, created_at
 		FROM users WHERE sub = $1 AND issuer = $2`, sub, issuer)
-	var u identity.User
+	var u auth.User
 	if err := row.Scan(&u.Sub, &u.Issuer, &u.Email, &u.Name, &u.AvatarURL, &u.Role, &u.CreatedAt); err != nil {
 		if err == pgx.ErrNoRows {
-			return nil, fmt.Errorf("get user (sub=%s issuer=%s): %w", sub, issuer, identity.ErrUserNotFound)
+			return nil, fmt.Errorf("get user (sub=%s issuer=%s): %w", sub, issuer, auth.ErrUserNotFound)
 		}
 		return nil, fmt.Errorf("get user by sub: %w", err)
 	}
 	return &u, nil
 }
 
-func (c *Client) ListUsers(ctx context.Context) ([]identity.User, error) {
+func (c *Client) ListUsers(ctx context.Context) ([]auth.User, error) {
 	rows, err := c.pool.Query(ctx, `
 		SELECT sub, issuer, email, name, avatar_url, role, created_at
 		FROM users ORDER BY created_at`)
@@ -69,9 +69,9 @@ func (c *Client) ListUsers(ctx context.Context) ([]identity.User, error) {
 	}
 	defer rows.Close()
 
-	var users []identity.User
+	var users []auth.User
 	for rows.Next() {
-		var u identity.User
+		var u auth.User
 		if err := rows.Scan(&u.Sub, &u.Issuer, &u.Email, &u.Name, &u.AvatarURL, &u.Role, &u.CreatedAt); err != nil {
 			return nil, err
 		}
@@ -93,7 +93,7 @@ func (c *Client) SetRole(ctx context.Context, email, role string) (string, error
 	).Scan(&oldRole)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return "", fmt.Errorf("set role: user %s not found: %w", email, identity.ErrUserNotFound)
+			return "", fmt.Errorf("set role: user %s not found: %w", email, auth.ErrUserNotFound)
 		}
 		return "", fmt.Errorf("set role for %s: %w", email, err)
 	}
@@ -116,7 +116,7 @@ func (c *Client) CountAdmins(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-func (c *Client) InsertRoleChange(ctx context.Context, change identity.RoleChange) error {
+func (c *Client) InsertRoleChange(ctx context.Context, change auth.RoleChange) error {
 	_, err := c.pool.Exec(ctx, `
 		INSERT INTO role_changes (changed_by, target_email, old_role, new_role)
 		VALUES ($1, $2, $3, $4)`,
@@ -154,14 +154,14 @@ func (c *Client) BootstrapAdmin(ctx context.Context, email string) (string, erro
 			return "", fmt.Errorf("bootstrap admin: %w", countErr)
 		}
 		if n > 0 {
-			return "", identity.ErrAdminExists
+			return "", auth.ErrAdminExists
 		}
-		return "", fmt.Errorf("bootstrap admin for %s: %w", email, identity.ErrUserNotFound)
+		return "", fmt.Errorf("bootstrap admin for %s: %w", email, auth.ErrUserNotFound)
 	}
 	return oldRole, nil
 }
 
-func (c *Client) ListRoleChanges(ctx context.Context) ([]identity.RoleChange, error) {
+func (c *Client) ListRoleChanges(ctx context.Context) ([]auth.RoleChange, error) {
 	rows, err := c.pool.Query(ctx, `
 		SELECT changed_by, target_email, old_role, new_role, changed_at
 		FROM role_changes ORDER BY changed_at DESC`)
@@ -170,9 +170,9 @@ func (c *Client) ListRoleChanges(ctx context.Context) ([]identity.RoleChange, er
 	}
 	defer rows.Close()
 
-	var changes []identity.RoleChange
+	var changes []auth.RoleChange
 	for rows.Next() {
-		var ch identity.RoleChange
+		var ch auth.RoleChange
 		if err := rows.Scan(&ch.ChangedBy, &ch.TargetEmail, &ch.OldRole, &ch.NewRole, &ch.ChangedAt); err != nil {
 			return nil, err
 		}

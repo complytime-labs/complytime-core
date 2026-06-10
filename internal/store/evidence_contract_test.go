@@ -17,7 +17,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/complytime-labs/complytime-core/internal/auth"
-	"github.com/complytime-labs/complytime-core/internal/events"
+	"github.com/complytime-labs/complytime-core/internal/bus"
 )
 
 const minimalEvalLog = `metadata:
@@ -95,11 +95,11 @@ actions:
 `
 
 type immediateIngestPublisher struct {
-	handler events.IngestMsgHandler
+	handler bus.IngestMsgHandler
 	reader  TesseraReader
 }
 
-func (p *immediateIngestPublisher) PublishIngest(ctx context.Context, ref events.IngestRef) error {
+func (p *immediateIngestPublisher) PublishIngest(ctx context.Context, ref bus.IngestRef) error {
 	p.handler(ctx, ref, &mockJetStreamMsg{})
 	return nil
 }

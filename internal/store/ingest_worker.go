@@ -12,7 +12,7 @@ import (
 	gemara "github.com/gemaraproj/go-gemara"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/complytime-labs/complytime-core/internal/events"
+	"github.com/complytime-labs/complytime-core/internal/bus"
 	"github.com/complytime-labs/complytime-core/internal/ingest"
 )
 
@@ -41,8 +41,8 @@ func IngestWorker(
 	pub EventPublisher,
 	tracker *IngestTracker,
 	reader TesseraReader,
-) events.IngestMsgHandler {
-	return func(_ context.Context, ref events.IngestRef, msg jetstream.Msg) {
+) bus.IngestMsgHandler {
+	return func(_ context.Context, ref bus.IngestRef, msg jetstream.Msg) {
 		_ = msg.InProgress()
 		slog.Info("async ingest started", "job_id", ref.JobID, "log_index", ref.LogIndex)
 
@@ -141,7 +141,7 @@ func applyOutcome(msg jetstream.Msg, outcome ingestOutcome) {
 
 func handleEvidenceIngestJS(
 	ctx context.Context,
-	ref events.IngestRef,
+	ref bus.IngestRef,
 	yaml []byte,
 	artifactType gemara.ArtifactType,
 	evidence EvidenceStore,
@@ -188,7 +188,7 @@ func handleEvidenceIngestJS(
 
 func handleArtifactStoreJS(
 	ctx context.Context,
-	ref events.IngestRef,
+	ref bus.IngestRef,
 	tracker *IngestTracker,
 	storeFn func() (string, string, error),
 	bundleStore func(context.Context, BundleArtifactRow) error,
@@ -223,7 +223,7 @@ func handleArtifactStoreJS(
 
 func handleTargetRegistrationJS(
 	ctx context.Context,
-	ref events.IngestRef,
+	ref bus.IngestRef,
 	yaml []byte,
 	targets TargetStore,
 	pub EventPublisher,

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package postgres
+package db
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/complytime-labs/complytime-core/internal/identity"
+	"github.com/complytime-labs/complytime-core/internal/auth"
 )
 
 // testClient connects to the test database and runs migrations.
@@ -123,7 +123,7 @@ func TestUsers_RoleTransitions(t *testing.T) {
 		t.Fatal("expected at least 1 admin")
 	}
 
-	if err := c.InsertRoleChange(ctx, identity.RoleChange{
+	if err := c.InsertRoleChange(ctx, auth.RoleChange{
 		ChangedBy:   "test",
 		TargetEmail: "carol@example.com",
 		OldRole:     "reviewer",

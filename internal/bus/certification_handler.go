@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package events
+package bus
 
 import (
 	"context"
 	"log/slog"
 	"time"
 
-	"github.com/complytime-labs/complytime-core/internal/certifier"
+	"github.com/complytime-labs/complytime-core/internal/certify"
 )
 
 // CertificationQuerier fetches recently ingested evidence rows for a policy.
 type CertificationQuerier interface {
 	QueryRecentEvidence(
 		ctx context.Context, policyID string, since time.Time,
-	) ([]certifier.EvidenceRow, error)
+	) ([]certify.EvidenceRow, error)
 }
 
 // CertificationWriter persists certification results as trust signals.
@@ -54,7 +54,7 @@ func inferLayer(certifierName string) string {
 // certifier pipeline against recently ingested evidence for a policy.
 func CertificationHandler(
 	ctx context.Context,
-	pipeline *certifier.Pipeline,
+	pipeline *certify.Pipeline,
 	querier CertificationQuerier,
 	writer CertificationWriter,
 ) func(EvidenceEvent) {

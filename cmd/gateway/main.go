@@ -22,12 +22,12 @@ import (
 
 	"github.com/complytime-labs/complytime-core/internal/auth"
 	"github.com/complytime-labs/complytime-core/internal/blob"
-	"github.com/complytime-labs/complytime-core/internal/certifier"
+	eventbus "github.com/complytime-labs/complytime-core/internal/bus"
+	"github.com/complytime-labs/complytime-core/internal/certify"
 	"github.com/complytime-labs/complytime-core/internal/config"
 	"github.com/complytime-labs/complytime-core/internal/consts"
-	"github.com/complytime-labs/complytime-core/internal/events"
+	pgstore "github.com/complytime-labs/complytime-core/internal/db"
 	"github.com/complytime-labs/complytime-core/internal/httputil"
-	pgstore "github.com/complytime-labs/complytime-core/internal/postgres"
 	"github.com/complytime-labs/complytime-core/internal/store"
 	"github.com/complytime-labs/complytime-core/internal/tessera"
 )
@@ -102,16 +102,16 @@ func main() {
 		slog.Error("NATS_URL is required — event bus drives the certification pipeline")
 		os.Exit(1)
 	}
-	bus, busErr := events.Connect(natsURL)
+	bus, busErr := eventbus.Connect(natsURL)
 	if busErr != nil {
 		slog.Error("nats connection failed", "error", busErr)
 		os.Exit(1)
 	}
 	defer bus.Close()
 
-	ingestStreamCfg := events.IngestStreamConfig{
-		MaxDeliver: envInt("NATS_INGEST_MAX_DELIVER", events.DefaultMaxDeliver),
-		AckWait:    envDuration("NATS_INGEST_ACK_WAIT", events.DefaultAckWait),
+	ingestStreamCfg := eventbus.IngestStreamConfig{
+		MaxDeliver: envInt("NATS_INGEST_MAX_DELIVER", eventbus.DefaultMaxDeliver),
+		AckWait:    envDuration("NATS_INGEST_ACK_WAIT", eventbus.DefaultAckWait),
 	}
 	if err := bus.EnsureIngestStream(ctx, ingestStreamCfg); err != nil {
 		slog.Error("jetstream stream setup failed", "error", err)
@@ -181,10 +181,10 @@ func main() {
 
 	pipeline := buildCertifierPipeline()
 	certAdapter := &certificationAdapter{store: st}
-	certHandler := events.CertificationHandler(ctx, pipeline, certAdapter, certAdapter)
-	certDebouncer := events.NewDebouncer(consts.EventDebounceDuration, certHandler)
+	certHandler := eventbus.CertificationHandler(ctx, pipeline, certAdapter, certAdapter)
+	certDebouncer := eventbus.NewDebouncer(consts.EventDebounceDuration, certHandler)
 
-	sub, subErr := bus.SubscribeEvidence(func(evt events.EvidenceEvent) {
+	sub, subErr := bus.SubscribeEvidence(func(evt eventbus.EvidenceEvent) {
 		certDebouncer.Push(evt)
 	})
 	if subErr != nil {
@@ -192,7 +192,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer func() { _ = sub.Unsubscribe() }()
-	slog.Info("nats evidence subscription active", "subject", events.SubjectEvidence+".>")
+	slog.Info("nats evidence subscription active", "subject", eventbus.SubjectEvidence+".>")
 
 	ingestHandler := store.IngestWorker(ctx, stores, pub, ingestTracker, tesseraClient)
 	ingestCC, ingestCCErr := bus.ConsumeIngest(ctx, ingestHandler)
@@ -388,7 +388,7 @@ func writeProtect(adminGuard echo.MiddlewareFunc) echo.MiddlewareFunc {
 }
 
 // buildCertifierPipeline constructs the certifier pipeline from environment.
-func buildCertifierPipeline() *certifier.Pipeline {
+func buildCertifierPipeline() *certify.Pipeline {
 	knownRegistries := make(map[string]bool)
 	for _, r := range splitComma(os.Getenv("KNOWN_REGISTRIES")) {
 		knownRegistries[r] = true
@@ -397,15 +397,15 @@ func buildCertifierPipeline() *certifier.Pipeline {
 	for _, e := range splitComma(os.Getenv("KNOWN_ENGINES")) {
 		knownEngines[e] = true
 	}
-	return certifier.NewPipeline(
-		&certifier.SchemaCertifier{},
-		&certifier.ProvenanceCertifier{KnownRegistries: knownRegistries},
-		&certifier.ExecutorCertifier{KnownEngines: knownEngines},
+	return certify.NewPipeline(
+		&certify.SchemaCertifier{},
+		&certify.ProvenanceCertifier{KnownRegistries: knownRegistries},
+		&certify.ExecutorCertifier{KnownEngines: knownEngines},
 	)
 }
 
-// certificationAdapter bridges store.Store to events.CertificationQuerier
-// and events.CertificationWriter.
+// certificationAdapter bridges store.Store to eventbus.CertificationQuerier
+// and eventbus.CertificationWriter.
 type certificationAdapter struct {
 	store interface {
 		QueryRecentEvidence(
@@ -417,14 +417,14 @@ type certificationAdapter struct {
 
 func (a *certificationAdapter) QueryRecentEvidence(
 	ctx context.Context, policyID string, since time.Time,
-) ([]certifier.EvidenceRow, error) {
+) ([]certify.EvidenceRow, error) {
 	rows, err := a.store.QueryRecentEvidence(ctx, policyID, since)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]certifier.EvidenceRow, len(rows))
+	out := make([]certify.EvidenceRow, len(rows))
 	for i, r := range rows {
-		out[i] = certifier.EvidenceRow{
+		out[i] = certify.EvidenceRow{
 			EvidenceID:       r.EvidenceID,
 			TargetID:         r.TargetID,
 			RuleID:           r.RuleID,
@@ -441,16 +441,16 @@ func (a *certificationAdapter) QueryRecentEvidence(
 }
 
 func (a *certificationAdapter) InsertTrustSignals(
-	ctx context.Context, signals []events.TrustSignalRow,
+	ctx context.Context, signals []eventbus.TrustSignalRow,
 ) error {
-	// Convert events.TrustSignalRow to store.TrustSignalRow
+	// Convert eventbus.TrustSignalRow to store.TrustSignalRow
 	storeSignals := make([]store.TrustSignalRow, len(signals))
 	for i, s := range signals {
 		storeSignals[i] = store.TrustSignalRow{
 			EvidenceID: s.EvidenceID,
 			Layer:      s.Layer,
 			CheckName:  s.CheckName,
-			Result:     certifier.Result(s.Result),
+			Result:     certify.Result(s.Result),
 			Reason:     s.Reason,
 			CheckedAt:  s.CheckedAt,
 		}

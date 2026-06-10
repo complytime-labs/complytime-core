@@ -5,7 +5,7 @@
 // they annotate evidence with pass/fail/skip/error verdicts rather than
 // gating ingestion. The aggregate verdict drives the denormalized
 // evidence.certified column for fast UI reads.
-package certifier
+package certify
 
 import (
 	"context"

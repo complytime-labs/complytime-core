@@ -17,7 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
-	"github.com/complytime-labs/complytime-core/internal/events"
+	"github.com/complytime-labs/complytime-core/internal/bus"
 	gemarapkg "github.com/complytime-labs/complytime-core/internal/gemara"
 )
 
@@ -85,7 +85,7 @@ func ociImport(c echo.Context, s Stores, ref string) error {
 		return ociImportLegacy(c, s, allFiles, bundle.Etag)
 	}
 
-	identity := events.PublisherIdentity{
+	identity := bus.PublisherIdentity{
 		Sub:      "import:" + ref,
 		Issuer:   "complytime-gateway",
 		Type:     "import",
@@ -109,7 +109,7 @@ func ociImport(c echo.Context, s Stores, ref string) error {
 		jobID := uuid.New().String()
 		s.IngestTracker.Create(jobID)
 
-		ingestRef := events.IngestRef{
+		ingestRef := bus.IngestRef{
 			JobID:             jobID,
 			LogIndex:          logIndex,
 			PublisherIdentity: identity,

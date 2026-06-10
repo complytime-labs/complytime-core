@@ -6,7 +6,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/complytime-labs/complytime-core/internal/certifier"
+	"github.com/complytime-labs/complytime-core/internal/certify"
 )
 
 func TestIntegration_InsertAndQueryTrustSignals(t *testing.T) {
@@ -14,9 +14,9 @@ func TestIntegration_InsertAndQueryTrustSignals(t *testing.T) {
 	ctx := context.Background()
 
 	signals := []TrustSignalRow{
-		{EvidenceID: "ev-trust-1", Layer: "identity", CheckName: "publisher_auth", Result: certifier.ResultPass, Reason: "Valid JWT signature"},
-		{EvidenceID: "ev-trust-1", Layer: "quality", CheckName: "schema", Result: certifier.ResultPass, Reason: "Evidence matches schema"},
-		{EvidenceID: "ev-trust-1", Layer: "attestation", CheckName: "provenance", Result: certifier.ResultFail, Reason: "Missing provenance attestation"},
+		{EvidenceID: "ev-trust-1", Layer: "identity", CheckName: "publisher_auth", Result: certify.ResultPass, Reason: "Valid JWT signature"},
+		{EvidenceID: "ev-trust-1", Layer: "quality", CheckName: "schema", Result: certify.ResultPass, Reason: "Evidence matches schema"},
+		{EvidenceID: "ev-trust-1", Layer: "attestation", CheckName: "provenance", Result: certify.ResultFail, Reason: "Missing provenance attestation"},
 	}
 
 	err := st.InsertTrustSignals(ctx, signals)
@@ -37,13 +37,13 @@ func TestIntegration_InsertAndQueryTrustSignals(t *testing.T) {
 		byCheck[r.CheckName] = r
 	}
 
-	if r, ok := byCheck["publisher_auth"]; !ok || r.Result != certifier.ResultPass {
+	if r, ok := byCheck["publisher_auth"]; !ok || r.Result != certify.ResultPass {
 		t.Errorf("publisher_auth: got %+v, want pass", byCheck["publisher_auth"])
 	}
-	if r, ok := byCheck["schema"]; !ok || r.Result != certifier.ResultPass {
+	if r, ok := byCheck["schema"]; !ok || r.Result != certify.ResultPass {
 		t.Errorf("schema: got %+v, want pass", byCheck["schema"])
 	}
-	if r, ok := byCheck["provenance"]; !ok || r.Result != certifier.ResultFail {
+	if r, ok := byCheck["provenance"]; !ok || r.Result != certify.ResultFail {
 		t.Errorf("provenance: got %+v, want fail", byCheck["provenance"])
 	}
 }
@@ -53,7 +53,7 @@ func TestIntegration_InsertTrustSignals_Upsert(t *testing.T) {
 	ctx := context.Background()
 
 	original := []TrustSignalRow{
-		{EvidenceID: "ev-upsert", Layer: "quality", CheckName: "schema", Result: certifier.ResultFail, Reason: "Validation failed"},
+		{EvidenceID: "ev-upsert", Layer: "quality", CheckName: "schema", Result: certify.ResultFail, Reason: "Validation failed"},
 	}
 	err := st.InsertTrustSignals(ctx, original)
 	if err != nil {
@@ -61,7 +61,7 @@ func TestIntegration_InsertTrustSignals_Upsert(t *testing.T) {
 	}
 
 	updated := []TrustSignalRow{
-		{EvidenceID: "ev-upsert", Layer: "quality", CheckName: "schema", Result: certifier.ResultPass, Reason: "Validation passed"},
+		{EvidenceID: "ev-upsert", Layer: "quality", CheckName: "schema", Result: certify.ResultPass, Reason: "Validation passed"},
 	}
 	err = st.InsertTrustSignals(ctx, updated)
 	if err != nil {
@@ -75,7 +75,7 @@ func TestIntegration_InsertTrustSignals_Upsert(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected 1 signal after upsert, got %d", len(got))
 	}
-	if got[0].Result != certifier.ResultPass {
+	if got[0].Result != certify.ResultPass {
 		t.Errorf("expected upserted result pass, got %q", got[0].Result)
 	}
 	if got[0].Reason != "Validation passed" {
@@ -88,12 +88,12 @@ func TestIntegration_QueryTrustSignals_Filters(t *testing.T) {
 	ctx := context.Background()
 
 	signals1 := []TrustSignalRow{
-		{EvidenceID: "ev-filter-1", Layer: "identity", CheckName: "publisher_auth", Result: certifier.ResultPass, Reason: "OK"},
-		{EvidenceID: "ev-filter-1", Layer: "quality", CheckName: "schema", Result: certifier.ResultPass, Reason: "OK"},
+		{EvidenceID: "ev-filter-1", Layer: "identity", CheckName: "publisher_auth", Result: certify.ResultPass, Reason: "OK"},
+		{EvidenceID: "ev-filter-1", Layer: "quality", CheckName: "schema", Result: certify.ResultPass, Reason: "OK"},
 	}
 	signals2 := []TrustSignalRow{
-		{EvidenceID: "ev-filter-2", Layer: "identity", CheckName: "publisher_auth", Result: certifier.ResultFail, Reason: "Invalid"},
-		{EvidenceID: "ev-filter-2", Layer: "attestation", CheckName: "provenance", Result: certifier.ResultSkip, Reason: "N/A"},
+		{EvidenceID: "ev-filter-2", Layer: "identity", CheckName: "publisher_auth", Result: certify.ResultFail, Reason: "Invalid"},
+		{EvidenceID: "ev-filter-2", Layer: "attestation", CheckName: "provenance", Result: certify.ResultSkip, Reason: "N/A"},
 	}
 
 	if err := st.InsertTrustSignals(ctx, signals1); err != nil {

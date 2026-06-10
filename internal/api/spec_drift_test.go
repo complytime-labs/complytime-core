@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package openapi_test
+package api_test
 
 import (
 	"context"
@@ -18,8 +18,8 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/complytime-labs/complytime-core/internal/auth"
+	"github.com/complytime-labs/complytime-core/internal/bus"
 	"github.com/complytime-labs/complytime-core/internal/config"
-	"github.com/complytime-labs/complytime-core/internal/events"
 	"github.com/complytime-labs/complytime-core/internal/gemara"
 	"github.com/complytime-labs/complytime-core/internal/store"
 )
@@ -374,7 +374,7 @@ func (*nopEventPublisher) PublishTargetRegistered(uint64, string, string) {}
 
 type nopIngestPublisher struct{}
 
-func (*nopIngestPublisher) PublishIngest(_ context.Context, _ events.IngestRef) error { return nil }
+func (*nopIngestPublisher) PublishIngest(_ context.Context, _ bus.IngestRef) error { return nil }
 
 type nopHealthChecker struct{}
 

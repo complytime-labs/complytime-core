@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/complytime-labs/complytime-core/internal/certifier"
-	"github.com/complytime-labs/complytime-core/internal/postgres"
+	"github.com/complytime-labs/complytime-core/internal/certify"
+	"github.com/complytime-labs/complytime-core/internal/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,7 +23,7 @@ func TestInsertAndQueryTrustSignals(t *testing.T) {
 	pgURL := os.Getenv("POSTGRES_TEST_URL")
 
 	// Connect to test database
-	pgClient, err := postgres.New(ctx, postgres.Config{URL: pgURL})
+	pgClient, err := db.New(ctx, db.Config{URL: pgURL})
 	require.NoError(t, err)
 	defer pgClient.Close()
 
@@ -65,7 +65,7 @@ func TestInsertAndQueryTrustSignals(t *testing.T) {
 			EvidenceID: evidenceID,
 			Layer:      "quality",
 			CheckName:  "deployment-frequency",
-			Result:     certifier.ResultPass,
+			Result:     certify.ResultPass,
 			Reason:     "Deployment frequency meets threshold",
 			CheckedAt:  now,
 		},
@@ -73,7 +73,7 @@ func TestInsertAndQueryTrustSignals(t *testing.T) {
 			EvidenceID: evidenceID,
 			Layer:      "identity",
 			CheckName:  "provenance",
-			Result:     certifier.ResultPass,
+			Result:     certify.ResultPass,
 			Reason:     "Valid provenance attestation",
 			CheckedAt:  now,
 		},
