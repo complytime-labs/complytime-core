@@ -3,7 +3,6 @@
 package store
 
 import (
-	"context"
 	"net/http"
 	"time"
 
@@ -16,51 +15,6 @@ func registerTargetRoutes(g *echo.Group, s Stores) {
 	}
 	g.GET("/policies/discover", policyQueryHandler(s.Targets, s.PolicyDimensions))
 	g.GET("/targets", listTargetsHandler(s.Targets))
-}
-
-// PolicyDimensionStore defines queries for policies with dimension matching.
-type PolicyDimensionStore interface {
-	QueryPoliciesByDimensions(ctx context.Context, dims DimensionQuery) ([]PolicyWithDimensions, error)
-}
-
-// DimensionQuery holds parameters for dimension-based policy matching.
-type DimensionQuery struct {
-	Technologies []string
-	Geopolitical []string
-	Sensitivity  []string
-	Users        []string
-	Groups       []string
-	Timestamp    time.Time
-}
-
-// PolicyWithDimensions represents a policy with its dimensional metadata.
-type PolicyWithDimensions struct {
-	LogIndex        uint64    `json:"log_index"`
-	PolicyID        string    `json:"policy_id"`
-	Title           string    `json:"title"`
-	Version         string    `json:"version,omitempty"`
-	Technologies    []string  `json:"technologies,omitempty"`
-	Geopolitical    []string  `json:"geopolitical,omitempty"`
-	Sensitivity     []string  `json:"sensitivity,omitempty"`
-	EvaluationStart time.Time `json:"evaluation_start,omitempty"`
-	EvaluationEnd   time.Time `json:"evaluation_end,omitempty"`
-}
-
-// PolicyQueryResponse is returned by the policy discovery endpoint.
-type PolicyQueryResponse struct {
-	Target             TargetSummary          `json:"target"`
-	ApplicablePolicies []PolicyWithDimensions `json:"applicable_policies"`
-}
-
-// TargetSummary is a brief target representation in API responses.
-type TargetSummary struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	Type         string   `json:"type"`
-	Technologies []string `json:"technologies,omitempty"`
-	Geopolitical []string `json:"geopolitical,omitempty"`
-	Sensitivity  []string `json:"sensitivity,omitempty"`
-	RegisteredAt string   `json:"registered_at"`
 }
 
 func policyQueryHandler(targets TargetStore, policies PolicyDimensionStore) echo.HandlerFunc {

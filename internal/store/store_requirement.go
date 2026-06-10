@@ -6,44 +6,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"time"
 )
-
-// RequirementFilter holds query parameters for requirement matrix and evidence APIs.
-type RequirementFilter struct {
-	PolicyID       string
-	Start          time.Time
-	End            time.Time
-	ControlFamily  string
-	Classification string
-	Limit          int
-	Offset         int
-}
-
-// RequirementRow is a single row in the requirement matrix.
-type RequirementRow struct {
-	CatalogID       string `json:"catalog_id"`
-	ControlID       string `json:"control_id"`
-	ControlTitle    string `json:"control_title"`
-	RequirementID   string `json:"requirement_id"`
-	RequirementText string `json:"requirement_text"`
-	EvidenceCount   uint64 `json:"evidence_count"`
-	LatestEvidence  string `json:"latest_evidence,omitempty"`
-	Classification  string `json:"classification,omitempty"`
-}
-
-// RequirementEvidenceRow is an evidence row returned in requirement drill-down.
-type RequirementEvidenceRow struct {
-	EvidenceID     string `json:"evidence_id"`
-	TargetID       string `json:"target_id"`
-	TargetName     string `json:"target_name,omitempty"`
-	RuleID         string `json:"rule_id"`
-	EvalResult     string `json:"eval_result"`
-	Classification string `json:"classification,omitempty"`
-	AssessedAt     string `json:"assessed_at,omitempty"`
-	CollectedAt    string `json:"collected_at"`
-	SourceRegistry string `json:"source_registry,omitempty"`
-}
 
 // ListRequirementMatrix returns requirement rows with evidence aggregates.
 // Uses evidence as the base table so rows appear even when

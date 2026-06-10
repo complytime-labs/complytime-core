@@ -13,7 +13,8 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/complytime-labs/complytime-core/internal/bus"
-	"github.com/complytime-labs/complytime-core/internal/ingest"
+	"github.com/complytime-labs/complytime-core/internal/evidence"
+	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
 
 // TesseraReader fetches raw entries from the transparency log by index.
@@ -60,9 +61,9 @@ func IngestWorker(
 			return
 		}
 
-		artifactType, err := detectArtifactType(yaml)
+		artifactType, err := evidence.DetectArtifactType(yaml)
 		if err != nil {
-			typeStr := detectArtifactTypeString(yaml)
+			typeStr := evidence.DetectArtifactTypeString(yaml)
 			if typeStr == "TargetRegistration" {
 				applyOutcome(msg, handleTargetRegistrationJS(ctx, ref, yaml, stores.Targets, pub, tracker))
 				return
@@ -71,6 +72,14 @@ func IngestWorker(
 			slog.Warn("async ingest: invalid artifact", "job_id", ref.JobID, "error", err)
 			_ = msg.Term()
 			return
+		}
+
+		is := requirements.ImportStores{
+			Catalogs: stores.Catalogs,
+			Controls: stores.Controls,
+			Threats:  stores.Threats,
+			Risks:    stores.Risks,
+			Guidance: stores.Guidance,
 		}
 
 		var result ingestOutcome
@@ -83,8 +92,8 @@ func IngestWorker(
 				stores.Evidence, pub, tracker)
 		case gemara.PolicyArtifact:
 			result = handleArtifactStoreJS(ctx, ref, tracker, func() (string, string, error) {
-				art, err := storePolicyFromContent(ctx, stores.Policies, stores.Controls,
-					string(yaml), policyIngestOption{
+				art, err := requirements.StorePolicyFromContent(ctx, stores.Policies, stores.Controls,
+					string(yaml), requirements.PolicyIngestOption{
 						LogIndex: ref.LogIndex,
 						BundleID: ref.BundleID,
 					})
@@ -95,27 +104,27 @@ func IngestWorker(
 			}, stores.InsertBundleArtifact)
 		case gemara.ControlCatalogArtifact:
 			result = handleArtifactStoreJS(ctx, ref, tracker, func() (string, string, error) {
-				art, err := storeCatalogFromContent(ctx, stores, "ControlCatalog", string(yaml))
+				art, err := requirements.StoreCatalogFromContent(ctx, is, "ControlCatalog", string(yaml))
 				return art.ID, art.Type, err
 			}, stores.InsertBundleArtifact)
 		case gemara.ThreatCatalogArtifact:
 			result = handleArtifactStoreJS(ctx, ref, tracker, func() (string, string, error) {
-				art, err := storeCatalogFromContent(ctx, stores, "ThreatCatalog", string(yaml))
+				art, err := requirements.StoreCatalogFromContent(ctx, is, "ThreatCatalog", string(yaml))
 				return art.ID, art.Type, err
 			}, stores.InsertBundleArtifact)
 		case gemara.RiskCatalogArtifact:
 			result = handleArtifactStoreJS(ctx, ref, tracker, func() (string, string, error) {
-				art, err := storeCatalogFromContent(ctx, stores, "RiskCatalog", string(yaml))
+				art, err := requirements.StoreCatalogFromContent(ctx, is, "RiskCatalog", string(yaml))
 				return art.ID, art.Type, err
 			}, stores.InsertBundleArtifact)
 		case gemara.GuidanceCatalogArtifact:
 			result = handleArtifactStoreJS(ctx, ref, tracker, func() (string, string, error) {
-				art, err := storeCatalogFromContent(ctx, stores, "GuidanceCatalog", string(yaml))
+				art, err := requirements.StoreCatalogFromContent(ctx, is, "GuidanceCatalog", string(yaml))
 				return art.ID, art.Type, err
 			}, stores.InsertBundleArtifact)
 		case gemara.MappingDocumentArtifact:
 			result = handleArtifactStoreJS(ctx, ref, tracker, func() (string, string, error) {
-				art, err := storeMappingFromContent(ctx, stores.Mappings, string(yaml))
+				art, err := requirements.StoreMappingFromContent(ctx, stores.Mappings, string(yaml))
 				return art.ID, art.Type, err
 			}, stores.InsertBundleArtifact)
 		default:
@@ -144,19 +153,19 @@ func handleEvidenceIngestJS(
 	ref bus.IngestRef,
 	yaml []byte,
 	artifactType gemara.ArtifactType,
-	evidence EvidenceStore,
+	evidenceStore EvidenceStore,
 	pub EventPublisher,
 	tracker *IngestTracker,
 ) ingestOutcome {
-	var rows []ingest.EvidenceRow
+	var rows []evidence.EvidenceRow
 	var policyID string
 	var err error
 
 	switch artifactType {
 	case gemara.EvaluationLogArtifact:
-		rows, policyID, err = flattenEvaluation(ctx, yaml)
+		rows, policyID, err = evidence.FlattenEvaluation(ctx, yaml)
 	case gemara.EnforcementLogArtifact:
-		rows, policyID, err = flattenEnforcement(ctx, yaml)
+		rows, policyID, err = evidence.FlattenEnforcement(ctx, yaml)
 	}
 	if err != nil {
 		tracker.Fail(ref.JobID, fmt.Sprintf("flatten failed: %v", err))
@@ -164,8 +173,8 @@ func handleEvidenceIngestJS(
 		return outcomeTerm // Parse/flatten is permanent — invalid YAML won't fix on retry
 	}
 
-	records := toEvidenceRecordsWithLogIndex(rows, &ref.LogIndex, &ref.PublisherIdentity)
-	count, err := evidence.InsertEvidence(ctx, records)
+	records := evidence.ToEvidenceRecordsWithLogIndex(rows, &ref.LogIndex, &ref.PublisherIdentity)
+	count, err := evidenceStore.InsertEvidence(ctx, records)
 	if err != nil {
 		tracker.Fail(ref.JobID, fmt.Sprintf("insert failed: %v", err))
 		slog.Error("async ingest: insert failed", "job_id", ref.JobID, "error", err)
@@ -229,7 +238,7 @@ func handleTargetRegistrationJS(
 	pub EventPublisher,
 	tracker *IngestTracker,
 ) ingestOutcome {
-	reg, err := parseTargetRegistration(yaml)
+	reg, err := evidence.ParseTargetRegistration(yaml)
 	if err != nil {
 		tracker.Fail(ref.JobID, fmt.Sprintf("parse failed: %v", err))
 		slog.Warn("async ingest: TargetRegistration parse failed", "job_id", ref.JobID, "error", err)
@@ -241,18 +250,16 @@ func handleTargetRegistrationJS(
 		registeredAt = time.Now().UTC()
 	}
 
-	// Normalize nil slices to empty slices for database insert
-	// (nil slice is treated as NULL which violates NOT NULL constraint)
 	row := TargetRow{
 		TargetID:        reg.Target.ID,
 		TesseraLogIndex: ref.LogIndex,
 		TargetName:      reg.Target.Name,
 		TargetType:      reg.Target.Type,
-		Technologies:    normalizeSlice(reg.Dimensions.Technologies),
-		Geopolitical:    normalizeSlice(reg.Dimensions.Geopolitical),
-		Sensitivity:     normalizeSlice(reg.Dimensions.Sensitivity),
-		Users:           normalizeSlice(reg.Dimensions.Users),
-		Groups:          normalizeSlice(reg.Dimensions.Groups),
+		Technologies:    requirements.NormalizeSlice(reg.Dimensions.Technologies),
+		Geopolitical:    requirements.NormalizeSlice(reg.Dimensions.Geopolitical),
+		Sensitivity:     requirements.NormalizeSlice(reg.Dimensions.Sensitivity),
+		Users:           requirements.NormalizeSlice(reg.Dimensions.Users),
+		Groups:          requirements.NormalizeSlice(reg.Dimensions.Groups),
 		RegisteredAt:    registeredAt,
 		RegisteredBy:    ref.PublisherIdentity.Sub,
 	}
@@ -278,14 +285,4 @@ func handleTargetRegistrationJS(
 
 func isNotYetIntegrated(err error) bool {
 	return strings.Contains(err.Error(), "not yet integrated")
-}
-
-// normalizeSlice returns an empty slice if the input is nil.
-// This prevents nil slices from being passed as NULL to PostgreSQL
-// which would violate NOT NULL constraints even when DEFAULT is set.
-func normalizeSlice(s []string) []string {
-	if s == nil {
-		return []string{}
-	}
-	return s
 }

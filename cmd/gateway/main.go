@@ -181,8 +181,8 @@ func main() {
 
 	pipeline := buildCertifierPipeline()
 	certAdapter := &certificationAdapter{store: st}
-	certHandler := eventbus.CertificationHandler(ctx, pipeline, certAdapter, certAdapter)
-	certDebouncer := eventbus.NewDebouncer(consts.EventDebounceDuration, certHandler)
+	certHandler := certify.CertificationHandler(ctx, pipeline, certAdapter, certAdapter)
+	certDebouncer := certify.NewDebouncer(consts.EventDebounceDuration, certHandler)
 
 	sub, subErr := bus.SubscribeEvidence(func(evt eventbus.EvidenceEvent) {
 		certDebouncer.Push(evt)
@@ -404,14 +404,14 @@ func buildCertifierPipeline() *certify.Pipeline {
 	)
 }
 
-// certificationAdapter bridges store.Store to eventbus.CertificationQuerier
-// and eventbus.CertificationWriter.
+// certificationAdapter bridges store.Store to certify.CertificationQuerier
+// and certify.CertificationWriter.
 type certificationAdapter struct {
 	store interface {
 		QueryRecentEvidence(
 			ctx context.Context, policyID string, since time.Time,
 		) ([]store.EvidenceRowLite, error)
-		InsertTrustSignals(ctx context.Context, signals []store.TrustSignalRow) error
+		InsertTrustSignals(ctx context.Context, signals []certify.TrustSignalRow) error
 	}
 }
 
@@ -441,19 +441,7 @@ func (a *certificationAdapter) QueryRecentEvidence(
 }
 
 func (a *certificationAdapter) InsertTrustSignals(
-	ctx context.Context, signals []eventbus.TrustSignalRow,
+	ctx context.Context, signals []certify.TrustSignalRow,
 ) error {
-	// Convert eventbus.TrustSignalRow to store.TrustSignalRow
-	storeSignals := make([]store.TrustSignalRow, len(signals))
-	for i, s := range signals {
-		storeSignals[i] = store.TrustSignalRow{
-			EvidenceID: s.EvidenceID,
-			Layer:      s.Layer,
-			CheckName:  s.CheckName,
-			Result:     certify.Result(s.Result),
-			Reason:     s.Reason,
-			CheckedAt:  s.CheckedAt,
-		}
-	}
-	return a.store.InsertTrustSignals(ctx, storeSignals)
+	return a.store.InsertTrustSignals(ctx, signals)
 }

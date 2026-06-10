@@ -11,6 +11,7 @@ import (
 	goyaml "github.com/goccy/go-yaml"
 
 	gemarapkg "github.com/complytime-labs/complytime-core/internal/gemara"
+	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
 
 // PopulateMappingEntries backfills the mapping_entries table from existing
@@ -310,11 +311,7 @@ func PopulateEffectiveControls(ctx context.Context, ps PolicyStore, cs CatalogSt
 }
 
 // PopulatePolicyCriteria extracts criteria and assessment-requirements
-// directly from each policy's YAML content, inserting rows into the
-// controls and assessment_requirements tables. This handles policies
-// that embed criteria inline (no external catalog import needed).
-// Safe to call on every startup; skips policies whose criteria have
-// already been populated.
+// directly from each policy's YAML content. Safe to call on every startup.
 func PopulatePolicyCriteria(ctx context.Context, ps PolicyStore, ctrlS ControlStore) error {
 	policies, err := ps.ListPolicies(ctx)
 	if err != nil {
@@ -332,7 +329,7 @@ func PopulatePolicyCriteria(ctx context.Context, ps PolicyStore, ctrlS ControlSt
 			slog.Warn("get policy content for criteria", "policy_id", p.PolicyID, "error", err)
 			continue
 		}
-		n, extractErr := ExtractPolicyCriteria(ctx, p.PolicyID, full.Content, ctrlS)
+		n, extractErr := requirements.ExtractPolicyCriteria(ctx, p.PolicyID, full.Content, ctrlS)
 		if extractErr != nil {
 			slog.Warn("policy criteria extraction failed", "policy_id", p.PolicyID, "error", extractErr)
 			continue
@@ -345,65 +342,7 @@ func PopulatePolicyCriteria(ctx context.Context, ps PolicyStore, ctrlS ControlSt
 	return nil
 }
 
-// ExtractPolicyCriteria parses a policy's criteria section and inserts
-// the resulting controls and assessment requirements. Returns the number
-// of controls inserted. Safe to call on every import (uses upsert).
+// ExtractPolicyCriteria delegates to requirements.ExtractPolicyCriteria.
 func ExtractPolicyCriteria(ctx context.Context, policyID, content string, ctrlS ControlStore) (int, error) {
-	type parsedCriteria struct {
-		Criteria []struct {
-			ID                     string `yaml:"id"`
-			Title                  string `yaml:"title"`
-			Description            string `yaml:"description"`
-			CatalogRef             string `yaml:"catalog-ref"`
-			AssessmentRequirements []struct {
-				ID          string `yaml:"id"`
-				Description string `yaml:"description"`
-			} `yaml:"assessment-requirements"`
-		} `yaml:"criteria"`
-	}
-
-	var pol parsedCriteria
-	if err := goyaml.Unmarshal([]byte(content), &pol); err != nil {
-		return 0, fmt.Errorf("parse policy criteria: %w", err)
-	}
-	if len(pol.Criteria) == 0 {
-		return 0, nil
-	}
-
-	catalogID := policyID
-	var controls []gemarapkg.ControlRow
-	var reqs []gemarapkg.AssessmentRequirementRow
-
-	for _, c := range pol.Criteria {
-		controls = append(controls, gemarapkg.ControlRow{
-			CatalogID: catalogID,
-			ControlID: c.ID,
-			Title:     c.Title,
-			Objective: c.Description,
-			State:     "Active",
-			PolicyID:  policyID,
-		})
-		for _, ar := range c.AssessmentRequirements {
-			reqs = append(reqs, gemarapkg.AssessmentRequirementRow{
-				CatalogID:     catalogID,
-				ControlID:     c.ID,
-				RequirementID: ar.ID,
-				Text:          ar.Description,
-				State:         "Active",
-			})
-		}
-	}
-
-	if len(controls) > 0 {
-		if err := ctrlS.InsertControls(ctx, controls); err != nil {
-			return 0, fmt.Errorf("insert controls: %w", err)
-		}
-	}
-	if len(reqs) > 0 {
-		if err := ctrlS.InsertAssessmentRequirements(ctx, reqs); err != nil {
-			slog.Warn("policy criteria ARs insert failed", "policy_id", policyID, "error", err)
-		}
-	}
-	slog.Info("policy criteria extracted", "policy_id", policyID, "controls", len(controls), "requirements", len(reqs))
-	return len(controls), nil
+	return requirements.ExtractPolicyCriteria(ctx, policyID, content, ctrlS)
 }

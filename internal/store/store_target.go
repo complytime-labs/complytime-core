@@ -8,21 +8,6 @@ import (
 	"time"
 )
 
-// TargetRow represents a target registration with dimensional metadata.
-type TargetRow struct {
-	TargetID        string    `json:"target_id"`
-	TesseraLogIndex uint64    `json:"tessera_log_index"`
-	TargetName      string    `json:"target_name"`
-	TargetType      string    `json:"target_type"`
-	Technologies    []string  `json:"technologies"`
-	Geopolitical    []string  `json:"geopolitical"`
-	Sensitivity     []string  `json:"sensitivity"`
-	Users           []string  `json:"users"`
-	Groups          []string  `json:"groups"`
-	RegisteredAt    time.Time `json:"registered_at"`
-	RegisteredBy    string    `json:"registered_by"`
-}
-
 // IsTargetRegistered checks if a target has any registration in the targets table.
 func (s *Store) IsTargetRegistered(ctx context.Context, targetID string) bool {
 	const q = `SELECT EXISTS(SELECT 1 FROM targets WHERE target_id = $1)`

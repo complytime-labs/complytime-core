@@ -4,30 +4,15 @@ package store
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/complytime-labs/complytime-core/internal/audit"
 	"github.com/complytime-labs/complytime-core/internal/consts"
 	"github.com/google/uuid"
 )
-
-// AuditLog represents a stored audit log artifact.
-type AuditLog struct {
-	AuditID       string    `json:"audit_id"`
-	PolicyID      string    `json:"policy_id"`
-	AuditStart    time.Time `json:"audit_start"`
-	AuditEnd      time.Time `json:"audit_end"`
-	Framework     string    `json:"framework,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
-	CreatedBy     string    `json:"created_by,omitempty"`
-	Content       string    `json:"content"`
-	Summary       string    `json:"summary"`
-	Model         string    `json:"model,omitempty"`
-	PromptVersion string    `json:"prompt_version,omitempty"`
-}
 
 // InsertAuditLog stores an AuditLog artifact.
 func (s *Store) InsertAuditLog(ctx context.Context, a AuditLog) error {
@@ -88,35 +73,6 @@ func (s *Store) GetAuditLog(ctx context.Context, auditID string) (*AuditLog, err
 	return &a, nil
 }
 
-// EvidenceAssessment represents an agent-produced classification for an evidence row.
-type EvidenceAssessment struct {
-	EvidenceID     string    `json:"evidence_id"`
-	PolicyID       string    `json:"policy_id"`
-	PlanID         string    `json:"plan_id"`
-	Classification string    `json:"classification"`
-	Reason         string    `json:"reason"`
-	AssessedAt     time.Time `json:"assessed_at"`
-	AssessedBy     string    `json:"assessed_by"`
-}
-
-// ErrRequirementNotFound is returned by ListRequirementEvidence when the
-// requirement ID is not known for the policy (no matching catalog row and no
-// evidence rows scoped to that ID).
-var ErrRequirementNotFound = errors.New("requirement not found")
-var ErrDraftAlreadyPromoted = errors.New("draft already promoted")
-var ErrDraftNotFound = errors.New("draft not found")
-
-// ValidClassifications enumerates the allowed 7-state classification values.
-var ValidClassifications = map[string]bool{
-	"Healthy":        true,
-	"Failing":        true,
-	"Wrong Source":   true,
-	"Wrong Method":   true,
-	"Unfit Evidence": true,
-	"Stale":          true,
-	"No Evidence":    true,
-}
-
 // InsertEvidenceAssessments batch-inserts agent classifications.
 func (s *Store) InsertEvidenceAssessments(ctx context.Context, assessments []EvidenceAssessment) error {
 	if len(assessments) == 0 {
@@ -138,25 +94,6 @@ func (s *Store) InsertEvidenceAssessments(ctx context.Context, assessments []Evi
 		return fmt.Errorf("commit evidence assessments: %w", err)
 	}
 	return nil
-}
-
-// DraftAuditLog represents an agent-produced audit log awaiting human review.
-type DraftAuditLog struct {
-	DraftID        string     `json:"draft_id"`
-	PolicyID       string     `json:"policy_id"`
-	AuditStart     time.Time  `json:"audit_start"`
-	AuditEnd       time.Time  `json:"audit_end"`
-	Framework      string     `json:"framework,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
-	Status         string     `json:"status"`
-	Content        string     `json:"content"`
-	Summary        string     `json:"summary"`
-	AgentReasoning string     `json:"agent_reasoning,omitempty"`
-	Model          string     `json:"model,omitempty"`
-	PromptVersion  string     `json:"prompt_version,omitempty"`
-	ReviewedBy     *string    `json:"reviewed_by,omitempty"`
-	PromotedAt     *time.Time `json:"promoted_at,omitempty"`
-	ReviewerEdits  string     `json:"reviewer_edits,omitempty"`
 }
 
 // InsertDraftAuditLog stores an agent-produced draft.
@@ -247,7 +184,7 @@ func (s *Store) PromoteDraftAuditLog(ctx context.Context, draftID string, review
 		return ErrDraftAlreadyPromoted
 	}
 
-	mergedContent, err := mergeReviewerEdits(draft.Content, draft.ReviewerEdits)
+	mergedContent, err := audit.MergeReviewerEdits(draft.Content, draft.ReviewerEdits)
 	if err != nil {
 		slog.Warn("reviewer edits merge failed, using original content", "draft_id", draftID, "error", err)
 		mergedContent = draft.Content

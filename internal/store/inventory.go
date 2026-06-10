@@ -6,34 +6,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 )
-
-// InventoryItem is a per-target rollup of latest eval status per policy.
-type InventoryItem struct {
-	TargetID       string    `json:"target_id"`
-	TargetType     string    `json:"target_type"`
-	Environment    string    `json:"environment"`
-	PolicyCount    int       `json:"policy_count"`
-	PassCount      int       `json:"pass_count"`
-	FailCount      int       `json:"fail_count"`
-	LatestEvidence time.Time `json:"latest_evidence"`
-}
-
-// InventoryFilter holds optional query params for ListInventory.
-type InventoryFilter struct {
-	PolicyID    string `query:"policy_id"`
-	ProgramID   string `query:"program_id"`
-	TargetType  string `query:"target_type"`
-	Environment string `query:"environment"`
-}
-
-// InventoryStore lists evidence inventory aggregates by target.
-type InventoryStore interface {
-	ListInventory(ctx context.Context, filters InventoryFilter) ([]InventoryItem, error)
-}
-
-var _ InventoryStore = (*Store)(nil)
 
 // ListInventory returns per-target aggregates using the latest evidence row
 // per (target_id, policy_id), ordered by target_id.

@@ -5,22 +5,11 @@ package store
 import (
 	"context"
 	"fmt"
-	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/complytime-labs/complytime-core/internal/consts"
 	"github.com/complytime-labs/complytime-core/internal/gemara"
 )
-
-// Catalog represents a stored catalog artifact (ControlCatalog, ThreatCatalog, etc.).
-type Catalog struct {
-	CatalogID   string    `json:"catalog_id"`
-	CatalogType string    `json:"catalog_type"`
-	Title       string    `json:"title"`
-	Content     string    `json:"content"`
-	PolicyID    string    `json:"policy_id,omitempty"`
-	ImportedAt  time.Time `json:"imported_at"`
-}
 
 // InsertCatalog stores a raw catalog artifact, replacing on conflict.
 func (s *Store) InsertCatalog(ctx context.Context, c Catalog) error {

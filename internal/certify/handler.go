@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package bus
+package certify
 
 import (
 	"context"
 	"log/slog"
 	"time"
 
-	"github.com/complytime-labs/complytime-core/internal/certify"
+	"github.com/complytime-labs/complytime-core/internal/bus"
 )
 
 // CertificationQuerier fetches recently ingested evidence rows for a policy.
 type CertificationQuerier interface {
 	QueryRecentEvidence(
 		ctx context.Context, policyID string, since time.Time,
-	) ([]certify.EvidenceRow, error)
+	) ([]EvidenceRow, error)
 }
 
 // CertificationWriter persists certification results as trust signals.
@@ -22,22 +22,8 @@ type CertificationWriter interface {
 	InsertTrustSignals(ctx context.Context, signals []TrustSignalRow) error
 }
 
-// TrustSignalRow represents a trust signal for database insertion.
-// This mirrors store.TrustSignalRow but avoids import cycles.
-type TrustSignalRow struct {
-	EvidenceID string
-	Layer      string
-	CheckName  string
-	Result     string
-	Reason     string
-	CheckedAt  time.Time
-}
-
 // inferLayer maps certifier names to trust signal layers.
-// This provides a default mapping; certifiers can be enhanced to
-// return layer information directly in the future.
 func inferLayer(certifierName string) string {
-	// Map common certifier names to layers
 	switch certifierName {
 	case "schema", "quality", "freshness", "relevance":
 		return "quality"
@@ -46,7 +32,7 @@ func inferLayer(certifierName string) string {
 	case "publisher_auth", "attestation", "signature":
 		return "attestation"
 	default:
-		return "quality" // default layer
+		return "quality"
 	}
 }
 
@@ -54,11 +40,11 @@ func inferLayer(certifierName string) string {
 // certifier pipeline against recently ingested evidence for a policy.
 func CertificationHandler(
 	ctx context.Context,
-	pipeline *certify.Pipeline,
+	pipeline *Pipeline,
 	querier CertificationQuerier,
 	writer CertificationWriter,
-) func(EvidenceEvent) {
-	return func(evt EvidenceEvent) {
+) func(bus.EvidenceEvent) {
+	return func(evt bus.EvidenceEvent) {
 		since := evt.Timestamp.Add(-5 * time.Minute)
 		rows, err := querier.QueryRecentEvidence(ctx, evt.PolicyID, since)
 		if err != nil {
@@ -77,19 +63,16 @@ func CertificationHandler(
 
 			var trustSignals []TrustSignalRow
 			for _, r := range results {
-				// Convert certifier results to trust signals
-				// Each certifier check becomes a trust signal
 				trustSignals = append(trustSignals, TrustSignalRow{
 					EvidenceID: row.EvidenceID,
 					Layer:      inferLayer(r.Certifier),
 					CheckName:  r.Certifier,
-					Result:     string(r.Verdict),
+					Result:     Result(r.Verdict),
 					Reason:     r.Reason,
 					CheckedAt:  time.Now(),
 				})
 			}
 
-			// Write trust signals
 			if err := writer.InsertTrustSignals(ctx, trustSignals); err != nil {
 				slog.Warn("trust signal insert failed",
 					"evidence_id", row.EvidenceID, "error", err)

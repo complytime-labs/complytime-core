@@ -289,21 +289,9 @@ func (a *certificationAdapter) QueryRecentEvidence(
 }
 
 func (a *certificationAdapter) InsertTrustSignals(
-	ctx context.Context, signals []eventbus.TrustSignalRow,
+	ctx context.Context, signals []certify.TrustSignalRow,
 ) error {
-	// Convert eventbus.TrustSignalRow to store.TrustSignalRow
-	storeSignals := make([]store.TrustSignalRow, len(signals))
-	for i, s := range signals {
-		storeSignals[i] = store.TrustSignalRow{
-			EvidenceID: s.EvidenceID,
-			Layer:      s.Layer,
-			CheckName:  s.CheckName,
-			Result:     certify.Result(s.Result),
-			Reason:     s.Reason,
-			CheckedAt:  s.CheckedAt,
-		}
-	}
-	return a.st.InsertTrustSignals(ctx, storeSignals)
+	return a.st.InsertTrustSignals(ctx, signals)
 }
 
 // setupCertificationPipeline wires the certifier pipeline (schema + executor)
@@ -318,8 +306,8 @@ func setupCertificationPipeline(st *store.Store, b *eventbus.Bus) {
 		&certify.ExecutorCertifier{KnownEngines: map[string]bool{"test-engine": true}},
 	)
 	adapter := &certificationAdapter{st: st}
-	handler := eventbus.CertificationHandler(context.Background(), pipeline, adapter, adapter)
-	debouncer := eventbus.NewDebouncer(100*time.Millisecond, handler)
+	handler := certify.CertificationHandler(context.Background(), pipeline, adapter, adapter)
+	debouncer := certify.NewDebouncer(100*time.Millisecond, handler)
 	_, _ = b.SubscribeEvidence(func(evt eventbus.EvidenceEvent) {
 		debouncer.Push(evt)
 	})

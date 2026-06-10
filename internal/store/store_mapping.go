@@ -5,22 +5,11 @@ package store
 import (
 	"context"
 	"fmt"
-	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/complytime-labs/complytime-core/internal/gemara"
 	"github.com/google/uuid"
 )
-
-// MappingDocument represents a global crosswalk mapping artifact.
-type MappingDocument struct {
-	MappingID       string    `json:"mapping_id"`
-	SourceCatalogID string    `json:"source_catalog_id"`
-	TargetCatalogID string    `json:"target_catalog_id"`
-	Framework       string    `json:"framework"`
-	Content         string    `json:"content"`
-	ImportedAt      time.Time `json:"imported_at"`
-}
 
 // InsertMapping stores a mapping document.
 func (s *Store) InsertMapping(ctx context.Context, m MappingDocument) error {

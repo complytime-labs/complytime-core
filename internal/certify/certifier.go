@@ -89,3 +89,20 @@ type Certifier interface {
 	Version() string
 	Certify(ctx context.Context, row EvidenceRow) CertResult
 }
+
+// TrustSignalRow represents a single trust signal record in the database.
+type TrustSignalRow struct {
+	EvidenceID string    `json:"evidence_id"`
+	Layer      string    `json:"layer"`
+	CheckName  string    `json:"check_name"`
+	Result     Result    `json:"result"`
+	Reason     string    `json:"reason"`
+	CheckedAt  time.Time `json:"checked_at"`
+}
+
+// TrustSignalStore defines operations for trust signals (queryable certification checks).
+type TrustSignalStore interface {
+	InsertTrustSignals(ctx context.Context, signals []TrustSignalRow) error
+	QueryTrustSignals(ctx context.Context, evidenceID string) ([]TrustSignalRow, error)
+	HasFailedTrustSignals(ctx context.Context, evidenceID string) (bool, error)
+}

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package store
+package audit
 
 import (
 	"encoding/json"
@@ -16,9 +16,9 @@ type reviewerEdit struct {
 
 var typePattern = regexp.MustCompile(`(?m)^(\s+type:\s*)(.+)$`)
 
-// mergeReviewerEdits applies reviewer type overrides and notes to audit log YAML content.
+// MergeReviewerEdits applies reviewer type overrides and notes to audit log YAML content.
 // Returns the merged content or the original if editsJSON is empty/unparseable.
-func mergeReviewerEdits(content string, editsJSON string) (string, error) {
+func MergeReviewerEdits(content string, editsJSON string) (string, error) {
 	if editsJSON == "" || editsJSON == "{}" {
 		return content, nil
 	}

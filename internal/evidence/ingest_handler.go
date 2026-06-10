@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package store
+package evidence
 
 import (
 	"bytes"
@@ -12,16 +12,16 @@ import (
 	"github.com/goccy/go-yaml"
 
 	"github.com/complytime-labs/complytime-core/internal/bus"
-	"github.com/complytime-labs/complytime-core/internal/ingest"
 )
 
-func toEvidenceRecords(rows []ingest.EvidenceRow) []EvidenceRecord {
-	return toEvidenceRecordsWithLogIndex(rows, nil, nil)
+// ToEvidenceRecords converts ingest EvidenceRows to EvidenceRecords.
+func ToEvidenceRecords(rows []EvidenceRow) []EvidenceRecord {
+	return ToEvidenceRecordsWithLogIndex(rows, nil, nil)
 }
 
-// toEvidenceRecordsWithLogIndex converts ingest EvidenceRows to store EvidenceRecords,
+// ToEvidenceRecordsWithLogIndex converts ingest EvidenceRows to EvidenceRecords,
 // optionally setting a log_index and publisher identity for all records (for Tessera transparency log tracking).
-func toEvidenceRecordsWithLogIndex(rows []ingest.EvidenceRow, logIndex *uint64, publisherIdentity *bus.PublisherIdentity) []EvidenceRecord {
+func ToEvidenceRecordsWithLogIndex(rows []EvidenceRow, logIndex *uint64, publisherIdentity *bus.PublisherIdentity) []EvidenceRecord {
 	records := make([]EvidenceRecord, len(rows))
 	for i, row := range rows {
 		rec := EvidenceRecord{
@@ -94,8 +94,8 @@ func derefUint16(p *uint16) int {
 	return int(*p)
 }
 
-// detectArtifactType does a lightweight header parse to determine the type.
-func detectArtifactType(data []byte) (gemara.ArtifactType, error) {
+// DetectArtifactType does a lightweight header parse to determine the type.
+func DetectArtifactType(data []byte) (gemara.ArtifactType, error) {
 	var hdr struct {
 		Metadata gemara.Metadata `yaml:"metadata"`
 	}
@@ -108,7 +108,8 @@ func detectArtifactType(data []byte) (gemara.ArtifactType, error) {
 	return hdr.Metadata.Type, nil
 }
 
-func detectArtifactTypeString(data []byte) string {
+// DetectArtifactTypeString returns the raw string value of metadata.type.
+func DetectArtifactTypeString(data []byte) string {
 	var hdr struct {
 		Metadata struct {
 			Type string `yaml:"type"`
@@ -141,7 +142,8 @@ type TargetRegistrationYAML struct {
 	} `yaml:"dimensions"`
 }
 
-func parseTargetRegistration(data []byte) (*TargetRegistrationYAML, error) {
+// ParseTargetRegistration parses a TargetRegistration YAML artifact.
+func ParseTargetRegistration(data []byte) (*TargetRegistrationYAML, error) {
 	var reg TargetRegistrationYAML
 	if err := yaml.Unmarshal(data, &reg); err != nil {
 		return nil, fmt.Errorf("parse TargetRegistration YAML: %w", err)
@@ -152,25 +154,27 @@ func parseTargetRegistration(data []byte) (*TargetRegistrationYAML, error) {
 	return &reg, nil
 }
 
-func flattenEvaluation(ctx context.Context, data []byte) ([]ingest.EvidenceRow, string, error) {
+// FlattenEvaluation parses and flattens an EvaluationLog artifact.
+func FlattenEvaluation(ctx context.Context, data []byte) ([]EvidenceRow, string, error) {
 	f := &bytesFetcher{data: data}
 	evalLog, err := gemara.Load[gemara.EvaluationLog](ctx, f, "upload.yaml")
 	if err != nil {
 		return nil, "", fmt.Errorf("parse EvaluationLog: %w", err)
 	}
 	policyID := derivePolicyID(evalLog.Metadata.MappingReferences)
-	rows, err := ingest.FlattenEvaluationLog(evalLog, policyID)
+	rows, err := FlattenEvaluationLog(evalLog, policyID)
 	return rows, policyID, err
 }
 
-func flattenEnforcement(ctx context.Context, data []byte) ([]ingest.EvidenceRow, string, error) {
+// FlattenEnforcement parses and flattens an EnforcementLog artifact.
+func FlattenEnforcement(ctx context.Context, data []byte) ([]EvidenceRow, string, error) {
 	f := &bytesFetcher{data: data}
 	enfLog, err := gemara.Load[gemara.EnforcementLog](ctx, f, "upload.yaml")
 	if err != nil {
 		return nil, "", fmt.Errorf("parse EnforcementLog: %w", err)
 	}
 	policyID := derivePolicyID(enfLog.Metadata.MappingReferences)
-	rows, err := ingest.FlattenEnforcementLog(enfLog, policyID)
+	rows, err := FlattenEnforcementLog(enfLog, policyID)
 	return rows, policyID, err
 }
 
