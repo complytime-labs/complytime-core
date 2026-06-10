@@ -6,22 +6,9 @@ import (
 	"context"
 	"fmt"
 	"time"
-)
 
-// TargetRow represents a target registration with dimensional metadata.
-type TargetRow struct {
-	TargetID        string    `json:"target_id"`
-	TesseraLogIndex uint64    `json:"tessera_log_index"`
-	TargetName      string    `json:"target_name"`
-	TargetType      string    `json:"target_type"`
-	Technologies    []string  `json:"technologies"`
-	Geopolitical    []string  `json:"geopolitical"`
-	Sensitivity     []string  `json:"sensitivity"`
-	Users           []string  `json:"users"`
-	Groups          []string  `json:"groups"`
-	RegisteredAt    time.Time `json:"registered_at"`
-	RegisteredBy    string    `json:"registered_by"`
-}
+	"github.com/complytime-labs/complytime-core/internal/requirements"
+)
 
 // IsTargetRegistered checks if a target has any registration in the targets table.
 func (s *Store) IsTargetRegistered(ctx context.Context, targetID string) bool {
@@ -35,7 +22,7 @@ func (s *Store) IsTargetRegistered(ctx context.Context, targetID string) bool {
 }
 
 // InsertBundleArtifact stores a bundle artifact row.
-func (s *Store) InsertBundleArtifact(ctx context.Context, b BundleArtifactRow) error {
+func (s *Store) InsertBundleArtifact(ctx context.Context, b requirements.BundleArtifactRow) error {
 	const q = `INSERT INTO bundle_artifacts (bundle_id, tessera_log_index, artifact_type, artifact_id, oci_reference)
 	VALUES ($1, $2, $3, $4, $5)
 	ON CONFLICT (bundle_id, tessera_log_index) DO NOTHING`
@@ -47,7 +34,7 @@ func (s *Store) InsertBundleArtifact(ctx context.Context, b BundleArtifactRow) e
 	return nil
 }
 
-func (s *Store) InsertTarget(ctx context.Context, t TargetRow) error {
+func (s *Store) InsertTarget(ctx context.Context, t requirements.TargetRow) error {
 	const q = `INSERT INTO targets (
 		target_id, tessera_log_index, target_name, target_type,
 		technologies, geopolitical, sensitivity, users, groups,
@@ -66,7 +53,7 @@ func (s *Store) InsertTarget(ctx context.Context, t TargetRow) error {
 	return nil
 }
 
-func (s *Store) GetLatestTarget(ctx context.Context, targetID string, asOf time.Time) (*TargetRow, error) {
+func (s *Store) GetLatestTarget(ctx context.Context, targetID string, asOf time.Time) (*requirements.TargetRow, error) {
 	const q = `SELECT target_id, tessera_log_index, target_name, target_type,
 		technologies, geopolitical, sensitivity, users, groups,
 		registered_at, registered_by
@@ -75,7 +62,7 @@ func (s *Store) GetLatestTarget(ctx context.Context, targetID string, asOf time.
 	ORDER BY registered_at DESC
 	LIMIT 1`
 
-	var t TargetRow
+	var t requirements.TargetRow
 	err := s.pool.QueryRow(ctx, q, targetID, asOf).Scan(
 		&t.TargetID, &t.TesseraLogIndex, &t.TargetName, &t.TargetType,
 		&t.Technologies, &t.Geopolitical, &t.Sensitivity, &t.Users, &t.Groups,
@@ -90,7 +77,7 @@ func (s *Store) GetLatestTarget(ctx context.Context, targetID string, asOf time.
 	return &t, nil
 }
 
-func (s *Store) ListTargets(ctx context.Context) ([]TargetRow, error) {
+func (s *Store) ListTargets(ctx context.Context) ([]requirements.TargetRow, error) {
 	const q = `SELECT DISTINCT ON (target_id)
 		target_id, tessera_log_index, target_name, target_type,
 		technologies, geopolitical, sensitivity, users, groups,
@@ -104,9 +91,9 @@ func (s *Store) ListTargets(ctx context.Context) ([]TargetRow, error) {
 	}
 	defer rows.Close()
 
-	var out []TargetRow
+	var out []requirements.TargetRow
 	for rows.Next() {
-		var t TargetRow
+		var t requirements.TargetRow
 		if err := rows.Scan(
 			&t.TargetID, &t.TesseraLogIndex, &t.TargetName, &t.TargetType,
 			&t.Technologies, &t.Geopolitical, &t.Sensitivity, &t.Users, &t.Groups,

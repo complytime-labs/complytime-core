@@ -11,8 +11,11 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/complytime-labs/complytime-core/internal/audit"
 	"github.com/complytime-labs/complytime-core/internal/consts"
 	gemarapkg "github.com/complytime-labs/complytime-core/internal/gemara"
+	"github.com/complytime-labs/complytime-core/internal/posture"
+	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
 
 func registerPostureAndRequirementRoutes(g *echo.Group, s Stores) {
@@ -44,14 +47,14 @@ func parseQueryLimit(c echo.Context) int {
 	return consts.ClampLimit(0)
 }
 
-func listRequirementMatrixHandler(s RequirementStore) echo.HandlerFunc {
+func listRequirementMatrixHandler(s posture.RequirementStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		policyID := c.QueryParam("policy_id")
 		if policyID == "" {
 			return jsonError(c, http.StatusBadRequest, "policy_id required")
 		}
 
-		f := RequirementFilter{PolicyID: policyID}
+		f := posture.RequirementFilter{PolicyID: policyID}
 
 		if v := c.QueryParam("audit_start"); v != "" {
 			t, err := time.Parse(time.RFC3339, v)
@@ -98,13 +101,13 @@ func listRequirementMatrixHandler(s RequirementStore) echo.HandlerFunc {
 			return jsonError(c, http.StatusInternalServerError, "query failed")
 		}
 		if rows == nil {
-			rows = []RequirementRow{}
+			rows = []posture.RequirementRow{}
 		}
 		return c.JSON(http.StatusOK, rows)
 	}
 }
 
-func listRequirementEvidenceHandler(s RequirementStore) echo.HandlerFunc {
+func listRequirementEvidenceHandler(s posture.RequirementStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		reqID := c.Param("id")
 		if reqID == "" {
@@ -115,7 +118,7 @@ func listRequirementEvidenceHandler(s RequirementStore) echo.HandlerFunc {
 			return jsonError(c, http.StatusBadRequest, "policy_id required")
 		}
 
-		f := RequirementFilter{PolicyID: policyID}
+		f := posture.RequirementFilter{PolicyID: policyID}
 		if v := c.QueryParam("audit_start"); v != "" {
 			t, err := time.Parse(time.RFC3339, v)
 			if err != nil {
@@ -148,20 +151,20 @@ func listRequirementEvidenceHandler(s RequirementStore) echo.HandlerFunc {
 
 		rows, err := s.ListRequirementEvidence(c.Request().Context(), reqID, f)
 		if err != nil {
-			if errors.Is(err, ErrRequirementNotFound) {
+			if errors.Is(err, audit.ErrRequirementNotFound) {
 				return jsonError(c, http.StatusNotFound, "not found")
 			}
 			slog.Error("list requirement evidence failed", "error", err)
 			return jsonError(c, http.StatusInternalServerError, "query failed")
 		}
 		if rows == nil {
-			rows = []RequirementEvidenceRow{}
+			rows = []posture.RequirementEvidenceRow{}
 		}
 		return c.JSON(http.StatusOK, rows)
 	}
 }
 
-func listThreatsHandler(s ThreatStore) echo.HandlerFunc {
+func listThreatsHandler(s requirements.ThreatStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		catalogID := c.QueryParam("catalog_id")
 		policyID := c.QueryParam("policy_id")
@@ -178,7 +181,7 @@ func listThreatsHandler(s ThreatStore) echo.HandlerFunc {
 	}
 }
 
-func listControlThreatsHandler(s ThreatStore) echo.HandlerFunc {
+func listControlThreatsHandler(s requirements.ThreatStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		catalogID := c.QueryParam("catalog_id")
 		controlID := c.QueryParam("control_id")
@@ -195,7 +198,7 @@ func listControlThreatsHandler(s ThreatStore) echo.HandlerFunc {
 	}
 }
 
-func listRisksHandler(s RiskStore) echo.HandlerFunc {
+func listRisksHandler(s requirements.RiskStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		catalogID := c.QueryParam("catalog_id")
 		policyID := c.QueryParam("policy_id")
@@ -212,7 +215,7 @@ func listRisksHandler(s RiskStore) echo.HandlerFunc {
 	}
 }
 
-func listRiskThreatsHandler(s RiskStore) echo.HandlerFunc {
+func listRiskThreatsHandler(s requirements.RiskStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		catalogID := c.QueryParam("catalog_id")
 		riskID := c.QueryParam("risk_id")

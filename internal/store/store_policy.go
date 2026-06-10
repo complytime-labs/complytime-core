@@ -5,35 +5,14 @@ package store
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
 
-// Policy represents a stored policy artifact.
-type Policy struct {
-	PolicyID     string    `json:"policy_id"`
-	Title        string    `json:"title"`
-	Version      string    `json:"version,omitempty"`
-	OCIReference string    `json:"oci_reference"`
-	Content      string    `json:"content"`
-	ImportedAt   time.Time `json:"imported_at"`
-	ImportedBy   string    `json:"imported_by,omitempty"`
-
-	// Dimensional metadata for policy enrollment
-	Technologies            []string   `json:"technologies,omitempty"`
-	Geopolitical            []string   `json:"geopolitical,omitempty"`
-	Sensitivity             []string   `json:"sensitivity,omitempty"`
-	Users                   []string   `json:"users,omitempty"`
-	Groups                  []string   `json:"groups,omitempty"`
-	EvaluationTimelineStart *time.Time `json:"evaluation_timeline_start,omitempty"`
-	EvaluationTimelineEnd   *time.Time `json:"evaluation_timeline_end,omitempty"`
-	BundleID                string     `json:"bundle_id,omitempty"`
-	TesseraLogIndex         *uint64    `json:"tessera_log_index,omitempty"`
-}
-
 // InsertPolicy stores a policy artifact (upsert on policy_id).
-func (s *Store) InsertPolicy(ctx context.Context, p Policy) error {
+func (s *Store) InsertPolicy(ctx context.Context, p requirements.Policy) error {
 	if p.PolicyID == "" {
 		p.PolicyID = uuid.New().String()
 	}
@@ -68,7 +47,7 @@ func (s *Store) InsertPolicy(ctx context.Context, p Policy) error {
 }
 
 // ListPolicies returns all stored policies ordered by import date.
-func (s *Store) ListPolicies(ctx context.Context) ([]Policy, error) {
+func (s *Store) ListPolicies(ctx context.Context) ([]requirements.Policy, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT policy_id, title, version, oci_reference, imported_at, COALESCE(imported_by, '') FROM policies ORDER BY imported_at DESC`)
 	if err != nil {
@@ -76,9 +55,9 @@ func (s *Store) ListPolicies(ctx context.Context) ([]Policy, error) {
 	}
 	defer rows.Close()
 
-	var out []Policy
+	var out []requirements.Policy
 	for rows.Next() {
-		var p Policy
+		var p requirements.Policy
 		if err := rows.Scan(&p.PolicyID, &p.Title, &p.Version, &p.OCIReference, &p.ImportedAt, &p.ImportedBy); err != nil {
 			return nil, fmt.Errorf("scan policy: %w", err)
 		}
@@ -88,10 +67,10 @@ func (s *Store) ListPolicies(ctx context.Context) ([]Policy, error) {
 }
 
 // GetPolicy returns a single policy with full content.
-func (s *Store) GetPolicy(ctx context.Context, policyID string) (*Policy, error) {
+func (s *Store) GetPolicy(ctx context.Context, policyID string) (*requirements.Policy, error) {
 	row := s.pool.QueryRow(ctx,
 		`SELECT policy_id, title, version, oci_reference, content, imported_at, COALESCE(imported_by, '') FROM policies WHERE policy_id = $1`, policyID)
-	var p Policy
+	var p requirements.Policy
 	if err := row.Scan(&p.PolicyID, &p.Title, &p.Version, &p.OCIReference, &p.Content, &p.ImportedAt, &p.ImportedBy); err != nil {
 		return nil, fmt.Errorf("get policy: %w", err)
 	}
@@ -110,7 +89,7 @@ func (s *Store) PolicyExistsByID(ctx context.Context, policyID string) bool {
 	return exists
 }
 
-func (s *Store) QueryPoliciesByDimensions(ctx context.Context, dims DimensionQuery) ([]PolicyWithDimensions, error) {
+func (s *Store) QueryPoliciesByDimensions(ctx context.Context, dims requirements.DimensionQuery) ([]requirements.PolicyWithDimensions, error) {
 	const q = `SELECT policy_id, title, version, tessera_log_index,
 		technologies, geopolitical, sensitivity,
 		evaluation_timeline_start, evaluation_timeline_end
@@ -135,9 +114,9 @@ func (s *Store) QueryPoliciesByDimensions(ctx context.Context, dims DimensionQue
 	}
 	defer rows.Close()
 
-	var out []PolicyWithDimensions
+	var out []requirements.PolicyWithDimensions
 	for rows.Next() {
-		var p PolicyWithDimensions
+		var p requirements.PolicyWithDimensions
 		var logIndex *int64
 		if err := rows.Scan(
 			&p.PolicyID, &p.Title, &p.Version, &logIndex,

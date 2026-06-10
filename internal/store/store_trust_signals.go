@@ -7,33 +7,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/complytime-labs/complytime-core/internal/certifier"
+	"github.com/complytime-labs/complytime-core/internal/certify"
 )
-
-// TrustSignalRow represents a single trust signal record in the database.
-type TrustSignalRow struct {
-	EvidenceID string           `json:"evidence_id"`
-	Layer      string           `json:"layer"`
-	CheckName  string           `json:"check_name"`
-	Result     certifier.Result `json:"result"`
-	Reason     string           `json:"reason"`
-	CheckedAt  time.Time        `json:"checked_at"`
-}
-
-// TrustSignalFilter holds query parameters for trust signal queries.
-type TrustSignalFilter struct {
-	EvidenceID string
-	Layer      string
-	CheckName  string
-	Result     certifier.Result
-	Limit      int
-	Offset     int
-}
 
 // InsertTrustSignals batch-inserts trust signal records.
 // Uses upsert semantics: if a signal (evidence_id, layer, check_name) already exists,
 // it updates result/reason/checked_at to reflect the latest check run.
-func (s *Store) InsertTrustSignals(ctx context.Context, signals []TrustSignalRow) error {
+func (s *Store) InsertTrustSignals(ctx context.Context, signals []certify.TrustSignalRow) error {
 	if len(signals) == 0 {
 		return nil
 	}
@@ -70,7 +50,7 @@ func (s *Store) InsertTrustSignals(ctx context.Context, signals []TrustSignalRow
 }
 
 // QueryTrustSignals retrieves all trust signals for a given evidence ID.
-func (s *Store) QueryTrustSignals(ctx context.Context, evidenceID string) ([]TrustSignalRow, error) {
+func (s *Store) QueryTrustSignals(ctx context.Context, evidenceID string) ([]certify.TrustSignalRow, error) {
 	query := `SELECT evidence_id, layer, check_name, result, reason, checked_at
 	          FROM trust_signals
 	          WHERE evidence_id = $1
@@ -82,9 +62,9 @@ func (s *Store) QueryTrustSignals(ctx context.Context, evidenceID string) ([]Tru
 	}
 	defer rows.Close()
 
-	var out []TrustSignalRow
+	var out []certify.TrustSignalRow
 	for rows.Next() {
-		var r TrustSignalRow
+		var r certify.TrustSignalRow
 		if err := rows.Scan(
 			&r.EvidenceID, &r.Layer, &r.CheckName, &r.Result, &r.Reason, &r.CheckedAt,
 		); err != nil {

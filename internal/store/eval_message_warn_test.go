@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/complytime-labs/complytime-core/internal/consts"
+	"github.com/complytime-labs/complytime-core/internal/evidence"
 )
 
 func TestWarnEvalMessageIfLarge_EmitsWhenOverThreshold(t *testing.T) {
@@ -20,7 +21,7 @@ func TestWarnEvalMessageIfLarge_EmitsWhenOverThreshold(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(old) })
 
 	msg := strings.Repeat("a", consts.EvalMessageWarnBytes+1)
-	warnEvalMessageIfLarge(EvidenceRecord{
+	warnEvalMessageIfLarge(evidence.EvidenceRecord{
 		PolicyID:    "pol",
 		EvidenceID:  "ev",
 		EvalMessage: msg,
@@ -46,7 +47,7 @@ func TestWarnEvalMessageIfLarge_SilentUnderThreshold(t *testing.T) {
 	slog.SetDefault(slog.New(h))
 	t.Cleanup(func() { slog.SetDefault(old) })
 
-	warnEvalMessageIfLarge(EvidenceRecord{
+	warnEvalMessageIfLarge(evidence.EvidenceRecord{
 		PolicyID:    "pol",
 		EvidenceID:  "ev",
 		EvalMessage: strings.Repeat("b", consts.EvalMessageWarnBytes),

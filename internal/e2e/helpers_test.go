@@ -17,8 +17,8 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/complytime-labs/complytime-core/internal/auth"
-	"github.com/complytime-labs/complytime-core/internal/certifier"
-	"github.com/complytime-labs/complytime-core/internal/events"
+	eventbus "github.com/complytime-labs/complytime-core/internal/bus"
+	"github.com/complytime-labs/complytime-core/internal/certify"
 	"github.com/complytime-labs/complytime-core/internal/store"
 	"github.com/complytime-labs/complytime-core/internal/tessera"
 	"github.com/golang-jwt/jwt/v5"
@@ -71,18 +71,18 @@ func startTestNATSServer(t testingHelper) *natsserver.Server {
 }
 
 // connectTestNATS creates a NATS connection to the test server
-func connectTestNATS(t testingHelper, url string) *events.Bus {
+func connectTestNATS(t testingHelper, url string) *eventbus.Bus {
 	t.Helper()
 
-	bus, err := events.Connect(url)
+	b, err := eventbus.Connect(url)
 	Expect(err).NotTo(HaveOccurred(), "Failed to connect to NATS")
-	Expect(bus).NotTo(BeNil(), "NATS bus is nil")
+	Expect(b).NotTo(BeNil(), "NATS bus is nil")
 
 	t.Cleanup(func() {
-		bus.Close()
+		b.Close()
 	})
 
-	return bus
+	return b
 }
 
 // setupJetStreamWorker creates the JetStream stream/consumer and starts the
@@ -90,7 +90,7 @@ func connectTestNATS(t testingHelper, url string) *events.Bus {
 func setupJetStreamWorker(
 	t testingHelper,
 	ctx context.Context,
-	bus *events.Bus,
+	b *eventbus.Bus,
 	stores store.Stores,
 	pub store.EventPublisher,
 	tracker *store.IngestTracker,
@@ -98,14 +98,14 @@ func setupJetStreamWorker(
 ) {
 	t.Helper()
 
-	err := bus.EnsureIngestStream(ctx, events.IngestStreamConfig{
+	err := b.EnsureIngestStream(ctx, eventbus.IngestStreamConfig{
 		MaxDeliver: 3,
 		AckWait:    5 * time.Second,
 	})
 	Expect(err).NotTo(HaveOccurred(), "Failed to create JetStream stream")
 
 	handler := store.IngestWorker(ctx, stores, pub, tracker, reader)
-	cc, err := bus.ConsumeIngest(ctx, handler)
+	cc, err := b.ConsumeIngest(ctx, handler)
 	Expect(err).NotTo(HaveOccurred(), "Failed to start JetStream consumer")
 
 	t.Cleanup(func() {
@@ -256,23 +256,23 @@ func submitEvidence(t testingHelper, serverURL string, token string, yamlContent
 	return resp, result
 }
 
-// certificationAdapter bridges store.Store to events.CertificationQuerier
-// and events.CertificationWriter interfaces. The store uses store-local types
-// while the events package uses certifier.EvidenceRow and events.CertificationRow.
+// certificationAdapter bridges store.Store to bus.CertificationQuerier
+// and bus.CertificationWriter interfaces. The store uses store-local types
+// while the events package uses certify.EvidenceRow and bus.CertificationRow.
 type certificationAdapter struct {
 	st *store.Store
 }
 
 func (a *certificationAdapter) QueryRecentEvidence(
 	ctx context.Context, policyID string, since time.Time,
-) ([]certifier.EvidenceRow, error) {
+) ([]certify.EvidenceRow, error) {
 	rows, err := a.st.QueryRecentEvidence(ctx, policyID, since)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]certifier.EvidenceRow, len(rows))
+	out := make([]certify.EvidenceRow, len(rows))
 	for i, r := range rows {
-		out[i] = certifier.EvidenceRow{
+		out[i] = certify.EvidenceRow{
 			EvidenceID:       r.EvidenceID,
 			TargetID:         r.TargetID,
 			RuleID:           r.RuleID,
@@ -289,21 +289,9 @@ func (a *certificationAdapter) QueryRecentEvidence(
 }
 
 func (a *certificationAdapter) InsertTrustSignals(
-	ctx context.Context, signals []events.TrustSignalRow,
+	ctx context.Context, signals []certify.TrustSignalRow,
 ) error {
-	// Convert events.TrustSignalRow to store.TrustSignalRow
-	storeSignals := make([]store.TrustSignalRow, len(signals))
-	for i, s := range signals {
-		storeSignals[i] = store.TrustSignalRow{
-			EvidenceID: s.EvidenceID,
-			Layer:      s.Layer,
-			CheckName:  s.CheckName,
-			Result:     certifier.Result(s.Result),
-			Reason:     s.Reason,
-			CheckedAt:  s.CheckedAt,
-		}
-	}
-	return a.st.InsertTrustSignals(ctx, storeSignals)
+	return a.st.InsertTrustSignals(ctx, signals)
 }
 
 // setupCertificationPipeline wires the certifier pipeline (schema + executor)
@@ -312,15 +300,15 @@ func (a *certificationAdapter) InsertTrustSignals(
 // not populate source_registry or attestation_ref from YAML, so provenance
 // would always fail. Tests that need provenance certification should set
 // source_registry directly in the DB before triggering the pipeline.
-func setupCertificationPipeline(st *store.Store, bus *events.Bus) {
-	pipeline := certifier.NewPipeline(
-		&certifier.SchemaCertifier{},
-		&certifier.ExecutorCertifier{KnownEngines: map[string]bool{"test-engine": true}},
+func setupCertificationPipeline(st *store.Store, b *eventbus.Bus) {
+	pipeline := certify.NewPipeline(
+		&certify.SchemaCertifier{},
+		&certify.ExecutorCertifier{KnownEngines: map[string]bool{"test-engine": true}},
 	)
 	adapter := &certificationAdapter{st: st}
-	handler := events.CertificationHandler(context.Background(), pipeline, adapter, adapter)
-	debouncer := events.NewDebouncer(100*time.Millisecond, handler)
-	_, _ = bus.SubscribeEvidence(func(evt events.EvidenceEvent) {
+	handler := certify.CertificationHandler(context.Background(), pipeline, adapter, adapter)
+	debouncer := certify.NewDebouncer(100*time.Millisecond, handler)
+	_, _ = b.SubscribeEvidence(func(evt eventbus.EvidenceEvent) {
 		debouncer.Push(evt)
 	})
 }

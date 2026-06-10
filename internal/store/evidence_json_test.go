@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"github.com/complytime-labs/complytime-core/internal/evidence"
 )
 
 func TestEvidenceRecordJSON_MinimalLegacy(t *testing.T) {
@@ -18,7 +20,7 @@ func TestEvidenceRecordJSON_MinimalLegacy(t *testing.T) {
 		"eval_result": "Passed",
 		"collected_at": "2026-03-01T08:30:00Z"
 	}]`)
-	var got []EvidenceRecord
+	var got []evidence.EvidenceRecord
 	if err := json.Unmarshal(payload, &got); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +82,7 @@ func TestEvidenceRecordJSON_FullSemconvShape(t *testing.T) {
 		"owner": "team-a",
 		"collected_at": "2026-04-25T15:00:00Z"
 	}]`)
-	var got []EvidenceRecord
+	var got []evidence.EvidenceRecord
 	if err := json.Unmarshal(payload, &got); err != nil {
 		t.Fatal(err)
 	}

@@ -6,44 +6,10 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"time"
+
+	"github.com/complytime-labs/complytime-core/internal/audit"
+	"github.com/complytime-labs/complytime-core/internal/posture"
 )
-
-// RequirementFilter holds query parameters for requirement matrix and evidence APIs.
-type RequirementFilter struct {
-	PolicyID       string
-	Start          time.Time
-	End            time.Time
-	ControlFamily  string
-	Classification string
-	Limit          int
-	Offset         int
-}
-
-// RequirementRow is a single row in the requirement matrix.
-type RequirementRow struct {
-	CatalogID       string `json:"catalog_id"`
-	ControlID       string `json:"control_id"`
-	ControlTitle    string `json:"control_title"`
-	RequirementID   string `json:"requirement_id"`
-	RequirementText string `json:"requirement_text"`
-	EvidenceCount   uint64 `json:"evidence_count"`
-	LatestEvidence  string `json:"latest_evidence,omitempty"`
-	Classification  string `json:"classification,omitempty"`
-}
-
-// RequirementEvidenceRow is an evidence row returned in requirement drill-down.
-type RequirementEvidenceRow struct {
-	EvidenceID     string `json:"evidence_id"`
-	TargetID       string `json:"target_id"`
-	TargetName     string `json:"target_name,omitempty"`
-	RuleID         string `json:"rule_id"`
-	EvalResult     string `json:"eval_result"`
-	Classification string `json:"classification,omitempty"`
-	AssessedAt     string `json:"assessed_at,omitempty"`
-	CollectedAt    string `json:"collected_at"`
-	SourceRegistry string `json:"source_registry,omitempty"`
-}
 
 // ListRequirementMatrix returns requirement rows with evidence aggregates.
 // Uses evidence as the base table so rows appear even when
@@ -51,7 +17,7 @@ type RequirementEvidenceRow struct {
 // When assessment_requirements IS populated, requirement text and IDs
 // are joined in; otherwise those columns are empty and the view is
 // control-level.
-func (s *Store) ListRequirementMatrix(ctx context.Context, f RequirementFilter) ([]RequirementRow, error) {
+func (s *Store) ListRequirementMatrix(ctx context.Context, f posture.RequirementFilter) ([]posture.RequirementRow, error) {
 	query := `
 		SELECT
 			COALESCE(ar.catalog_id, '') AS catalog_id,
@@ -111,9 +77,9 @@ func (s *Store) ListRequirementMatrix(ctx context.Context, f RequirementFilter) 
 	}
 	defer rows.Close()
 
-	var out []RequirementRow
+	var out []posture.RequirementRow
 	for rows.Next() {
-		var r RequirementRow
+		var r posture.RequirementRow
 		if err := rows.Scan(
 			&r.CatalogID, &r.ControlID, &r.ControlTitle,
 			&r.RequirementID, &r.RequirementText,
@@ -156,13 +122,13 @@ func (s *Store) requirementKnownForPolicy(ctx context.Context, policyID, require
 }
 
 // ListRequirementEvidence returns evidence rows for a specific requirement.
-func (s *Store) ListRequirementEvidence(ctx context.Context, requirementID string, f RequirementFilter) ([]RequirementEvidenceRow, error) {
+func (s *Store) ListRequirementEvidence(ctx context.Context, requirementID string, f posture.RequirementFilter) ([]posture.RequirementEvidenceRow, error) {
 	known, err := s.requirementKnownForPolicy(ctx, f.PolicyID, requirementID)
 	if err != nil {
 		return nil, err
 	}
 	if !known {
-		return nil, ErrRequirementNotFound
+		return nil, audit.ErrRequirementNotFound
 	}
 
 	query := `
@@ -217,9 +183,9 @@ func (s *Store) ListRequirementEvidence(ctx context.Context, requirementID strin
 	}
 	defer rows.Close()
 
-	var out []RequirementEvidenceRow
+	var out []posture.RequirementEvidenceRow
 	for rows.Next() {
-		var r RequirementEvidenceRow
+		var r posture.RequirementEvidenceRow
 		if err := rows.Scan(
 			&r.EvidenceID, &r.TargetID, &r.TargetName,
 			&r.RuleID, &r.EvalResult,

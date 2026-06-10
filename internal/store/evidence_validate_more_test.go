@@ -7,11 +7,12 @@ import (
 	"testing"
 
 	"github.com/complytime-labs/complytime-core/internal/blob"
+	"github.com/complytime-labs/complytime-core/internal/evidence"
 )
 
 func TestValidateEvidenceRecordEnums_TableDriven(t *testing.T) {
 	t.Parallel()
-	base := EvidenceRecord{
+	base := evidence.EvidenceRecord{
 		EvalResult:       "Passed",
 		ComplianceStatus: "Compliant",
 		EnrichmentStatus: "Success",
@@ -29,40 +30,40 @@ func TestValidateEvidenceRecordEnums_TableDriven(t *testing.T) {
 	})
 	tests := []struct {
 		name   string
-		mutate func(*EvidenceRecord)
+		mutate func(*evidence.EvidenceRecord)
 		substr string
 	}{
 		{
 			name: "bad eval_result",
-			mutate: func(r *EvidenceRecord) {
+			mutate: func(r *evidence.EvidenceRecord) {
 				r.EvalResult = "Bogus"
 			},
 			substr: "invalid eval_result",
 		},
 		{
 			name: "bad compliance_status",
-			mutate: func(r *EvidenceRecord) {
+			mutate: func(r *evidence.EvidenceRecord) {
 				r.ComplianceStatus = "Partial"
 			},
 			substr: "invalid compliance_status",
 		},
 		{
 			name: "bad enrichment_status",
-			mutate: func(r *EvidenceRecord) {
+			mutate: func(r *evidence.EvidenceRecord) {
 				r.EnrichmentStatus = "Nope"
 			},
 			substr: "invalid enrichment_status",
 		},
 		{
 			name: "bad confidence",
-			mutate: func(r *EvidenceRecord) {
+			mutate: func(r *evidence.EvidenceRecord) {
 				r.Confidence = "SuperHigh"
 			},
 			substr: "invalid confidence",
 		},
 		{
 			name: "bad risk_level",
-			mutate: func(r *EvidenceRecord) {
+			mutate: func(r *evidence.EvidenceRecord) {
 				r.RiskLevel = "Extreme"
 			},
 			substr: "invalid risk_level",

@@ -13,6 +13,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/complytime-labs/complytime-core/internal/consts"
+	"github.com/complytime-labs/complytime-core/internal/evidence"
 )
 
 func registerEvidenceRoutes(g *echo.Group, s Stores) {
@@ -25,7 +26,7 @@ func registerCertificationsRoutes(g *echo.Group, s Stores) {
 	}
 }
 
-func queryCertificationsHandler(s CertificationStore) echo.HandlerFunc {
+func queryCertificationsHandler(s evidence.CertificationStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		evidenceID := c.QueryParam("evidence_id")
 		if evidenceID == "" {
@@ -37,17 +38,17 @@ func queryCertificationsHandler(s CertificationStore) echo.HandlerFunc {
 			return jsonError(c, http.StatusInternalServerError, "query failed")
 		}
 		if rows == nil {
-			rows = []CertificationRow{}
+			rows = []evidence.CertificationRow{}
 		}
 		return c.JSON(http.StatusOK, rows)
 	}
 }
 
-func queryEvidenceHandler(s EvidenceStore) echo.HandlerFunc {
+func queryEvidenceHandler(s evidence.EvidenceStore) echo.HandlerFunc {
 	const maxPolicyIDs = 50
 
 	return func(c echo.Context) error {
-		f := EvidenceFilter{
+		f := evidence.EvidenceFilter{
 			ControlID:     c.QueryParam("control_id"),
 			TargetName:    c.QueryParam("target_name"),
 			TargetType:    c.QueryParam("target_type"),
@@ -101,7 +102,7 @@ func queryEvidenceHandler(s EvidenceStore) echo.HandlerFunc {
 			return jsonError(c, http.StatusInternalServerError, "query failed")
 		}
 		if records == nil {
-			records = []EvidenceRecord{}
+			records = []evidence.EvidenceRecord{}
 		}
 		return c.JSON(http.StatusOK, records)
 	}

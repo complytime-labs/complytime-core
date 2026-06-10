@@ -17,7 +17,8 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/complytime-labs/complytime-core/internal/auth"
-	"github.com/complytime-labs/complytime-core/internal/events"
+	"github.com/complytime-labs/complytime-core/internal/bus"
+	"github.com/complytime-labs/complytime-core/internal/evidence"
 )
 
 const minimalEvalLog = `metadata:
@@ -95,11 +96,11 @@ actions:
 `
 
 type immediateIngestPublisher struct {
-	handler events.IngestMsgHandler
+	handler bus.IngestMsgHandler
 	reader  TesseraReader
 }
 
-func (p *immediateIngestPublisher) PublishIngest(ctx context.Context, ref events.IngestRef) error {
+func (p *immediateIngestPublisher) PublishIngest(ctx context.Context, ref bus.IngestRef) error {
 	p.handler(ctx, ref, &mockJetStreamMsg{})
 	return nil
 }
@@ -160,7 +161,7 @@ func (m *mockJWTVerifier) Verify(ctx context.Context, token string) (*auth.JWTCl
 	}, nil
 }
 
-func echoWithSyncIngest(t *testing.T, ev EvidenceStore) (*echo.Echo, *IngestTracker) {
+func echoWithSyncIngest(t *testing.T, ev evidence.EvidenceStore) (*echo.Echo, *IngestTracker) {
 	t.Helper()
 	ctx := context.Background()
 	tracker := NewIngestTracker()

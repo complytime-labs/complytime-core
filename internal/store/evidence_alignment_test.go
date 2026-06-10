@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/complytime-labs/complytime-core/internal/evidence"
 	"github.com/complytime-labs/complytime-core/internal/ingest"
 )
 
@@ -27,7 +28,7 @@ func u16(v int) *uint16 {
 
 // otelShapeFromREST builds the ingest writer row shape from a REST-decoded record.
 // Keeps REST and OTel insert paths aligned for the same logical assessment.
-func otelShapeFromREST(r EvidenceRecord) ingest.EvidenceRow {
+func otelShapeFromREST(r evidence.EvidenceRecord) ingest.EvidenceRow {
 	active := r.ExceptionActive
 	return ingest.EvidenceRow{
 		EvidenceID:           r.EvidenceID,
@@ -85,7 +86,7 @@ func TestRESTJSON_IngestRowColumnAlignment(t *testing.T) {
 		"blob_ref": "s3://bkt/obj",
 		"collected_at": "2026-04-25T18:00:00Z"
 	}`
-	var r EvidenceRecord
+	var r evidence.EvidenceRecord
 	if err := json.Unmarshal([]byte(payload), &r); err != nil {
 		t.Fatal(err)
 	}

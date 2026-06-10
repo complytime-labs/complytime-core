@@ -3,11 +3,12 @@
 package store
 
 import (
-	"context"
 	"net/http"
 	"time"
 
 	"github.com/labstack/echo/v4"
+
+	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
 
 func registerTargetRoutes(g *echo.Group, s Stores) {
@@ -18,52 +19,7 @@ func registerTargetRoutes(g *echo.Group, s Stores) {
 	g.GET("/targets", listTargetsHandler(s.Targets))
 }
 
-// PolicyDimensionStore defines queries for policies with dimension matching.
-type PolicyDimensionStore interface {
-	QueryPoliciesByDimensions(ctx context.Context, dims DimensionQuery) ([]PolicyWithDimensions, error)
-}
-
-// DimensionQuery holds parameters for dimension-based policy matching.
-type DimensionQuery struct {
-	Technologies []string
-	Geopolitical []string
-	Sensitivity  []string
-	Users        []string
-	Groups       []string
-	Timestamp    time.Time
-}
-
-// PolicyWithDimensions represents a policy with its dimensional metadata.
-type PolicyWithDimensions struct {
-	LogIndex        uint64    `json:"log_index"`
-	PolicyID        string    `json:"policy_id"`
-	Title           string    `json:"title"`
-	Version         string    `json:"version,omitempty"`
-	Technologies    []string  `json:"technologies,omitempty"`
-	Geopolitical    []string  `json:"geopolitical,omitempty"`
-	Sensitivity     []string  `json:"sensitivity,omitempty"`
-	EvaluationStart time.Time `json:"evaluation_start,omitempty"`
-	EvaluationEnd   time.Time `json:"evaluation_end,omitempty"`
-}
-
-// PolicyQueryResponse is returned by the policy discovery endpoint.
-type PolicyQueryResponse struct {
-	Target             TargetSummary          `json:"target"`
-	ApplicablePolicies []PolicyWithDimensions `json:"applicable_policies"`
-}
-
-// TargetSummary is a brief target representation in API responses.
-type TargetSummary struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	Type         string   `json:"type"`
-	Technologies []string `json:"technologies,omitempty"`
-	Geopolitical []string `json:"geopolitical,omitempty"`
-	Sensitivity  []string `json:"sensitivity,omitempty"`
-	RegisteredAt string   `json:"registered_at"`
-}
-
-func policyQueryHandler(targets TargetStore, policies PolicyDimensionStore) echo.HandlerFunc {
+func policyQueryHandler(targets requirements.TargetStore, policies requirements.PolicyDimensionStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		targetID := c.QueryParam("target_id")
 		if targetID == "" {
@@ -91,13 +47,13 @@ func policyQueryHandler(targets TargetStore, policies PolicyDimensionStore) echo
 		}
 
 		if policies == nil {
-			return c.JSON(http.StatusOK, PolicyQueryResponse{
+			return c.JSON(http.StatusOK, requirements.PolicyQueryResponse{
 				Target:             targetToSummary(target),
-				ApplicablePolicies: []PolicyWithDimensions{},
+				ApplicablePolicies: []requirements.PolicyWithDimensions{},
 			})
 		}
 
-		dims := DimensionQuery{
+		dims := requirements.DimensionQuery{
 			Technologies: target.Technologies,
 			Geopolitical: target.Geopolitical,
 			Sensitivity:  target.Sensitivity,
@@ -111,17 +67,17 @@ func policyQueryHandler(targets TargetStore, policies PolicyDimensionStore) echo
 			return jsonError(c, http.StatusInternalServerError, "failed to query policies")
 		}
 		if matched == nil {
-			matched = []PolicyWithDimensions{}
+			matched = []requirements.PolicyWithDimensions{}
 		}
 
-		return c.JSON(http.StatusOK, PolicyQueryResponse{
+		return c.JSON(http.StatusOK, requirements.PolicyQueryResponse{
 			Target:             targetToSummary(target),
 			ApplicablePolicies: matched,
 		})
 	}
 }
 
-func listTargetsHandler(targets TargetStore) echo.HandlerFunc {
+func listTargetsHandler(targets requirements.TargetStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		ctx := c.Request().Context()
 		all, err := targets.ListTargets(ctx)
@@ -129,14 +85,14 @@ func listTargetsHandler(targets TargetStore) echo.HandlerFunc {
 			return jsonError(c, http.StatusInternalServerError, "failed to list targets")
 		}
 		if all == nil {
-			all = []TargetRow{}
+			all = []requirements.TargetRow{}
 		}
 		return c.JSON(http.StatusOK, all)
 	}
 }
 
-func targetToSummary(t *TargetRow) TargetSummary {
-	return TargetSummary{
+func targetToSummary(t *requirements.TargetRow) requirements.TargetSummary {
+	return requirements.TargetSummary{
 		ID:           t.TargetID,
 		Name:         t.TargetName,
 		Type:         t.TargetType,

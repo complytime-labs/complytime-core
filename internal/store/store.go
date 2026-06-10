@@ -4,140 +4,90 @@ package store
 
 import (
 	"context"
-	"time"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/complytime-labs/complytime-core/internal/gemara"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/complytime-labs/complytime-core/internal/audit"
+	"github.com/complytime-labs/complytime-core/internal/auth"
+	"github.com/complytime-labs/complytime-core/internal/blob"
+	"github.com/complytime-labs/complytime-core/internal/certify"
+	"github.com/complytime-labs/complytime-core/internal/evidence"
+	"github.com/complytime-labs/complytime-core/internal/posture"
+	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
 
 var psql = sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
-// PolicyStore defines read/write operations for policy artifacts.
-type PolicyStore interface {
-	InsertPolicy(ctx context.Context, p Policy) error
-	ListPolicies(ctx context.Context) ([]Policy, error)
-	GetPolicy(ctx context.Context, policyID string) (*Policy, error)
-}
-
-// MappingStore defines read/write operations for crosswalk mappings.
-type MappingStore interface {
-	InsertMapping(ctx context.Context, m MappingDocument) error
-	ListMappings(ctx context.Context, policyID string) ([]MappingDocument, error)
-	ListAllMappings(ctx context.Context) ([]MappingDocument, error)
-	QueryMappings(ctx context.Context, sourceCatalogID, targetCatalogID string, limit int) ([]gemara.MappingEntry, error)
-	InsertMappingEntries(ctx context.Context, entries []gemara.MappingEntry) error
-	DeleteMappingEntries(ctx context.Context, sourceCatalogID, targetCatalogID string) error
-	CountMappingEntries(ctx context.Context, mappingID string) (int, error)
-}
-
-// GuidanceStore defines write operations for parsed guidance catalog entries.
-type GuidanceStore interface {
-	InsertGuidanceEntries(ctx context.Context, rows []gemara.GuidanceEntryRow) error
-}
+// ── Infrastructure interfaces ───────────────────────────────────────────────
 
 // TesseraAppender defines operations for appending entries to a transparency log.
 type TesseraAppender interface {
 	Add(ctx context.Context, entry []byte) (uint64, error)
 }
 
-// ControlStore defines read/write operations for parsed control catalog entries.
-type ControlStore interface {
-	InsertControls(ctx context.Context, rows []gemara.ControlRow) error
-	InsertAssessmentRequirements(ctx context.Context, rows []gemara.AssessmentRequirementRow) error
-	InsertControlThreats(ctx context.Context, rows []gemara.ControlThreatRow) error
-	CountControls(ctx context.Context, catalogID string) (int, error)
+// EventPublisher emits NATS events for evidence, policies, and targets.
+// Implemented by *bus.Bus; nil-safe (callers check before use).
+type EventPublisher interface {
+	PublishEvidence(policyID string, count int)
+	PublishDraftAuditLog(draftID, policyID, summary string)
+	PublishPolicyNew(logIndex uint64, policyID string)
+	PublishTargetRegistered(logIndex uint64, targetID, registeredBy string)
 }
 
-// ThreatStore defines read/write operations for parsed threat catalog entries.
-type ThreatStore interface {
-	InsertThreats(ctx context.Context, rows []gemara.ThreatRow) error
-	CountThreats(ctx context.Context, catalogID string) (int, error)
-	QueryThreats(ctx context.Context, catalogID, policyID string, limit int) ([]gemara.ThreatRow, error)
-	QueryControlThreats(ctx context.Context, catalogID, controlID string, limit int) ([]gemara.ControlThreatRow, error)
+// HealthChecker verifies backend connectivity for health probes.
+type HealthChecker interface {
+	Ping(ctx context.Context) error
 }
 
-// RiskStore defines read/write operations for parsed risk catalog entries.
-type RiskStore interface {
-	InsertRisks(ctx context.Context, rows []gemara.RiskRow) error
-	InsertRiskThreats(ctx context.Context, rows []gemara.RiskThreatRow) error
-	CountRisks(ctx context.Context, catalogID string) (int, error)
-	QueryRisks(ctx context.Context, catalogID, policyID string, limit int) ([]gemara.RiskRow, error)
-	QueryRiskThreats(ctx context.Context, catalogID, riskID string, limit int) ([]gemara.RiskThreatRow, error)
+// JWTVerifier validates JWT tokens and extracts claims.
+type JWTVerifier interface {
+	Verify(ctx context.Context, token string) (*auth.JWTClaims, error)
 }
 
-// CatalogStore defines read/write operations for raw catalog artifacts.
-type CatalogStore interface {
-	InsertCatalog(ctx context.Context, c Catalog) error
-	ListCatalogs(ctx context.Context) ([]Catalog, error)
-	GetCatalog(ctx context.Context, catalogID string) (*Catalog, error)
+// ── Stores composition ──────────────────────────────────────────────────────
+
+// Stores groups all domain store interfaces for handler registration.
+type Stores struct {
+	Policies            requirements.PolicyStore
+	Mappings            requirements.MappingStore
+	Evidence            evidence.EvidenceStore
+	Blob                blob.BlobStore
+	AuditLogs           audit.AuditLogStore
+	DraftAuditLogs      audit.DraftAuditLogStore
+	Requirements        posture.RequirementStore
+	Controls            requirements.ControlStore
+	Guidance            requirements.GuidanceStore
+	Threats             requirements.ThreatStore
+	Risks               requirements.RiskStore
+	Catalogs            requirements.CatalogStore
+	EvidenceAssessments audit.EvidenceAssessmentStore
+	Certifications      evidence.CertificationStore
+	EventPublisher      EventPublisher
+	HealthChecker       HealthChecker
+	Inventory           posture.InventoryStore
+	Users               auth.UserStore
+	Registry            *RegistryConfig
+	IngestTracker       *IngestTracker
+	IngestPublisher     IngestPublisher
+	TesseraAppender     TesseraAppender
+	JWTVerifier         JWTVerifier
+	Targets             requirements.TargetStore
+	PolicyDimensions    requirements.PolicyDimensionStore
 }
 
-// EvidenceStore defines read/write operations for evidence records.
-type EvidenceStore interface {
-	InsertEvidence(ctx context.Context, records []EvidenceRecord) (int, error)
-	QueryEvidence(ctx context.Context, f EvidenceFilter) ([]EvidenceRecord, error)
+// InsertBundleArtifact inserts a bundle artifact if the Evidence store supports it.
+func (s Stores) InsertBundleArtifact(ctx context.Context, b requirements.BundleArtifactRow) error {
+	type bundleInserter interface {
+		InsertBundleArtifact(ctx context.Context, b requirements.BundleArtifactRow) error
+	}
+	if bi, ok := s.Evidence.(bundleInserter); ok {
+		return bi.InsertBundleArtifact(ctx, b)
+	}
+	return nil
 }
 
-// AuditLogStore defines read/write operations for audit log artifacts.
-type AuditLogStore interface {
-	InsertAuditLog(ctx context.Context, a AuditLog) error
-	ListAuditLogs(ctx context.Context, policyID string, start, end time.Time, limit int) ([]AuditLog, error)
-	GetAuditLog(ctx context.Context, auditID string) (*AuditLog, error)
-}
-
-// EvidenceAssessmentStore defines write operations for agent-produced classifications.
-type EvidenceAssessmentStore interface {
-	InsertEvidenceAssessments(ctx context.Context, assessments []EvidenceAssessment) error
-}
-
-// CertificationStore defines read/write operations for evidence certifications.
-type CertificationStore interface {
-	InsertCertifications(ctx context.Context, rows []CertificationRow) error
-	QueryCertifications(ctx context.Context, evidenceID string) ([]CertificationRow, error)
-	QueryRecentEvidence(
-		ctx context.Context, policyID string, since time.Time,
-	) ([]EvidenceRowLite, error)
-}
-
-// RequirementStore defines read operations for the requirement matrix.
-type RequirementStore interface {
-	ListRequirementMatrix(ctx context.Context, f RequirementFilter) ([]RequirementRow, error)
-	ListRequirementEvidence(ctx context.Context, requirementID string, f RequirementFilter) ([]RequirementEvidenceRow, error)
-}
-
-// DraftAuditLogStore defines operations for agent-produced draft audit logs
-// that require human review before promotion to the official audit_logs table.
-type DraftAuditLogStore interface {
-	InsertDraftAuditLog(ctx context.Context, d DraftAuditLog) error
-	ListDraftAuditLogs(ctx context.Context, status string, limit int) ([]DraftAuditLog, error)
-	GetDraftAuditLog(ctx context.Context, draftID string) (*DraftAuditLog, error)
-	UpdateDraftEdits(ctx context.Context, draftID string, reviewerEdits string) error
-	PromoteDraftAuditLog(ctx context.Context, draftID string, reviewedBy string) error
-}
-
-// BundleArtifactRow represents an artifact within an OCI bundle.
-type BundleArtifactRow struct {
-	BundleID        string
-	TesseraLogIndex uint64
-	ArtifactType    string
-	ArtifactID      string
-	OCIReference    string
-}
-
-// TargetStore defines operations for target registrations.
-type TargetStore interface {
-	InsertTarget(ctx context.Context, t TargetRow) error
-	GetLatestTarget(ctx context.Context, targetID string, asOf time.Time) (*TargetRow, error)
-	ListTargets(ctx context.Context) ([]TargetRow, error)
-}
-
-// TrustSignalStore defines operations for trust signals (queryable certification checks).
-type TrustSignalStore interface {
-	InsertTrustSignals(ctx context.Context, signals []TrustSignalRow) error
-	QueryTrustSignals(ctx context.Context, evidenceID string) ([]TrustSignalRow, error)
-	HasFailedTrustSignals(ctx context.Context, evidenceID string) (bool, error)
-}
+// ── Store struct ────────────────────────────────────────────────────────────
 
 // Store provides typed access to PostgreSQL tables for policies,
 // mapping documents, evidence, and audit logs. Implements all
@@ -148,22 +98,23 @@ type Store struct {
 
 // Compile-time interface satisfaction checks.
 var (
-	_ PolicyStore             = (*Store)(nil)
-	_ MappingStore            = (*Store)(nil)
-	_ EvidenceStore           = (*Store)(nil)
-	_ AuditLogStore           = (*Store)(nil)
-	_ ControlStore            = (*Store)(nil)
-	_ ThreatStore             = (*Store)(nil)
-	_ RiskStore               = (*Store)(nil)
-	_ CatalogStore            = (*Store)(nil)
-	_ EvidenceAssessmentStore = (*Store)(nil)
-	_ DraftAuditLogStore      = (*Store)(nil)
-	_ RequirementStore        = (*Store)(nil)
-	_ CertificationStore      = (*Store)(nil)
-	_ GuidanceStore           = (*Store)(nil)
-	_ TargetStore             = (*Store)(nil)
-	_ PolicyDimensionStore    = (*Store)(nil)
-	_ TrustSignalStore        = (*Store)(nil)
+	_ requirements.PolicyStore          = (*Store)(nil)
+	_ requirements.MappingStore         = (*Store)(nil)
+	_ evidence.EvidenceStore            = (*Store)(nil)
+	_ audit.AuditLogStore               = (*Store)(nil)
+	_ requirements.ControlStore         = (*Store)(nil)
+	_ requirements.ThreatStore          = (*Store)(nil)
+	_ requirements.RiskStore            = (*Store)(nil)
+	_ requirements.CatalogStore         = (*Store)(nil)
+	_ audit.EvidenceAssessmentStore     = (*Store)(nil)
+	_ audit.DraftAuditLogStore          = (*Store)(nil)
+	_ posture.RequirementStore          = (*Store)(nil)
+	_ evidence.CertificationStore       = (*Store)(nil)
+	_ requirements.GuidanceStore        = (*Store)(nil)
+	_ requirements.TargetStore          = (*Store)(nil)
+	_ requirements.PolicyDimensionStore = (*Store)(nil)
+	_ certify.TrustSignalStore          = (*Store)(nil)
+	_ posture.InventoryStore            = (*Store)(nil)
 )
 
 // New wraps a PostgreSQL connection pool.

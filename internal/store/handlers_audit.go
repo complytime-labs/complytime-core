@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
 
+	"github.com/complytime-labs/complytime-core/internal/audit"
 	"github.com/complytime-labs/complytime-core/internal/consts"
 	gemarapkg "github.com/complytime-labs/complytime-core/internal/gemara"
 	"github.com/complytime-labs/complytime-core/internal/httputil"
@@ -38,7 +39,7 @@ func registerDraftAuditRoutes(g *echo.Group, s Stores) {
 	g.POST("/audit-logs/promote", promoteAuditLogHandler(s.DraftAuditLogs))
 }
 
-func getAuditLogHandler(s AuditLogStore) echo.HandlerFunc {
+func getAuditLogHandler(s audit.AuditLogStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		id := c.Param("id")
 		if id == "" {
@@ -56,7 +57,7 @@ func getAuditLogHandler(s AuditLogStore) echo.HandlerFunc {
 	}
 }
 
-func listAuditLogsHandler(s AuditLogStore) echo.HandlerFunc {
+func listAuditLogsHandler(s audit.AuditLogStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		policyID := c.QueryParam("policy_id")
 		if policyID == "" {
@@ -86,13 +87,13 @@ func listAuditLogsHandler(s AuditLogStore) echo.HandlerFunc {
 			return jsonError(c, http.StatusInternalServerError, "query failed")
 		}
 		if logs == nil {
-			logs = []AuditLog{}
+			logs = []audit.AuditLog{}
 		}
 		return c.JSON(http.StatusOK, logs)
 	}
 }
 
-func createAuditLogHandler(s AuditLogStore) echo.HandlerFunc {
+func createAuditLogHandler(s audit.AuditLogStore) echo.HandlerFunc {
 	type createReq struct {
 		PolicyID      string `json:"policy_id"`
 		Content       string `json:"content"`
@@ -114,7 +115,7 @@ func createAuditLogHandler(s AuditLogStore) echo.HandlerFunc {
 			return jsonError(c, http.StatusBadRequest, fmt.Sprintf("invalid audit log content: %v", parseErr))
 		}
 
-		a := AuditLog{
+		a := audit.AuditLog{
 			PolicyID:   req.PolicyID,
 			Content:    req.Content,
 			AuditStart: summary.AuditStart,
@@ -137,7 +138,7 @@ func createAuditLogHandler(s AuditLogStore) echo.HandlerFunc {
 }
 
 // createDraftAuditLogHandler handles POST /api/draft-audit-logs.
-func createDraftAuditLogHandler(s DraftAuditLogStore, pub EventPublisher) echo.HandlerFunc {
+func createDraftAuditLogHandler(s audit.DraftAuditLogStore, pub EventPublisher) echo.HandlerFunc {
 	type createReq struct {
 		PolicyID       string `json:"policy_id"`
 		Content        string `json:"content"`
@@ -160,7 +161,7 @@ func createDraftAuditLogHandler(s DraftAuditLogStore, pub EventPublisher) echo.H
 			return jsonError(c, http.StatusBadRequest, fmt.Sprintf("invalid audit log content: %v", parseErr))
 		}
 
-		d := DraftAuditLog{
+		d := audit.DraftAuditLog{
 			DraftID:        uuid.New().String(),
 			PolicyID:       req.PolicyID,
 			Content:        req.Content,
@@ -187,7 +188,7 @@ func createDraftAuditLogHandler(s DraftAuditLogStore, pub EventPublisher) echo.H
 	}
 }
 
-func listDraftAuditLogsHandler(s DraftAuditLogStore) echo.HandlerFunc {
+func listDraftAuditLogsHandler(s audit.DraftAuditLogStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		status := c.QueryParam("status")
 		limit := consts.ClampLimit(0)
@@ -202,13 +203,13 @@ func listDraftAuditLogsHandler(s DraftAuditLogStore) echo.HandlerFunc {
 			return jsonError(c, http.StatusInternalServerError, "query failed")
 		}
 		if drafts == nil {
-			drafts = []DraftAuditLog{}
+			drafts = []audit.DraftAuditLog{}
 		}
 		return c.JSON(http.StatusOK, drafts)
 	}
 }
 
-func getDraftAuditLogHandler(s DraftAuditLogStore) echo.HandlerFunc {
+func getDraftAuditLogHandler(s audit.DraftAuditLogStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		draftID := c.Param("id")
 		if draftID == "" {
@@ -228,7 +229,7 @@ func getDraftAuditLogHandler(s DraftAuditLogStore) echo.HandlerFunc {
 
 // updateDraftEditsHandler handles PATCH /api/draft-audit-logs/{id}.
 // Persists reviewer type overrides and notes. Truncates notes to 2000 chars.
-func updateDraftEditsHandler(s DraftAuditLogStore) echo.HandlerFunc {
+func updateDraftEditsHandler(s audit.DraftAuditLogStore) echo.HandlerFunc {
 	type editEntry struct {
 		TypeOverride string `json:"type_override,omitempty"`
 		Note         string `json:"note,omitempty"`
@@ -260,10 +261,10 @@ func updateDraftEditsHandler(s DraftAuditLogStore) echo.HandlerFunc {
 		}
 
 		if err := s.UpdateDraftEdits(c.Request().Context(), draftID, string(editsJSON)); err != nil {
-			if errors.Is(err, ErrDraftAlreadyPromoted) {
+			if errors.Is(err, audit.ErrDraftAlreadyPromoted) {
 				return jsonError(c, http.StatusConflict, "draft already promoted")
 			}
-			if errors.Is(err, ErrDraftNotFound) {
+			if errors.Is(err, audit.ErrDraftNotFound) {
 				return jsonError(c, http.StatusNotFound, "draft not found")
 			}
 			slog.Error("update draft edits failed", "error", err)
@@ -276,7 +277,7 @@ func updateDraftEditsHandler(s DraftAuditLogStore) echo.HandlerFunc {
 // promoteAuditLogHandler handles POST /api/audit-logs/promote.
 // Requires an authenticated admin session. The promoting user's identity
 // becomes created_by on the official AuditLog.
-func promoteAuditLogHandler(s DraftAuditLogStore) echo.HandlerFunc {
+func promoteAuditLogHandler(s audit.DraftAuditLogStore) echo.HandlerFunc {
 	type promoteReq struct {
 		DraftID string `json:"draft_id"`
 	}
@@ -292,7 +293,7 @@ func promoteAuditLogHandler(s DraftAuditLogStore) echo.HandlerFunc {
 		reviewedBy := authSessionEmail(c.Request().Context())
 
 		if err := s.PromoteDraftAuditLog(c.Request().Context(), req.DraftID, reviewedBy); err != nil {
-			if errors.Is(err, ErrDraftAlreadyPromoted) {
+			if errors.Is(err, audit.ErrDraftAlreadyPromoted) {
 				return jsonError(c, http.StatusConflict, "draft already promoted")
 			}
 			slog.Error("promote draft failed", "error", err)

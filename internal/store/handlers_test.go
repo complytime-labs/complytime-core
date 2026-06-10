@@ -12,34 +12,36 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+
+	"github.com/complytime-labs/complytime-core/internal/evidence"
 )
 
 type fakeEvidenceStore struct {
-	inserted []EvidenceRecord
-	query    []EvidenceRecord
+	inserted []evidence.EvidenceRecord
+	query    []evidence.EvidenceRecord
 }
 
-func (f *fakeEvidenceStore) InsertEvidence(ctx context.Context, records []EvidenceRecord) (int, error) {
-	f.inserted = append([]EvidenceRecord{}, records...)
+func (f *fakeEvidenceStore) InsertEvidence(ctx context.Context, records []evidence.EvidenceRecord) (int, error) {
+	f.inserted = append([]evidence.EvidenceRecord{}, records...)
 	return len(records), nil
 }
 
-func (f *fakeEvidenceStore) QueryEvidence(ctx context.Context, filt EvidenceFilter) ([]EvidenceRecord, error) {
-	out := make([]EvidenceRecord, len(f.query))
+func (f *fakeEvidenceStore) QueryEvidence(ctx context.Context, filt evidence.EvidenceFilter) ([]evidence.EvidenceRecord, error) {
+	out := make([]evidence.EvidenceRecord, len(f.query))
 	copy(out, f.query)
 	return out, nil
 }
 
 type failingEvidenceStore struct{ fakeEvidenceStore }
 
-func (f *failingEvidenceStore) InsertEvidence(_ context.Context, _ []EvidenceRecord) (int, error) {
+func (f *failingEvidenceStore) InsertEvidence(_ context.Context, _ []evidence.EvidenceRecord) (int, error) {
 	return 0, errors.New("db connection lost")
 }
 
 func TestQueryEvidenceHandler_SourceRegistryJSON(t *testing.T) {
 	t.Parallel()
 	fake := &fakeEvidenceStore{
-		query: []EvidenceRecord{
+		query: []evidence.EvidenceRecord{
 			{
 				EvidenceID:     "ev-1",
 				PolicyID:       "pol-1",

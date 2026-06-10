@@ -10,7 +10,10 @@ import (
 
 	"github.com/google/uuid"
 
-	pgstore "github.com/complytime-labs/complytime-core/internal/postgres"
+	pgstore "github.com/complytime-labs/complytime-core/internal/db"
+	"github.com/complytime-labs/complytime-core/internal/evidence"
+	"github.com/complytime-labs/complytime-core/internal/posture"
+	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
 
 func testStore(t *testing.T) *Store {
@@ -48,7 +51,7 @@ func TestIntegration_InsertAndQueryEvidence(t *testing.T) {
 	st := testStore(t)
 	ctx := context.Background()
 
-	records := []EvidenceRecord{
+	records := []evidence.EvidenceRecord{
 		{
 			EvidenceID:       "ev-int-1",
 			PolicyID:         "pol-int",
@@ -85,7 +88,7 @@ func TestIntegration_InsertAndQueryEvidence(t *testing.T) {
 		t.Fatalf("inserted %d, want 2", n)
 	}
 
-	got, err := st.QueryEvidence(ctx, EvidenceFilter{PolicyIDs: []string{"pol-int"}, Limit: 10})
+	got, err := st.QueryEvidence(ctx, evidence.EvidenceFilter{PolicyIDs: []string{"pol-int"}, Limit: 10})
 	if err != nil {
 		t.Fatalf("QueryEvidence: %v", err)
 	}
@@ -93,7 +96,7 @@ func TestIntegration_InsertAndQueryEvidence(t *testing.T) {
 		t.Fatalf("queried %d records, want 2", len(got))
 	}
 
-	byControl := make(map[string]EvidenceRecord)
+	byControl := make(map[string]evidence.EvidenceRecord)
 	for _, r := range got {
 		byControl[r.ControlID] = r
 	}
@@ -109,7 +112,7 @@ func TestIntegration_InsertEvidence_Upsert(t *testing.T) {
 	st := testStore(t)
 	ctx := context.Background()
 
-	original := []EvidenceRecord{{
+	original := []evidence.EvidenceRecord{{
 		EvidenceID:       "ev-upsert",
 		PolicyID:         "pol-upsert",
 		TargetID:         "tgt-1",
@@ -125,7 +128,7 @@ func TestIntegration_InsertEvidence_Upsert(t *testing.T) {
 		t.Fatalf("first insert: %v", err)
 	}
 
-	updated := []EvidenceRecord{{
+	updated := []evidence.EvidenceRecord{{
 		EvidenceID:       "ev-upsert",
 		PolicyID:         "pol-upsert",
 		TargetID:         "tgt-1",
@@ -141,7 +144,7 @@ func TestIntegration_InsertEvidence_Upsert(t *testing.T) {
 		t.Fatalf("upsert insert: %v", err)
 	}
 
-	got, err := st.QueryEvidence(ctx, EvidenceFilter{PolicyIDs: []string{"pol-upsert"}, Limit: 10})
+	got, err := st.QueryEvidence(ctx, evidence.EvidenceFilter{PolicyIDs: []string{"pol-upsert"}, Limit: 10})
 	if err != nil {
 		t.Fatalf("QueryEvidence: %v", err)
 	}
@@ -157,7 +160,7 @@ func TestIntegration_InsertAndListPolicies(t *testing.T) {
 	st := testStore(t)
 	ctx := context.Background()
 
-	p := Policy{
+	p := requirements.Policy{
 		PolicyID:     "pol-test-1",
 		Title:        "Test Policy",
 		Version:      "1.0.0",
@@ -204,7 +207,7 @@ func TestIntegration_QueryEvidence_Filters(t *testing.T) {
 	st := testStore(t)
 	ctx := context.Background()
 
-	records := []EvidenceRecord{
+	records := []evidence.EvidenceRecord{
 		{
 			EvidenceID: "ev-filt-1", PolicyID: "pol-a", TargetID: "tgt-1",
 			ControlID: "C-1", RequirementID: "C-1.01", RuleID: "r-1",
@@ -224,7 +227,7 @@ func TestIntegration_QueryEvidence_Filters(t *testing.T) {
 		t.Fatalf("InsertEvidence: %v", err)
 	}
 
-	got, err := st.QueryEvidence(ctx, EvidenceFilter{PolicyIDs: []string{"pol-a"}, Limit: 10})
+	got, err := st.QueryEvidence(ctx, evidence.EvidenceFilter{PolicyIDs: []string{"pol-a"}, Limit: 10})
 	if err != nil {
 		t.Fatalf("QueryEvidence pol-a: %v", err)
 	}
@@ -232,7 +235,7 @@ func TestIntegration_QueryEvidence_Filters(t *testing.T) {
 		t.Fatalf("expected ev-filt-1 only, got %d records", len(got))
 	}
 
-	got, err = st.QueryEvidence(ctx, EvidenceFilter{ControlID: "C-2", Limit: 10})
+	got, err = st.QueryEvidence(ctx, evidence.EvidenceFilter{ControlID: "C-2", Limit: 10})
 	if err != nil {
 		t.Fatalf("QueryEvidence C-2: %v", err)
 	}
@@ -250,7 +253,7 @@ func TestIntegration_ListInventory(t *testing.T) {
 	t1 := time.Date(2026, 5, 1, 2, 0, 0, 0, time.UTC)
 	t2 := time.Date(2026, 5, 1, 4, 0, 0, 0, time.UTC)
 
-	records := []EvidenceRecord{
+	records := []evidence.EvidenceRecord{
 		{
 			EvidenceID: "ev-inv-1", PolicyID: "pol-inv-a", TargetID: "tgt-inv",
 			TargetType: "cluster", TargetEnv: "prod",
@@ -284,14 +287,14 @@ func TestIntegration_ListInventory(t *testing.T) {
 		t.Fatalf("InsertEvidence: %v", err)
 	}
 
-	all, err := st.ListInventory(ctx, InventoryFilter{})
+	all, err := st.ListInventory(ctx, posture.InventoryFilter{})
 	if err != nil {
 		t.Fatalf("ListInventory: %v", err)
 	}
 	if len(all) < 2 {
 		t.Fatalf("ListInventory: got %d rows, want at least 2", len(all))
 	}
-	byTarget := make(map[string]*InventoryItem, len(all))
+	byTarget := make(map[string]*posture.InventoryItem, len(all))
 	for i := range all {
 		byTarget[all[i].TargetID] = &all[i]
 	}
@@ -310,7 +313,7 @@ func TestIntegration_ListInventory(t *testing.T) {
 		t.Fatalf("LatestEvidence = %v, want %v", inv.LatestEvidence, t2)
 	}
 
-	byPolicy, err := st.ListInventory(ctx, InventoryFilter{PolicyID: "pol-inv-a"})
+	byPolicy, err := st.ListInventory(ctx, posture.InventoryFilter{PolicyID: "pol-inv-a"})
 	if err != nil {
 		t.Fatalf("ListInventory policy: %v", err)
 	}
@@ -321,7 +324,7 @@ func TestIntegration_ListInventory(t *testing.T) {
 		t.Fatalf("pol-inv-a latest should be Failed: %+v", byPolicy[0])
 	}
 
-	byEnv, err := st.ListInventory(ctx, InventoryFilter{Environment: "dev"})
+	byEnv, err := st.ListInventory(ctx, posture.InventoryFilter{Environment: "dev"})
 	if err != nil {
 		t.Fatalf("ListInventory env: %v", err)
 	}
@@ -336,7 +339,7 @@ func TestIntegration_ListInventory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert program: %v", err)
 	}
-	byProg, err := st.ListInventory(ctx, InventoryFilter{ProgramID: progID.String()})
+	byProg, err := st.ListInventory(ctx, posture.InventoryFilter{ProgramID: progID.String()})
 	if err != nil {
 		t.Fatalf("ListInventory program: %v", err)
 	}

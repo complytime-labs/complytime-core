@@ -11,18 +11,20 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
 
 type fakeTargetStore struct {
-	targets []TargetRow
+	targets []requirements.TargetRow
 }
 
-func (f *fakeTargetStore) InsertTarget(_ context.Context, t TargetRow) error {
+func (f *fakeTargetStore) InsertTarget(_ context.Context, t requirements.TargetRow) error {
 	f.targets = append(f.targets, t)
 	return nil
 }
 
-func (f *fakeTargetStore) GetLatestTarget(_ context.Context, targetID string, asOf time.Time) (*TargetRow, error) {
+func (f *fakeTargetStore) GetLatestTarget(_ context.Context, targetID string, asOf time.Time) (*requirements.TargetRow, error) {
 	for i := len(f.targets) - 1; i >= 0; i-- {
 		t := f.targets[i]
 		if t.TargetID == targetID && !t.RegisteredAt.After(asOf) {
@@ -32,16 +34,16 @@ func (f *fakeTargetStore) GetLatestTarget(_ context.Context, targetID string, as
 	return nil, nil
 }
 
-func (f *fakeTargetStore) ListTargets(_ context.Context) ([]TargetRow, error) {
+func (f *fakeTargetStore) ListTargets(_ context.Context) ([]requirements.TargetRow, error) {
 	return f.targets, nil
 }
 
 type fakePolicyDimensionStore struct {
-	policies []PolicyWithDimensions
+	policies []requirements.PolicyWithDimensions
 }
 
-func (f *fakePolicyDimensionStore) QueryPoliciesByDimensions(_ context.Context, dims DimensionQuery) ([]PolicyWithDimensions, error) {
-	var result []PolicyWithDimensions
+func (f *fakePolicyDimensionStore) QueryPoliciesByDimensions(_ context.Context, dims requirements.DimensionQuery) ([]requirements.PolicyWithDimensions, error) {
+	var result []requirements.PolicyWithDimensions
 	for _, p := range f.policies {
 		if arraysOverlap(p.Technologies, dims.Technologies) ||
 			arraysOverlap(p.Geopolitical, dims.Geopolitical) ||
@@ -58,7 +60,7 @@ func (f *fakePolicyDimensionStore) QueryPoliciesByDimensions(_ context.Context, 
 
 func TestPolicyQueryHandler_MatchesDimensions(t *testing.T) {
 	ts := &fakeTargetStore{
-		targets: []TargetRow{
+		targets: []requirements.TargetRow{
 			{
 				TargetID:     "prod-cluster",
 				TargetName:   "Production K8s",
@@ -73,7 +75,7 @@ func TestPolicyQueryHandler_MatchesDimensions(t *testing.T) {
 
 	now := time.Date(2026, 5, 26, 10, 0, 0, 0, time.UTC)
 	ps := &fakePolicyDimensionStore{
-		policies: []PolicyWithDimensions{
+		policies: []requirements.PolicyWithDimensions{
 			{
 				LogIndex:        42,
 				PolicyID:        "infra-baseline",
@@ -97,7 +99,7 @@ func TestPolicyQueryHandler_MatchesDimensions(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 
-	var resp PolicyQueryResponse
+	var resp requirements.PolicyQueryResponse
 	err = json.Unmarshal(rec.Body.Bytes(), &resp)
 	require.NoError(t, err)
 
@@ -107,7 +109,7 @@ func TestPolicyQueryHandler_MatchesDimensions(t *testing.T) {
 }
 
 func TestPolicyQueryHandler_TargetNotFound(t *testing.T) {
-	ts := &fakeTargetStore{targets: []TargetRow{}}
+	ts := &fakeTargetStore{targets: []requirements.TargetRow{}}
 	ps := &fakePolicyDimensionStore{}
 
 	e := echo.New()
