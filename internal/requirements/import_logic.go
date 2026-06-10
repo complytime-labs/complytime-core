@@ -148,12 +148,12 @@ func StoreArtifactFile(ctx context.Context, ps PolicyStore, ctrlS ControlStore, 
 	}
 	artType := detected.String()
 
-	switch artType {
-	case "Policy":
+	switch detected {
+	case gemara.PolicyArtifact:
 		return StorePolicyFromContent(ctx, ps, ctrlS, content)
-	case "MappingDocument":
+	case gemara.MappingDocumentArtifact:
 		return StoreMappingFromContent(ctx, ms, content)
-	case "ControlCatalog", "ThreatCatalog", "RiskCatalog", "GuidanceCatalog":
+	case gemara.ControlCatalogArtifact, gemara.ThreatCatalogArtifact, gemara.RiskCatalogArtifact, gemara.GuidanceCatalogArtifact:
 		return StoreCatalogFromContent(ctx, is, artType, content)
 	default:
 		slog.Debug("skipping unsupported artifact type", "type", artType, "name", f.Name)

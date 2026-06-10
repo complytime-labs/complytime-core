@@ -15,7 +15,7 @@ import (
 )
 
 // InsertAuditLog stores an AuditLog artifact.
-func (s *Store) InsertAuditLog(ctx context.Context, a AuditLog) error {
+func (s *Store) InsertAuditLog(ctx context.Context, a audit.AuditLog) error {
 	if a.AuditID == "" {
 		a.AuditID = uuid.New().String()
 	}
@@ -27,7 +27,7 @@ func (s *Store) InsertAuditLog(ctx context.Context, a AuditLog) error {
 }
 
 // ListAuditLogs returns audit logs for a given policy, optionally filtered by time range.
-func (s *Store) ListAuditLogs(ctx context.Context, policyID string, start, end time.Time, limit int) ([]AuditLog, error) {
+func (s *Store) ListAuditLogs(ctx context.Context, policyID string, start, end time.Time, limit int) ([]audit.AuditLog, error) {
 	qb := psql.Select("audit_id", "policy_id", "audit_start", "audit_end", "framework",
 		"created_at", "created_by", "summary", "model", "prompt_version").
 		From("audit_logs").
@@ -51,9 +51,9 @@ func (s *Store) ListAuditLogs(ctx context.Context, policyID string, start, end t
 	}
 	defer rows.Close()
 
-	var out []AuditLog
+	var out []audit.AuditLog
 	for rows.Next() {
-		var a AuditLog
+		var a audit.AuditLog
 		if err := rows.Scan(&a.AuditID, &a.PolicyID, &a.AuditStart, &a.AuditEnd, &a.Framework, &a.CreatedAt, &a.CreatedBy, &a.Summary, &a.Model, &a.PromptVersion); err != nil {
 			return nil, fmt.Errorf("scan audit log: %w", err)
 		}
@@ -63,10 +63,10 @@ func (s *Store) ListAuditLogs(ctx context.Context, policyID string, start, end t
 }
 
 // GetAuditLog returns a single audit log with full content.
-func (s *Store) GetAuditLog(ctx context.Context, auditID string) (*AuditLog, error) {
+func (s *Store) GetAuditLog(ctx context.Context, auditID string) (*audit.AuditLog, error) {
 	row := s.pool.QueryRow(ctx,
 		`SELECT audit_id, policy_id, audit_start, audit_end, framework, created_at, created_by, content, summary, model, prompt_version FROM audit_logs WHERE audit_id = $1`, auditID)
-	var a AuditLog
+	var a audit.AuditLog
 	if err := row.Scan(&a.AuditID, &a.PolicyID, &a.AuditStart, &a.AuditEnd, &a.Framework, &a.CreatedAt, &a.CreatedBy, &a.Content, &a.Summary, &a.Model, &a.PromptVersion); err != nil {
 		return nil, fmt.Errorf("get audit log: %w", err)
 	}
@@ -74,7 +74,7 @@ func (s *Store) GetAuditLog(ctx context.Context, auditID string) (*AuditLog, err
 }
 
 // InsertEvidenceAssessments batch-inserts agent classifications.
-func (s *Store) InsertEvidenceAssessments(ctx context.Context, assessments []EvidenceAssessment) error {
+func (s *Store) InsertEvidenceAssessments(ctx context.Context, assessments []audit.EvidenceAssessment) error {
 	if len(assessments) == 0 {
 		return nil
 	}
@@ -97,7 +97,7 @@ func (s *Store) InsertEvidenceAssessments(ctx context.Context, assessments []Evi
 }
 
 // InsertDraftAuditLog stores an agent-produced draft.
-func (s *Store) InsertDraftAuditLog(ctx context.Context, d DraftAuditLog) error {
+func (s *Store) InsertDraftAuditLog(ctx context.Context, d audit.DraftAuditLog) error {
 	if d.DraftID == "" {
 		d.DraftID = uuid.New().String()
 	}
@@ -116,7 +116,7 @@ func (s *Store) InsertDraftAuditLog(ctx context.Context, d DraftAuditLog) error 
 }
 
 // ListDraftAuditLogs returns drafts filtered by status. Empty status returns all.
-func (s *Store) ListDraftAuditLogs(ctx context.Context, status string, limit int) ([]DraftAuditLog, error) {
+func (s *Store) ListDraftAuditLogs(ctx context.Context, status string, limit int) ([]audit.DraftAuditLog, error) {
 	qb := psql.Select("draft_id", "policy_id", "audit_start", "audit_end", "framework",
 		"created_at", "status", "summary", "agent_reasoning", "model", "prompt_version",
 		"reviewed_by", "promoted_at", "reviewer_edits").
@@ -137,9 +137,9 @@ func (s *Store) ListDraftAuditLogs(ctx context.Context, status string, limit int
 	}
 	defer rows.Close()
 
-	var out []DraftAuditLog
+	var out []audit.DraftAuditLog
 	for rows.Next() {
-		var d DraftAuditLog
+		var d audit.DraftAuditLog
 		if err := rows.Scan(&d.DraftID, &d.PolicyID, &d.AuditStart, &d.AuditEnd, &d.Framework, &d.CreatedAt, &d.Status, &d.Summary, &d.AgentReasoning, &d.Model, &d.PromptVersion, &d.ReviewedBy, &d.PromotedAt, &d.ReviewerEdits); err != nil {
 			return nil, fmt.Errorf("scan draft audit log: %w", err)
 		}
@@ -149,10 +149,10 @@ func (s *Store) ListDraftAuditLogs(ctx context.Context, status string, limit int
 }
 
 // GetDraftAuditLog returns a single draft with full content.
-func (s *Store) GetDraftAuditLog(ctx context.Context, draftID string) (*DraftAuditLog, error) {
+func (s *Store) GetDraftAuditLog(ctx context.Context, draftID string) (*audit.DraftAuditLog, error) {
 	row := s.pool.QueryRow(ctx,
 		`SELECT draft_id, policy_id, audit_start, audit_end, framework, created_at, status, content, summary, agent_reasoning, model, prompt_version, reviewed_by, promoted_at, reviewer_edits FROM draft_audit_logs WHERE draft_id = $1`, draftID)
-	var d DraftAuditLog
+	var d audit.DraftAuditLog
 	if err := row.Scan(&d.DraftID, &d.PolicyID, &d.AuditStart, &d.AuditEnd, &d.Framework, &d.CreatedAt, &d.Status, &d.Content, &d.Summary, &d.AgentReasoning, &d.Model, &d.PromptVersion, &d.ReviewedBy, &d.PromotedAt, &d.ReviewerEdits); err != nil {
 		return nil, fmt.Errorf("get draft audit log: %w", err)
 	}
@@ -163,10 +163,10 @@ func (s *Store) GetDraftAuditLog(ctx context.Context, draftID string) (*DraftAud
 func (s *Store) UpdateDraftEdits(ctx context.Context, draftID string, reviewerEdits string) error {
 	draft, err := s.GetDraftAuditLog(ctx, draftID)
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrDraftNotFound, draftID)
+		return fmt.Errorf("%w: %s", audit.ErrDraftNotFound, draftID)
 	}
 	if draft.Status != "pending_review" {
-		return ErrDraftAlreadyPromoted
+		return audit.ErrDraftAlreadyPromoted
 	}
 	_, err = s.pool.Exec(ctx,
 		`UPDATE draft_audit_logs SET reviewer_edits = $1 WHERE draft_id = $2 AND status = 'pending_review'`,
@@ -178,10 +178,10 @@ func (s *Store) UpdateDraftEdits(ctx context.Context, draftID string, reviewerEd
 func (s *Store) PromoteDraftAuditLog(ctx context.Context, draftID string, reviewedBy string) error {
 	draft, err := s.GetDraftAuditLog(ctx, draftID)
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrDraftNotFound, draftID)
+		return fmt.Errorf("%w: %s", audit.ErrDraftNotFound, draftID)
 	}
 	if draft.Status == "promoted" {
-		return ErrDraftAlreadyPromoted
+		return audit.ErrDraftAlreadyPromoted
 	}
 
 	mergedContent, err := audit.MergeReviewerEdits(draft.Content, draft.ReviewerEdits)
@@ -190,7 +190,7 @@ func (s *Store) PromoteDraftAuditLog(ctx context.Context, draftID string, review
 		mergedContent = draft.Content
 	}
 
-	official := AuditLog{
+	official := audit.AuditLog{
 		AuditID:       uuid.New().String(),
 		PolicyID:      draft.PolicyID,
 		AuditStart:    draft.AuditStart,

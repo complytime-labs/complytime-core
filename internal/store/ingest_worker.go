@@ -153,7 +153,7 @@ func handleEvidenceIngestJS(
 	ref bus.IngestRef,
 	yaml []byte,
 	artifactType gemara.ArtifactType,
-	evidenceStore EvidenceStore,
+	evidenceStore evidence.EvidenceStore,
 	pub EventPublisher,
 	tracker *IngestTracker,
 ) ingestOutcome {
@@ -200,7 +200,7 @@ func handleArtifactStoreJS(
 	ref bus.IngestRef,
 	tracker *IngestTracker,
 	storeFn func() (string, string, error),
-	bundleStore func(context.Context, BundleArtifactRow) error,
+	bundleStore func(context.Context, requirements.BundleArtifactRow) error,
 ) ingestOutcome {
 	id, artType, err := storeFn()
 	if err != nil {
@@ -210,7 +210,7 @@ func handleArtifactStoreJS(
 	}
 
 	if ref.BundleID != "" && bundleStore != nil {
-		if err := bundleStore(ctx, BundleArtifactRow{
+		if err := bundleStore(ctx, requirements.BundleArtifactRow{
 			BundleID:        ref.BundleID,
 			TesseraLogIndex: ref.LogIndex,
 			ArtifactType:    artType,
@@ -234,7 +234,7 @@ func handleTargetRegistrationJS(
 	ctx context.Context,
 	ref bus.IngestRef,
 	yaml []byte,
-	targets TargetStore,
+	targets requirements.TargetStore,
 	pub EventPublisher,
 	tracker *IngestTracker,
 ) ingestOutcome {
@@ -250,7 +250,7 @@ func handleTargetRegistrationJS(
 		registeredAt = time.Now().UTC()
 	}
 
-	row := TargetRow{
+	row := requirements.TargetRow{
 		TargetID:        reg.Target.ID,
 		TesseraLogIndex: ref.LogIndex,
 		TargetName:      reg.Target.Name,

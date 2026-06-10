@@ -11,34 +11,37 @@ import (
 	"testing"
 	"time"
 
+	"github.com/complytime-labs/complytime-core/internal/audit"
+	"github.com/complytime-labs/complytime-core/internal/posture"
+	"github.com/complytime-labs/complytime-core/internal/requirements"
 	"github.com/complytime-labs/complytime-core/internal/store"
 	"github.com/labstack/echo/v4"
 )
 
 type stubPolicyStore struct{}
 
-func (stubPolicyStore) InsertPolicy(ctx context.Context, p store.Policy) error {
+func (stubPolicyStore) InsertPolicy(ctx context.Context, p requirements.Policy) error {
 	return nil
 }
 
-func (stubPolicyStore) ListPolicies(ctx context.Context) ([]store.Policy, error) {
+func (stubPolicyStore) ListPolicies(ctx context.Context) ([]requirements.Policy, error) {
 	return nil, nil
 }
 
-func (stubPolicyStore) GetPolicy(ctx context.Context, policyID string) (*store.Policy, error) {
+func (stubPolicyStore) GetPolicy(ctx context.Context, policyID string) (*requirements.Policy, error) {
 	return nil, nil
 }
 
 type mockRequirementStore struct {
-	matrixHook   func(ctx context.Context, f store.RequirementFilter) ([]store.RequirementRow, error)
-	evidenceHook func(ctx context.Context, reqID string, f store.RequirementFilter) ([]store.RequirementEvidenceRow, error)
+	matrixHook   func(ctx context.Context, f posture.RequirementFilter) ([]posture.RequirementRow, error)
+	evidenceHook func(ctx context.Context, reqID string, f posture.RequirementFilter) ([]posture.RequirementEvidenceRow, error)
 
-	lastMatrixF   store.RequirementFilter
-	lastEvidenceF store.RequirementFilter
+	lastMatrixF   posture.RequirementFilter
+	lastEvidenceF posture.RequirementFilter
 	lastReqID     string
 }
 
-func (m *mockRequirementStore) ListRequirementMatrix(ctx context.Context, f store.RequirementFilter) ([]store.RequirementRow, error) {
+func (m *mockRequirementStore) ListRequirementMatrix(ctx context.Context, f posture.RequirementFilter) ([]posture.RequirementRow, error) {
 	m.lastMatrixF = f
 	if m.matrixHook != nil {
 		return m.matrixHook(ctx, f)
@@ -46,7 +49,7 @@ func (m *mockRequirementStore) ListRequirementMatrix(ctx context.Context, f stor
 	return nil, nil
 }
 
-func (m *mockRequirementStore) ListRequirementEvidence(ctx context.Context, requirementID string, f store.RequirementFilter) ([]store.RequirementEvidenceRow, error) {
+func (m *mockRequirementStore) ListRequirementEvidence(ctx context.Context, requirementID string, f posture.RequirementFilter) ([]posture.RequirementEvidenceRow, error) {
 	m.lastEvidenceF = f
 	m.lastReqID = requirementID
 	if m.evidenceHook != nil {
@@ -100,8 +103,8 @@ func TestListRequirementMatrixHandler(t *testing.T) {
 			url:      "/api/requirements?policy_id=p1",
 			wantCode: http.StatusOK,
 			setup: func(m *mockRequirementStore) {
-				m.matrixHook = func(ctx context.Context, f store.RequirementFilter) ([]store.RequirementRow, error) {
-					return []store.RequirementRow{
+				m.matrixHook = func(ctx context.Context, f posture.RequirementFilter) ([]posture.RequirementRow, error) {
+					return []posture.RequirementRow{
 						{
 							CatalogID: "cat-1", ControlID: "C-1", ControlTitle: "Ctl",
 							RequirementID: "R-1", RequirementText: "Do thing",
@@ -112,7 +115,7 @@ func TestListRequirementMatrixHandler(t *testing.T) {
 			},
 			checkJSON: func(t *testing.T, body string) {
 				t.Helper()
-				var rows []store.RequirementRow
+				var rows []posture.RequirementRow
 				if err := json.Unmarshal([]byte(body), &rows); err != nil {
 					t.Fatalf("json: %v", err)
 				}
@@ -126,8 +129,8 @@ func TestListRequirementMatrixHandler(t *testing.T) {
 			url:      "/api/requirements?policy_id=p1&limit=25&offset=10",
 			wantCode: http.StatusOK,
 			setup: func(m *mockRequirementStore) {
-				m.matrixHook = func(ctx context.Context, f store.RequirementFilter) ([]store.RequirementRow, error) {
-					return []store.RequirementRow{}, nil
+				m.matrixHook = func(ctx context.Context, f posture.RequirementFilter) ([]posture.RequirementRow, error) {
+					return []posture.RequirementRow{}, nil
 				}
 			},
 			checkFilter: func(t *testing.T, m *mockRequirementStore) {
@@ -142,7 +145,7 @@ func TestListRequirementMatrixHandler(t *testing.T) {
 			url:      "/api/requirements?policy_id=p1&audit_start=2026-01-10&audit_end=2026-01-20&classification=Healthy&control_family=AC",
 			wantCode: http.StatusOK,
 			setup: func(m *mockRequirementStore) {
-				m.matrixHook = func(ctx context.Context, f store.RequirementFilter) ([]store.RequirementRow, error) {
+				m.matrixHook = func(ctx context.Context, f posture.RequirementFilter) ([]posture.RequirementRow, error) {
 					return nil, nil
 				}
 			},
@@ -215,8 +218,8 @@ func TestListRequirementEvidenceHandler(t *testing.T) {
 			url:      "/api/requirements/unknown-req/evidence?policy_id=p1",
 			wantCode: http.StatusNotFound,
 			setup: func(m *mockRequirementStore) {
-				m.evidenceHook = func(ctx context.Context, reqID string, f store.RequirementFilter) ([]store.RequirementEvidenceRow, error) {
-					return nil, store.ErrRequirementNotFound
+				m.evidenceHook = func(ctx context.Context, reqID string, f posture.RequirementFilter) ([]posture.RequirementEvidenceRow, error) {
+					return nil, audit.ErrRequirementNotFound
 				}
 			},
 			wantBodySub: "not found",
@@ -226,8 +229,8 @@ func TestListRequirementEvidenceHandler(t *testing.T) {
 			url:      "/api/requirements/r1/evidence?policy_id=p1",
 			wantCode: http.StatusOK,
 			setup: func(m *mockRequirementStore) {
-				m.evidenceHook = func(ctx context.Context, reqID string, f store.RequirementFilter) ([]store.RequirementEvidenceRow, error) {
-					return []store.RequirementEvidenceRow{
+				m.evidenceHook = func(ctx context.Context, reqID string, f posture.RequirementFilter) ([]posture.RequirementEvidenceRow, error) {
+					return []posture.RequirementEvidenceRow{
 						{
 							EvidenceID: "e1", TargetID: "t1", RuleID: "rule",
 							EvalResult: "Passed", CollectedAt: "2026-02-01 00:00:00",
@@ -237,7 +240,7 @@ func TestListRequirementEvidenceHandler(t *testing.T) {
 			},
 			checkJSON: func(t *testing.T, body string) {
 				t.Helper()
-				var rows []store.RequirementEvidenceRow
+				var rows []posture.RequirementEvidenceRow
 				if err := json.Unmarshal([]byte(body), &rows); err != nil {
 					t.Fatal(err)
 				}
@@ -251,7 +254,7 @@ func TestListRequirementEvidenceHandler(t *testing.T) {
 			url:      "/api/requirements/r1/evidence?policy_id=p1&limit=5&offset=15",
 			wantCode: http.StatusOK,
 			setup: func(m *mockRequirementStore) {
-				m.evidenceHook = func(ctx context.Context, reqID string, f store.RequirementFilter) ([]store.RequirementEvidenceRow, error) {
+				m.evidenceHook = func(ctx context.Context, reqID string, f posture.RequirementFilter) ([]posture.RequirementEvidenceRow, error) {
 					return nil, nil
 				}
 			},
@@ -270,7 +273,7 @@ func TestListRequirementEvidenceHandler(t *testing.T) {
 			url:      "/api/requirements/r1/evidence?policy_id=p1&audit_start=2026-02-01",
 			wantCode: http.StatusOK,
 			setup: func(m *mockRequirementStore) {
-				m.evidenceHook = func(ctx context.Context, reqID string, f store.RequirementFilter) ([]store.RequirementEvidenceRow, error) {
+				m.evidenceHook = func(ctx context.Context, reqID string, f posture.RequirementFilter) ([]posture.RequirementEvidenceRow, error) {
 					return nil, nil
 				}
 			},
@@ -320,7 +323,7 @@ func TestListRequirementEvidenceHandler(t *testing.T) {
 // evidence_id).
 func TestRequirementEvidenceAssessmentJoinContract(t *testing.T) {
 	t.Parallel()
-	if store.ErrRequirementNotFound == nil {
+	if audit.ErrRequirementNotFound == nil {
 		t.Fatal("ErrRequirementNotFound must be non-nil for handler errors.Is")
 	}
 }

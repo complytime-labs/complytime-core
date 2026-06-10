@@ -5,13 +5,15 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
 
 func TestTargetRow_InsertAndQuery(t *testing.T) {
-	var ts TargetStore = (*Store)(nil)
+	var ts requirements.TargetStore = (*Store)(nil)
 	_ = ts
 
-	row := TargetRow{
+	row := requirements.TargetRow{
 		TargetID:        "prod-cluster",
 		TesseraLogIndex: 42,
 		TargetName:      "Production K8s Cluster",

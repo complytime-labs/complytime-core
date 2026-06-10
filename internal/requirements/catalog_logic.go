@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"strings"
 
+	gemara "github.com/gemaraproj/go-gemara"
+
 	gemarapkg "github.com/complytime-labs/complytime-core/internal/gemara"
 )
 
@@ -18,7 +20,7 @@ func ParseCatalogStructuredRows(
 	ctrlS ControlStore, threatS ThreatStore, riskS RiskStore, guidanceS GuidanceStore,
 ) {
 	switch catalogType {
-	case "ControlCatalog":
+	case gemara.ControlCatalogArtifact.String():
 		if ctrlS == nil {
 			return
 		}
@@ -44,7 +46,7 @@ func ParseCatalogStructuredRows(
 		}
 		slog.Info("control catalog indexed", "catalog_id", catalogID, "controls", len(controls), "requirements", len(reqs), "control_threats", len(threats))
 
-	case "ThreatCatalog":
+	case gemara.ThreatCatalogArtifact.String():
 		if threatS == nil {
 			return
 		}
@@ -60,7 +62,7 @@ func ParseCatalogStructuredRows(
 		}
 		slog.Info("threat catalog indexed", "catalog_id", catalogID, "threats", len(rows))
 
-	case "RiskCatalog":
+	case gemara.RiskCatalogArtifact.String():
 		if riskS == nil {
 			return
 		}
@@ -81,7 +83,7 @@ func ParseCatalogStructuredRows(
 		}
 		slog.Info("risk catalog indexed", "catalog_id", catalogID, "risks", len(riskRows), "risk_threats", len(linkRows))
 
-	case "GuidanceCatalog":
+	case gemara.GuidanceCatalogArtifact.String():
 		if guidanceS == nil {
 			return
 		}
@@ -118,7 +120,10 @@ func DetectCatalogType(content string) (catalogType, title string) {
 		return "", ""
 	}
 	switch meta.Metadata.Type {
-	case "ControlCatalog", "ThreatCatalog", "RiskCatalog", "GuidanceCatalog":
+	case gemara.ControlCatalogArtifact.String(),
+		gemara.ThreatCatalogArtifact.String(),
+		gemara.RiskCatalogArtifact.String(),
+		gemara.GuidanceCatalogArtifact.String():
 		return meta.Metadata.Type, meta.Title
 	default:
 		return "", ""

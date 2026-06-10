@@ -8,6 +8,7 @@ import (
 
 	"github.com/complytime-labs/complytime-core/internal/certify"
 	"github.com/complytime-labs/complytime-core/internal/db"
+	"github.com/complytime-labs/complytime-core/internal/evidence"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -42,7 +43,7 @@ func TestInsertAndQueryTrustSignals(t *testing.T) {
 
 	// Insert test evidence
 	evidenceID := "test-evidence-ts-001"
-	_, err = st.InsertEvidence(ctx, []EvidenceRecord{
+	_, err = st.InsertEvidence(ctx, []evidence.EvidenceRecord{
 		{
 			EvidenceID:       evidenceID,
 			PolicyID:         "test-policy",
@@ -60,7 +61,7 @@ func TestInsertAndQueryTrustSignals(t *testing.T) {
 
 	// Create test trust signals
 	now := time.Now()
-	signals := []TrustSignalRow{
+	signals := []certify.TrustSignalRow{
 		{
 			EvidenceID: evidenceID,
 			Layer:      "quality",

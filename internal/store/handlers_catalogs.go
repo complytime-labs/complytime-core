@@ -17,7 +17,7 @@ func registerCatalogRoutes(g *echo.Group, s Stores) {
 	g.POST("/catalogs/import", importCatalogHandler(s.Catalogs, s.Controls, s.Threats, s.Risks, s.Guidance))
 }
 
-func listCatalogsHandler(cs CatalogStore) echo.HandlerFunc {
+func listCatalogsHandler(cs requirements.CatalogStore) echo.HandlerFunc {
 	type catalogLite struct {
 		CatalogID   string    `json:"catalog_id"`
 		CatalogType string    `json:"catalog_type"`
@@ -53,7 +53,7 @@ func listCatalogsHandler(cs CatalogStore) echo.HandlerFunc {
 }
 
 func importCatalogHandler(
-	cs CatalogStore, ctrlS ControlStore, threatS ThreatStore, riskS RiskStore, guidanceS GuidanceStore,
+	cs requirements.CatalogStore, ctrlS requirements.ControlStore, threatS requirements.ThreatStore, riskS requirements.RiskStore, guidanceS requirements.GuidanceStore,
 ) echo.HandlerFunc {
 	type importReq struct {
 		CatalogID string `json:"catalog_id"`
@@ -81,7 +81,7 @@ func importCatalogHandler(
 		}
 
 		if cs != nil {
-			if err := cs.InsertCatalog(c.Request().Context(), Catalog{
+			if err := cs.InsertCatalog(c.Request().Context(), requirements.Catalog{
 				CatalogID:   catalogID,
 				CatalogType: catalogType,
 				Title:       title,

@@ -13,7 +13,7 @@ func TestIntegration_InsertAndQueryTrustSignals(t *testing.T) {
 	st := testStore(t)
 	ctx := context.Background()
 
-	signals := []TrustSignalRow{
+	signals := []certify.TrustSignalRow{
 		{EvidenceID: "ev-trust-1", Layer: "identity", CheckName: "publisher_auth", Result: certify.ResultPass, Reason: "Valid JWT signature"},
 		{EvidenceID: "ev-trust-1", Layer: "quality", CheckName: "schema", Result: certify.ResultPass, Reason: "Evidence matches schema"},
 		{EvidenceID: "ev-trust-1", Layer: "attestation", CheckName: "provenance", Result: certify.ResultFail, Reason: "Missing provenance attestation"},
@@ -32,7 +32,7 @@ func TestIntegration_InsertAndQueryTrustSignals(t *testing.T) {
 		t.Fatalf("expected 3 signals, got %d", len(got))
 	}
 
-	byCheck := make(map[string]TrustSignalRow)
+	byCheck := make(map[string]certify.TrustSignalRow)
 	for _, r := range got {
 		byCheck[r.CheckName] = r
 	}
@@ -52,7 +52,7 @@ func TestIntegration_InsertTrustSignals_Upsert(t *testing.T) {
 	st := testStore(t)
 	ctx := context.Background()
 
-	original := []TrustSignalRow{
+	original := []certify.TrustSignalRow{
 		{EvidenceID: "ev-upsert", Layer: "quality", CheckName: "schema", Result: certify.ResultFail, Reason: "Validation failed"},
 	}
 	err := st.InsertTrustSignals(ctx, original)
@@ -60,7 +60,7 @@ func TestIntegration_InsertTrustSignals_Upsert(t *testing.T) {
 		t.Fatalf("first insert: %v", err)
 	}
 
-	updated := []TrustSignalRow{
+	updated := []certify.TrustSignalRow{
 		{EvidenceID: "ev-upsert", Layer: "quality", CheckName: "schema", Result: certify.ResultPass, Reason: "Validation passed"},
 	}
 	err = st.InsertTrustSignals(ctx, updated)
@@ -87,11 +87,11 @@ func TestIntegration_QueryTrustSignals_Filters(t *testing.T) {
 	st := testStore(t)
 	ctx := context.Background()
 
-	signals1 := []TrustSignalRow{
+	signals1 := []certify.TrustSignalRow{
 		{EvidenceID: "ev-filter-1", Layer: "identity", CheckName: "publisher_auth", Result: certify.ResultPass, Reason: "OK"},
 		{EvidenceID: "ev-filter-1", Layer: "quality", CheckName: "schema", Result: certify.ResultPass, Reason: "OK"},
 	}
-	signals2 := []TrustSignalRow{
+	signals2 := []certify.TrustSignalRow{
 		{EvidenceID: "ev-filter-2", Layer: "identity", CheckName: "publisher_auth", Result: certify.ResultFail, Reason: "Invalid"},
 		{EvidenceID: "ev-filter-2", Layer: "attestation", CheckName: "provenance", Result: certify.ResultSkip, Reason: "N/A"},
 	}

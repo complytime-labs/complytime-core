@@ -8,6 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+
+	"github.com/complytime-labs/complytime-core/internal/posture"
 )
 
 func registerInventoryRoutes(g *echo.Group, s Stores) {
@@ -16,9 +18,9 @@ func registerInventoryRoutes(g *echo.Group, s Stores) {
 	}
 }
 
-func listInventoryHandler(s InventoryStore) echo.HandlerFunc {
+func listInventoryHandler(s posture.InventoryStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		var f InventoryFilter
+		var f posture.InventoryFilter
 		if err := c.Bind(&f); err != nil {
 			return jsonError(c, http.StatusBadRequest, "invalid query")
 		}
@@ -33,7 +35,7 @@ func listInventoryHandler(s InventoryStore) echo.HandlerFunc {
 			return jsonError(c, http.StatusInternalServerError, "query failed")
 		}
 		if items == nil {
-			items = []InventoryItem{}
+			items = []posture.InventoryItem{}
 		}
 		return c.JSON(http.StatusOK, items)
 	}

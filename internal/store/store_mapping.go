@@ -8,11 +8,12 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/complytime-labs/complytime-core/internal/gemara"
+	"github.com/complytime-labs/complytime-core/internal/requirements"
 	"github.com/google/uuid"
 )
 
 // InsertMapping stores a mapping document.
-func (s *Store) InsertMapping(ctx context.Context, m MappingDocument) error {
+func (s *Store) InsertMapping(ctx context.Context, m requirements.MappingDocument) error {
 	if m.MappingID == "" {
 		m.MappingID = uuid.New().String()
 	}
@@ -31,7 +32,7 @@ func (s *Store) InsertMapping(ctx context.Context, m MappingDocument) error {
 }
 
 // ListMappings returns mapping documents for a given source catalog (backward-compat shim).
-func (s *Store) ListMappings(ctx context.Context, policyID string) ([]MappingDocument, error) {
+func (s *Store) ListMappings(ctx context.Context, policyID string) ([]requirements.MappingDocument, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT mapping_id, source_catalog_id, target_catalog_id, framework, content, imported_at
 		 FROM mapping_documents WHERE source_catalog_id = $1 OR target_catalog_id = $1
@@ -41,9 +42,9 @@ func (s *Store) ListMappings(ctx context.Context, policyID string) ([]MappingDoc
 	}
 	defer rows.Close()
 
-	var out []MappingDocument
+	var out []requirements.MappingDocument
 	for rows.Next() {
-		var m MappingDocument
+		var m requirements.MappingDocument
 		if err := rows.Scan(&m.MappingID, &m.SourceCatalogID, &m.TargetCatalogID, &m.Framework, &m.Content, &m.ImportedAt); err != nil {
 			return nil, fmt.Errorf("scan mapping: %w", err)
 		}
@@ -53,7 +54,7 @@ func (s *Store) ListMappings(ctx context.Context, policyID string) ([]MappingDoc
 }
 
 // ListAllMappings returns all mapping documents.
-func (s *Store) ListAllMappings(ctx context.Context) ([]MappingDocument, error) {
+func (s *Store) ListAllMappings(ctx context.Context) ([]requirements.MappingDocument, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT mapping_id, source_catalog_id, target_catalog_id, framework, content, imported_at
 		 FROM mapping_documents ORDER BY imported_at DESC`)
@@ -62,9 +63,9 @@ func (s *Store) ListAllMappings(ctx context.Context) ([]MappingDocument, error) 
 	}
 	defer rows.Close()
 
-	var out []MappingDocument
+	var out []requirements.MappingDocument
 	for rows.Next() {
-		var m MappingDocument
+		var m requirements.MappingDocument
 		if err := rows.Scan(&m.MappingID, &m.SourceCatalogID, &m.TargetCatalogID, &m.Framework, &m.Content, &m.ImportedAt); err != nil {
 			return nil, fmt.Errorf("scan mapping: %w", err)
 		}

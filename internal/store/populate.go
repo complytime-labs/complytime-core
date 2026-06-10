@@ -17,7 +17,7 @@ import (
 // PopulateMappingEntries backfills the mapping_entries table from existing
 // mapping_documents. Skips documents that already have entries. Safe to call
 // on every startup.
-func PopulateMappingEntries(ctx context.Context, s MappingStore) error {
+func PopulateMappingEntries(ctx context.Context, s requirements.MappingStore) error {
 	docs, err := s.ListAllMappings(ctx)
 	if err != nil {
 		return err
@@ -61,7 +61,7 @@ func PopulateMappingEntries(ctx context.Context, s MappingStore) error {
 
 // PopulateControls backfills controls, assessment_requirements, and
 // control_threats from stored ControlCatalog content. Safe to call on startup.
-func PopulateControls(ctx context.Context, cs CatalogStore, ctrlS ControlStore) error {
+func PopulateControls(ctx context.Context, cs requirements.CatalogStore, ctrlS requirements.ControlStore) error {
 	catalogs, err := cs.ListCatalogs(ctx)
 	if err != nil {
 		return err
@@ -119,7 +119,7 @@ func PopulateControls(ctx context.Context, cs CatalogStore, ctrlS ControlStore) 
 
 // PopulateThreats backfills the threats table from stored ThreatCatalog
 // content. Safe to call on startup.
-func PopulateThreats(ctx context.Context, cs CatalogStore, threatS ThreatStore) error {
+func PopulateThreats(ctx context.Context, cs requirements.CatalogStore, threatS requirements.ThreatStore) error {
 	catalogs, err := cs.ListCatalogs(ctx)
 	if err != nil {
 		return err
@@ -167,7 +167,7 @@ func PopulateThreats(ctx context.Context, cs CatalogStore, threatS ThreatStore) 
 
 // PopulateRisks backfills risks and risk_threats from stored RiskCatalog
 // content. Safe to call on startup.
-func PopulateRisks(ctx context.Context, cs CatalogStore, riskS RiskStore) error {
+func PopulateRisks(ctx context.Context, cs requirements.CatalogStore, riskS requirements.RiskStore) error {
 	catalogs, err := cs.ListCatalogs(ctx)
 	if err != nil {
 		return err
@@ -221,7 +221,7 @@ func PopulateRisks(ctx context.Context, cs CatalogStore, riskS RiskStore) error 
 // PopulateEffectiveControls resolves each stored policy's catalog imports
 // against the catalogs table, applies policy-level overlays (exclusions,
 // AR modifications), and inserts the effective controls. Safe on every startup.
-func PopulateEffectiveControls(ctx context.Context, ps PolicyStore, cs CatalogStore, ctrlS ControlStore) error {
+func PopulateEffectiveControls(ctx context.Context, ps requirements.PolicyStore, cs requirements.CatalogStore, ctrlS requirements.ControlStore) error {
 	policies, err := ps.ListPolicies(ctx)
 	if err != nil {
 		return fmt.Errorf("list policies: %w", err)
@@ -312,7 +312,7 @@ func PopulateEffectiveControls(ctx context.Context, ps PolicyStore, cs CatalogSt
 
 // PopulatePolicyCriteria extracts criteria and assessment-requirements
 // directly from each policy's YAML content. Safe to call on every startup.
-func PopulatePolicyCriteria(ctx context.Context, ps PolicyStore, ctrlS ControlStore) error {
+func PopulatePolicyCriteria(ctx context.Context, ps requirements.PolicyStore, ctrlS requirements.ControlStore) error {
 	policies, err := ps.ListPolicies(ctx)
 	if err != nil {
 		return fmt.Errorf("list policies: %w", err)
@@ -343,6 +343,6 @@ func PopulatePolicyCriteria(ctx context.Context, ps PolicyStore, ctrlS ControlSt
 }
 
 // ExtractPolicyCriteria delegates to requirements.ExtractPolicyCriteria.
-func ExtractPolicyCriteria(ctx context.Context, policyID, content string, ctrlS ControlStore) (int, error) {
+func ExtractPolicyCriteria(ctx context.Context, policyID, content string, ctrlS requirements.ControlStore) (int, error) {
 	return requirements.ExtractPolicyCriteria(ctx, policyID, content, ctrlS)
 }

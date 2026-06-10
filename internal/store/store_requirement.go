@@ -6,6 +6,9 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+
+	"github.com/complytime-labs/complytime-core/internal/audit"
+	"github.com/complytime-labs/complytime-core/internal/posture"
 )
 
 // ListRequirementMatrix returns requirement rows with evidence aggregates.
@@ -14,7 +17,7 @@ import (
 // When assessment_requirements IS populated, requirement text and IDs
 // are joined in; otherwise those columns are empty and the view is
 // control-level.
-func (s *Store) ListRequirementMatrix(ctx context.Context, f RequirementFilter) ([]RequirementRow, error) {
+func (s *Store) ListRequirementMatrix(ctx context.Context, f posture.RequirementFilter) ([]posture.RequirementRow, error) {
 	query := `
 		SELECT
 			COALESCE(ar.catalog_id, '') AS catalog_id,
@@ -74,9 +77,9 @@ func (s *Store) ListRequirementMatrix(ctx context.Context, f RequirementFilter) 
 	}
 	defer rows.Close()
 
-	var out []RequirementRow
+	var out []posture.RequirementRow
 	for rows.Next() {
-		var r RequirementRow
+		var r posture.RequirementRow
 		if err := rows.Scan(
 			&r.CatalogID, &r.ControlID, &r.ControlTitle,
 			&r.RequirementID, &r.RequirementText,
@@ -119,13 +122,13 @@ func (s *Store) requirementKnownForPolicy(ctx context.Context, policyID, require
 }
 
 // ListRequirementEvidence returns evidence rows for a specific requirement.
-func (s *Store) ListRequirementEvidence(ctx context.Context, requirementID string, f RequirementFilter) ([]RequirementEvidenceRow, error) {
+func (s *Store) ListRequirementEvidence(ctx context.Context, requirementID string, f posture.RequirementFilter) ([]posture.RequirementEvidenceRow, error) {
 	known, err := s.requirementKnownForPolicy(ctx, f.PolicyID, requirementID)
 	if err != nil {
 		return nil, err
 	}
 	if !known {
-		return nil, ErrRequirementNotFound
+		return nil, audit.ErrRequirementNotFound
 	}
 
 	query := `
@@ -180,9 +183,9 @@ func (s *Store) ListRequirementEvidence(ctx context.Context, requirementID strin
 	}
 	defer rows.Close()
 
-	var out []RequirementEvidenceRow
+	var out []posture.RequirementEvidenceRow
 	for rows.Next() {
-		var r RequirementEvidenceRow
+		var r posture.RequirementEvidenceRow
 		if err := rows.Scan(
 			&r.EvidenceID, &r.TargetID, &r.TargetName,
 			&r.RuleID, &r.EvalResult,

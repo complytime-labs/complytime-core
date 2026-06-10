@@ -18,6 +18,7 @@ import (
 
 	"github.com/complytime-labs/complytime-core/internal/auth"
 	"github.com/complytime-labs/complytime-core/internal/bus"
+	"github.com/complytime-labs/complytime-core/internal/evidence"
 )
 
 const minimalEvalLog = `metadata:
@@ -160,7 +161,7 @@ func (m *mockJWTVerifier) Verify(ctx context.Context, token string) (*auth.JWTCl
 	}, nil
 }
 
-func echoWithSyncIngest(t *testing.T, ev EvidenceStore) (*echo.Echo, *IngestTracker) {
+func echoWithSyncIngest(t *testing.T, ev evidence.EvidenceStore) (*echo.Echo, *IngestTracker) {
 	t.Helper()
 	ctx := context.Background()
 	tracker := NewIngestTracker()

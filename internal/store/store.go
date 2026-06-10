@@ -19,73 +19,6 @@ import (
 
 var psql = sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
-// ── Type aliases for backward compatibility ─────────────────────────────────
-// These let existing code (tests, e2e, cmd/) continue using store.XxxType
-// without changing every single reference in one step.
-
-type Policy = requirements.Policy
-type MappingDocument = requirements.MappingDocument
-type Catalog = requirements.Catalog
-type TargetRow = requirements.TargetRow
-type BundleArtifactRow = requirements.BundleArtifactRow
-type DimensionQuery = requirements.DimensionQuery
-type PolicyWithDimensions = requirements.PolicyWithDimensions
-type PolicyQueryResponse = requirements.PolicyQueryResponse
-type TargetSummary = requirements.TargetSummary
-type OciImportedArtifact = requirements.OciImportedArtifact
-
-type EvidenceRecord = evidence.EvidenceRecord
-type EvidenceFilter = evidence.EvidenceFilter
-type CertificationRow = evidence.CertificationRow
-type EvidenceRowLite = evidence.EvidenceRowLite
-type WitnessEvidenceRow = evidence.WitnessEvidenceRow
-
-type AuditLog = audit.AuditLog
-type DraftAuditLog = audit.DraftAuditLog
-type EvidenceAssessment = audit.EvidenceAssessment
-
-type RequirementFilter = posture.RequirementFilter
-type RequirementRow = posture.RequirementRow
-type RequirementEvidenceRow = posture.RequirementEvidenceRow
-type InventoryItem = posture.InventoryItem
-type InventoryFilter = posture.InventoryFilter
-
-type TrustSignalRow = certify.TrustSignalRow
-
-// ── Interface aliases ───────────────────────────────────────────────────────
-
-type PolicyStore = requirements.PolicyStore
-type MappingStore = requirements.MappingStore
-type CatalogStore = requirements.CatalogStore
-type ControlStore = requirements.ControlStore
-type ThreatStore = requirements.ThreatStore
-type RiskStore = requirements.RiskStore
-type GuidanceStore = requirements.GuidanceStore
-type TargetStore = requirements.TargetStore
-type PolicyDimensionStore = requirements.PolicyDimensionStore
-
-type EvidenceStore = evidence.EvidenceStore
-type CertificationStore = evidence.CertificationStore
-
-type AuditLogStore = audit.AuditLogStore
-type DraftAuditLogStore = audit.DraftAuditLogStore
-type EvidenceAssessmentStore = audit.EvidenceAssessmentStore
-
-type RequirementStore = posture.RequirementStore
-type InventoryStore = posture.InventoryStore
-
-type TrustSignalStore = certify.TrustSignalStore
-
-// ── Re-exported sentinel errors ─────────────────────────────────────────────
-
-var ErrRequirementNotFound = audit.ErrRequirementNotFound
-var ErrDraftAlreadyPromoted = audit.ErrDraftAlreadyPromoted
-var ErrDraftNotFound = audit.ErrDraftNotFound
-
-// ── Re-exported variables ───────────────────────────────────────────────────
-
-var ValidClassifications = audit.ValidClassifications
-
 // ── Infrastructure interfaces ───────────────────────────────────────────────
 
 // TesseraAppender defines operations for appending entries to a transparency log.
@@ -116,37 +49,37 @@ type JWTVerifier interface {
 
 // Stores groups all domain store interfaces for handler registration.
 type Stores struct {
-	Policies            PolicyStore
-	Mappings            MappingStore
-	Evidence            EvidenceStore
+	Policies            requirements.PolicyStore
+	Mappings            requirements.MappingStore
+	Evidence            evidence.EvidenceStore
 	Blob                blob.BlobStore
-	AuditLogs           AuditLogStore
-	DraftAuditLogs      DraftAuditLogStore
-	Requirements        RequirementStore
-	Controls            ControlStore
-	Guidance            GuidanceStore
-	Threats             ThreatStore
-	Risks               RiskStore
-	Catalogs            CatalogStore
-	EvidenceAssessments EvidenceAssessmentStore
-	Certifications      CertificationStore
+	AuditLogs           audit.AuditLogStore
+	DraftAuditLogs      audit.DraftAuditLogStore
+	Requirements        posture.RequirementStore
+	Controls            requirements.ControlStore
+	Guidance            requirements.GuidanceStore
+	Threats             requirements.ThreatStore
+	Risks               requirements.RiskStore
+	Catalogs            requirements.CatalogStore
+	EvidenceAssessments audit.EvidenceAssessmentStore
+	Certifications      evidence.CertificationStore
 	EventPublisher      EventPublisher
 	HealthChecker       HealthChecker
-	Inventory           InventoryStore
+	Inventory           posture.InventoryStore
 	Users               auth.UserStore
 	Registry            *RegistryConfig
 	IngestTracker       *IngestTracker
 	IngestPublisher     IngestPublisher
 	TesseraAppender     TesseraAppender
 	JWTVerifier         JWTVerifier
-	Targets             TargetStore
-	PolicyDimensions    PolicyDimensionStore
+	Targets             requirements.TargetStore
+	PolicyDimensions    requirements.PolicyDimensionStore
 }
 
 // InsertBundleArtifact inserts a bundle artifact if the Evidence store supports it.
-func (s Stores) InsertBundleArtifact(ctx context.Context, b BundleArtifactRow) error {
+func (s Stores) InsertBundleArtifact(ctx context.Context, b requirements.BundleArtifactRow) error {
 	type bundleInserter interface {
-		InsertBundleArtifact(ctx context.Context, b BundleArtifactRow) error
+		InsertBundleArtifact(ctx context.Context, b requirements.BundleArtifactRow) error
 	}
 	if bi, ok := s.Evidence.(bundleInserter); ok {
 		return bi.InsertBundleArtifact(ctx, b)
@@ -165,23 +98,23 @@ type Store struct {
 
 // Compile-time interface satisfaction checks.
 var (
-	_ PolicyStore             = (*Store)(nil)
-	_ MappingStore            = (*Store)(nil)
-	_ EvidenceStore           = (*Store)(nil)
-	_ AuditLogStore           = (*Store)(nil)
-	_ ControlStore            = (*Store)(nil)
-	_ ThreatStore             = (*Store)(nil)
-	_ RiskStore               = (*Store)(nil)
-	_ CatalogStore            = (*Store)(nil)
-	_ EvidenceAssessmentStore = (*Store)(nil)
-	_ DraftAuditLogStore      = (*Store)(nil)
-	_ RequirementStore        = (*Store)(nil)
-	_ CertificationStore      = (*Store)(nil)
-	_ GuidanceStore           = (*Store)(nil)
-	_ TargetStore             = (*Store)(nil)
-	_ PolicyDimensionStore    = (*Store)(nil)
-	_ TrustSignalStore        = (*Store)(nil)
-	_ InventoryStore          = (*Store)(nil)
+	_ requirements.PolicyStore          = (*Store)(nil)
+	_ requirements.MappingStore         = (*Store)(nil)
+	_ evidence.EvidenceStore            = (*Store)(nil)
+	_ audit.AuditLogStore               = (*Store)(nil)
+	_ requirements.ControlStore         = (*Store)(nil)
+	_ requirements.ThreatStore          = (*Store)(nil)
+	_ requirements.RiskStore            = (*Store)(nil)
+	_ requirements.CatalogStore         = (*Store)(nil)
+	_ audit.EvidenceAssessmentStore     = (*Store)(nil)
+	_ audit.DraftAuditLogStore          = (*Store)(nil)
+	_ posture.RequirementStore          = (*Store)(nil)
+	_ evidence.CertificationStore       = (*Store)(nil)
+	_ requirements.GuidanceStore        = (*Store)(nil)
+	_ requirements.TargetStore          = (*Store)(nil)
+	_ requirements.PolicyDimensionStore = (*Store)(nil)
+	_ certify.TrustSignalStore          = (*Store)(nil)
+	_ posture.InventoryStore            = (*Store)(nil)
 )
 
 // New wraps a PostgreSQL connection pool.

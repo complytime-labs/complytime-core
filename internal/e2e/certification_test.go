@@ -13,6 +13,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/complytime-labs/complytime-core/internal/db"
+	"github.com/complytime-labs/complytime-core/internal/evidence"
 	"github.com/complytime-labs/complytime-core/internal/store"
 	"github.com/complytime-labs/complytime-core/internal/tessera"
 )
@@ -114,7 +115,7 @@ var _ = Describe("Certification Pipeline", func() {
 			// queries evidence rows for the policy. We poll until trust signals exist.
 			var evidenceID string
 			Eventually(func() bool {
-				rows, err := st.QueryEvidence(ctx, store.EvidenceFilter{
+				rows, err := st.QueryEvidence(ctx, evidence.EvidenceFilter{
 					PolicyIDs: []string{"test-policy"},
 					Limit:     1,
 				})
@@ -133,7 +134,7 @@ var _ = Describe("Certification Pipeline", func() {
 			)
 
 			By("Verifying all trust signals are passing")
-			evidenceRows, err := st.QueryEvidence(ctx, store.EvidenceFilter{
+			evidenceRows, err := st.QueryEvidence(ctx, evidence.EvidenceFilter{
 				PolicyIDs: []string{"test-policy"},
 				Limit:     10,
 			})
@@ -212,7 +213,7 @@ evaluations:
 			var failedEvidenceID string
 			Eventually(func() bool {
 				// Check that trust signals exist (pipeline ran)
-				evRows, err := st.QueryEvidence(ctx, store.EvidenceFilter{
+				evRows, err := st.QueryEvidence(ctx, evidence.EvidenceFilter{
 					PolicyIDs: []string{"fail-policy"},
 					Limit:     10,
 				})
@@ -230,7 +231,7 @@ evaluations:
 			)
 
 			By("Verifying evidence has failed trust signals")
-			evRows, err := st.QueryEvidence(ctx, store.EvidenceFilter{
+			evRows, err := st.QueryEvidence(ctx, evidence.EvidenceFilter{
 				PolicyIDs: []string{"fail-policy"},
 				Limit:     10,
 			})
@@ -285,7 +286,7 @@ evaluations:
 			By("Waiting for certification pipeline to complete")
 			var evidenceIDForTrust string
 			Eventually(func() bool {
-				rows, err := st.QueryEvidence(ctx, store.EvidenceFilter{
+				rows, err := st.QueryEvidence(ctx, evidence.EvidenceFilter{
 					PolicyIDs: []string{"test-policy"},
 					Limit:     1,
 				})
@@ -305,7 +306,7 @@ evaluations:
 
 			By("Querying trust signals from the database")
 			// Get the evidence ID from the first evidence row
-			evidenceRows, err := st.QueryEvidence(ctx, store.EvidenceFilter{
+			evidenceRows, err := st.QueryEvidence(ctx, evidence.EvidenceFilter{
 				PolicyIDs: []string{"test-policy"},
 				Limit:     1,
 			})

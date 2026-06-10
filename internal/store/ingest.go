@@ -10,6 +10,6 @@ import (
 
 // ParseAndFlattenEvidence parses Gemara YAML (EvaluationLog or EnforcementLog)
 // and returns flattened evidence records ready for insertion.
-func ParseAndFlattenEvidence(ctx context.Context, data []byte) ([]EvidenceRecord, string, error) {
+func ParseAndFlattenEvidence(ctx context.Context, data []byte) ([]evidence.EvidenceRecord, string, error) {
 	return evidence.ParseAndFlattenEvidence(ctx, data)
 }

@@ -17,10 +17,14 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/labstack/echo/v4"
 
+	"github.com/complytime-labs/complytime-core/internal/audit"
 	"github.com/complytime-labs/complytime-core/internal/auth"
 	"github.com/complytime-labs/complytime-core/internal/bus"
 	"github.com/complytime-labs/complytime-core/internal/config"
+	"github.com/complytime-labs/complytime-core/internal/evidence"
 	"github.com/complytime-labs/complytime-core/internal/gemara"
+	"github.com/complytime-labs/complytime-core/internal/posture"
+	"github.com/complytime-labs/complytime-core/internal/requirements"
 	"github.com/complytime-labs/complytime-core/internal/store"
 )
 
@@ -238,17 +242,19 @@ func TestSpecDrift(t *testing.T) {
 
 type nopPolicyStore struct{}
 
-func (*nopPolicyStore) InsertPolicy(context.Context, store.Policy) error         { panic("nop") }
-func (*nopPolicyStore) ListPolicies(context.Context) ([]store.Policy, error)     { panic("nop") }
-func (*nopPolicyStore) GetPolicy(context.Context, string) (*store.Policy, error) { panic("nop") }
+func (*nopPolicyStore) InsertPolicy(context.Context, requirements.Policy) error         { panic("nop") }
+func (*nopPolicyStore) ListPolicies(context.Context) ([]requirements.Policy, error)     { panic("nop") }
+func (*nopPolicyStore) GetPolicy(context.Context, string) (*requirements.Policy, error) { panic("nop") }
 
 type nopMappingStore struct{}
 
-func (*nopMappingStore) InsertMapping(context.Context, store.MappingDocument) error { panic("nop") }
-func (*nopMappingStore) ListMappings(context.Context, string) ([]store.MappingDocument, error) {
+func (*nopMappingStore) InsertMapping(context.Context, requirements.MappingDocument) error {
 	panic("nop")
 }
-func (*nopMappingStore) ListAllMappings(context.Context) ([]store.MappingDocument, error) {
+func (*nopMappingStore) ListMappings(context.Context, string) ([]requirements.MappingDocument, error) {
+	panic("nop")
+}
+func (*nopMappingStore) ListAllMappings(context.Context) ([]requirements.MappingDocument, error) {
 	panic("nop")
 }
 func (*nopMappingStore) QueryMappings(context.Context, string, string, int) ([]gemara.MappingEntry, error) {
@@ -262,32 +268,32 @@ func (*nopMappingStore) CountMappingEntries(context.Context, string) (int, error
 
 type nopEvidenceStore struct{}
 
-func (*nopEvidenceStore) InsertEvidence(context.Context, []store.EvidenceRecord) (int, error) {
+func (*nopEvidenceStore) InsertEvidence(context.Context, []evidence.EvidenceRecord) (int, error) {
 	panic("nop")
 }
-func (*nopEvidenceStore) QueryEvidence(context.Context, store.EvidenceFilter) ([]store.EvidenceRecord, error) {
+func (*nopEvidenceStore) QueryEvidence(context.Context, evidence.EvidenceFilter) ([]evidence.EvidenceRecord, error) {
 	panic("nop")
 }
 
 type nopAuditLogStore struct{}
 
-func (*nopAuditLogStore) InsertAuditLog(context.Context, store.AuditLog) error { panic("nop") }
-func (*nopAuditLogStore) ListAuditLogs(context.Context, string, time.Time, time.Time, int) ([]store.AuditLog, error) {
+func (*nopAuditLogStore) InsertAuditLog(context.Context, audit.AuditLog) error { panic("nop") }
+func (*nopAuditLogStore) ListAuditLogs(context.Context, string, time.Time, time.Time, int) ([]audit.AuditLog, error) {
 	panic("nop")
 }
-func (*nopAuditLogStore) GetAuditLog(context.Context, string) (*store.AuditLog, error) {
+func (*nopAuditLogStore) GetAuditLog(context.Context, string) (*audit.AuditLog, error) {
 	panic("nop")
 }
 
 type nopDraftAuditLogStore struct{}
 
-func (*nopDraftAuditLogStore) InsertDraftAuditLog(context.Context, store.DraftAuditLog) error {
+func (*nopDraftAuditLogStore) InsertDraftAuditLog(context.Context, audit.DraftAuditLog) error {
 	panic("nop")
 }
-func (*nopDraftAuditLogStore) ListDraftAuditLogs(context.Context, string, int) ([]store.DraftAuditLog, error) {
+func (*nopDraftAuditLogStore) ListDraftAuditLogs(context.Context, string, int) ([]audit.DraftAuditLog, error) {
 	panic("nop")
 }
-func (*nopDraftAuditLogStore) GetDraftAuditLog(context.Context, string) (*store.DraftAuditLog, error) {
+func (*nopDraftAuditLogStore) GetDraftAuditLog(context.Context, string) (*audit.DraftAuditLog, error) {
 	panic("nop")
 }
 func (*nopDraftAuditLogStore) UpdateDraftEdits(context.Context, string, string) error { panic("nop") }
@@ -297,10 +303,10 @@ func (*nopDraftAuditLogStore) PromoteDraftAuditLog(context.Context, string, stri
 
 type nopRequirementStore struct{}
 
-func (*nopRequirementStore) ListRequirementMatrix(context.Context, store.RequirementFilter) ([]store.RequirementRow, error) {
+func (*nopRequirementStore) ListRequirementMatrix(context.Context, posture.RequirementFilter) ([]posture.RequirementRow, error) {
 	panic("nop")
 }
-func (*nopRequirementStore) ListRequirementEvidence(context.Context, string, store.RequirementFilter) ([]store.RequirementEvidenceRow, error) {
+func (*nopRequirementStore) ListRequirementEvidence(context.Context, string, posture.RequirementFilter) ([]posture.RequirementEvidenceRow, error) {
 	panic("nop")
 }
 
@@ -340,28 +346,30 @@ func (*nopRiskStore) QueryRiskThreats(context.Context, string, string, int) ([]g
 
 type nopCatalogStore struct{}
 
-func (*nopCatalogStore) InsertCatalog(context.Context, store.Catalog) error         { panic("nop") }
-func (*nopCatalogStore) ListCatalogs(context.Context) ([]store.Catalog, error)      { panic("nop") }
-func (*nopCatalogStore) GetCatalog(context.Context, string) (*store.Catalog, error) { panic("nop") }
+func (*nopCatalogStore) InsertCatalog(context.Context, requirements.Catalog) error    { panic("nop") }
+func (*nopCatalogStore) ListCatalogs(context.Context) ([]requirements.Catalog, error) { panic("nop") }
+func (*nopCatalogStore) GetCatalog(context.Context, string) (*requirements.Catalog, error) {
+	panic("nop")
+}
 
 type nopEvidenceAssessmentStore struct{}
 
-func (*nopEvidenceAssessmentStore) InsertEvidenceAssessments(context.Context, []store.EvidenceAssessment) error {
+func (*nopEvidenceAssessmentStore) InsertEvidenceAssessments(context.Context, []audit.EvidenceAssessment) error {
 	panic("nop")
 }
 
 type nopCertificationStore struct{}
 
-func (*nopCertificationStore) InsertCertifications(context.Context, []store.CertificationRow) error {
+func (*nopCertificationStore) InsertCertifications(context.Context, []evidence.CertificationRow) error {
 	panic("nop")
 }
 func (*nopCertificationStore) UpdateEvidenceCertified(context.Context, string, bool) error {
 	panic("nop")
 }
-func (*nopCertificationStore) QueryCertifications(context.Context, string) ([]store.CertificationRow, error) {
+func (*nopCertificationStore) QueryCertifications(context.Context, string) ([]evidence.CertificationRow, error) {
 	panic("nop")
 }
-func (*nopCertificationStore) QueryRecentEvidence(context.Context, string, time.Time) ([]store.EvidenceRowLite, error) {
+func (*nopCertificationStore) QueryRecentEvidence(context.Context, string, time.Time) ([]evidence.EvidenceRowLite, error) {
 	panic("nop")
 }
 
@@ -388,7 +396,7 @@ func (*nopGuidanceStore) InsertGuidanceEntries(context.Context, []gemara.Guidanc
 
 type nopInventoryStore struct{}
 
-func (*nopInventoryStore) ListInventory(context.Context, store.InventoryFilter) ([]store.InventoryItem, error) {
+func (*nopInventoryStore) ListInventory(context.Context, posture.InventoryFilter) ([]posture.InventoryItem, error) {
 	panic("nop")
 }
 
@@ -413,15 +421,15 @@ func (*nopUserStore) BootstrapAdmin(context.Context, string) (string, error)    
 
 type nopTargetStore struct{}
 
-func (*nopTargetStore) InsertTarget(context.Context, store.TargetRow) error { panic("nop") }
-func (*nopTargetStore) GetLatestTarget(context.Context, string, time.Time) (*store.TargetRow, error) {
+func (*nopTargetStore) InsertTarget(context.Context, requirements.TargetRow) error { panic("nop") }
+func (*nopTargetStore) GetLatestTarget(context.Context, string, time.Time) (*requirements.TargetRow, error) {
 	panic("nop")
 }
-func (*nopTargetStore) ListTargets(context.Context) ([]store.TargetRow, error) { panic("nop") }
+func (*nopTargetStore) ListTargets(context.Context) ([]requirements.TargetRow, error) { panic("nop") }
 
 type nopPolicyDimensionStore struct{}
 
-func (*nopPolicyDimensionStore) QueryPoliciesByDimensions(context.Context, store.DimensionQuery) ([]store.PolicyWithDimensions, error) {
+func (*nopPolicyDimensionStore) QueryPoliciesByDimensions(context.Context, requirements.DimensionQuery) ([]requirements.PolicyWithDimensions, error) {
 	panic("nop")
 }
 

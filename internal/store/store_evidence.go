@@ -11,6 +11,7 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/complytime-labs/complytime-core/internal/consts"
+	"github.com/complytime-labs/complytime-core/internal/evidence"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -34,7 +35,7 @@ func nullUint16(v int) *uint16 {
 
 // warnEvalMessageIfLarge logs when eval_message may be raw or embedded data
 // rather than a short summary (see consts.EvalMessageWarnBytes).
-func warnEvalMessageIfLarge(r EvidenceRecord) {
+func warnEvalMessageIfLarge(r evidence.EvidenceRecord) {
 	if len(r.EvalMessage) <= consts.EvalMessageWarnBytes {
 		return
 	}
@@ -47,7 +48,7 @@ func warnEvalMessageIfLarge(r EvidenceRecord) {
 }
 
 // normalizeEvidence applies defaults to an EvidenceRecord before insert.
-func normalizeEvidence(r *EvidenceRecord) {
+func normalizeEvidence(r *evidence.EvidenceRecord) {
 	if r.EvidenceID == "" {
 		r.EvidenceID = uuid.New().String()
 	}
@@ -69,7 +70,7 @@ func normalizeEvidence(r *EvidenceRecord) {
 }
 
 // InsertEvidence batch-inserts evidence records with full semconv column coverage.
-func (s *Store) InsertEvidence(ctx context.Context, records []EvidenceRecord) (int, error) {
+func (s *Store) InsertEvidence(ctx context.Context, records []evidence.EvidenceRecord) (int, error) {
 	if len(records) == 0 {
 		return 0, nil
 	}
@@ -141,7 +142,7 @@ func (s *Store) InsertEvidence(ctx context.Context, records []EvidenceRecord) (i
 }
 
 // QueryEvidence returns evidence rows matching the filter.
-func (s *Store) QueryEvidence(ctx context.Context, f EvidenceFilter) ([]EvidenceRecord, error) {
+func (s *Store) QueryEvidence(ctx context.Context, f evidence.EvidenceFilter) ([]evidence.EvidenceRecord, error) {
 	qb := psql.Select(
 		"e.evidence_id", "e.policy_id", "e.target_id",
 		"COALESCE(e.target_name, '') AS target_name",
@@ -225,9 +226,9 @@ func (s *Store) QueryEvidence(ctx context.Context, f EvidenceFilter) ([]Evidence
 	}
 	defer rows.Close()
 
-	var out []EvidenceRecord
+	var out []evidence.EvidenceRecord
 	for rows.Next() {
-		var r EvidenceRecord
+		var r evidence.EvidenceRecord
 		if err := rows.Scan(
 			&r.EvidenceID, &r.PolicyID, &r.TargetID,
 			&r.TargetName, &r.TargetType, &r.TargetEnv,
@@ -252,7 +253,7 @@ func (s *Store) QueryEvidence(ctx context.Context, f EvidenceFilter) ([]Evidence
 }
 
 // InsertCertifications batch-inserts certification verdicts.
-func (s *Store) InsertCertifications(ctx context.Context, rows []CertificationRow) error {
+func (s *Store) InsertCertifications(ctx context.Context, rows []evidence.CertificationRow) error {
 	if len(rows) == 0 {
 		return nil
 	}
@@ -286,7 +287,7 @@ DO UPDATE SET certifier_version = EXCLUDED.certifier_version,
 // QueryCertifications returns certification verdicts for a given evidence row.
 func (s *Store) QueryCertifications(
 	ctx context.Context, evidenceID string,
-) ([]CertificationRow, error) {
+) ([]evidence.CertificationRow, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT evidence_id, certifier, certifier_version, result, reason, certified_at
 		 FROM certifications WHERE evidence_id = $1 ORDER BY certified_at DESC`, evidenceID)
@@ -295,9 +296,9 @@ func (s *Store) QueryCertifications(
 	}
 	defer rows.Close()
 
-	var out []CertificationRow
+	var out []evidence.CertificationRow
 	for rows.Next() {
-		var r CertificationRow
+		var r evidence.CertificationRow
 		if err := rows.Scan(
 			&r.EvidenceID, &r.Certifier, &r.CertifierVersion,
 			&r.Result, &r.Reason, &r.CertifiedAt,
@@ -312,7 +313,7 @@ func (s *Store) QueryCertifications(
 // QueryRecentEvidence returns lightweight evidence rows for a policy ingested after since.
 func (s *Store) QueryRecentEvidence(
 	ctx context.Context, policyID string, since time.Time,
-) ([]EvidenceRowLite, error) {
+) ([]evidence.EvidenceRowLite, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT evidence_id, target_id, rule_id, eval_result, compliance_status,
 			COALESCE(engine_name, '') AS engine_name,
@@ -327,9 +328,9 @@ func (s *Store) QueryRecentEvidence(
 	}
 	defer rows.Close()
 
-	var out []EvidenceRowLite
+	var out []evidence.EvidenceRowLite
 	for rows.Next() {
-		var r EvidenceRowLite
+		var r evidence.EvidenceRowLite
 		if err := rows.Scan(
 			&r.EvidenceID, &r.TargetID, &r.RuleID, &r.EvalResult,
 			&r.ComplianceStatus, &r.EngineName, &r.SourceRegistry,
@@ -344,13 +345,13 @@ func (s *Store) QueryRecentEvidence(
 
 // QueryEvidenceByLogIndex retrieves publisher data for a given Tessera log index.
 // Returns nil if the evidence is not yet in PostgreSQL (async processing delay).
-func (s *Store) QueryEvidenceByLogIndex(ctx context.Context, logIndex uint64) (*WitnessEvidenceRow, error) {
+func (s *Store) QueryEvidenceByLogIndex(ctx context.Context, logIndex uint64) (*evidence.WitnessEvidenceRow, error) {
 	const q = `SELECT evidence_id, publisher_issuer, submitted_by, publisher_type
 	           FROM evidence
 	           WHERE log_index = $1
 	           LIMIT 1`
 
-	var row WitnessEvidenceRow
+	var row evidence.WitnessEvidenceRow
 	err := s.pool.QueryRow(ctx, q, logIndex).Scan(&row.EvidenceID, &row.PublisherIssuer, &row.SubmittedBy, &row.PublisherType)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

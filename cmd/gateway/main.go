@@ -27,6 +27,7 @@ import (
 	"github.com/complytime-labs/complytime-core/internal/config"
 	"github.com/complytime-labs/complytime-core/internal/consts"
 	pgstore "github.com/complytime-labs/complytime-core/internal/db"
+	"github.com/complytime-labs/complytime-core/internal/evidence"
 	"github.com/complytime-labs/complytime-core/internal/httputil"
 	"github.com/complytime-labs/complytime-core/internal/store"
 	"github.com/complytime-labs/complytime-core/internal/tessera"
@@ -410,7 +411,7 @@ type certificationAdapter struct {
 	store interface {
 		QueryRecentEvidence(
 			ctx context.Context, policyID string, since time.Time,
-		) ([]store.EvidenceRowLite, error)
+		) ([]evidence.EvidenceRowLite, error)
 		InsertTrustSignals(ctx context.Context, signals []certify.TrustSignalRow) error
 	}
 }

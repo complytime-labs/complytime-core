@@ -12,6 +12,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/complytime-labs/complytime-core/internal/db"
+	"github.com/complytime-labs/complytime-core/internal/evidence"
 	"github.com/complytime-labs/complytime-core/internal/store"
 	"github.com/complytime-labs/complytime-core/internal/tessera"
 )
@@ -157,7 +158,7 @@ evaluations:
 		Expect(evidenceEntry).NotTo(BeEmpty(), "Evidence entry should exist in Tessera")
 
 		By("Verifying evidence has policy_id matching the ingested policy")
-		evidenceRows, err := st.QueryEvidence(ctx, store.EvidenceFilter{
+		evidenceRows, err := st.QueryEvidence(ctx, evidence.EvidenceFilter{
 			PolicyIDs: []string{"infra-baseline"},
 			Limit:     10,
 		})

@@ -9,6 +9,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
+
+	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
 
 func registerPolicyRoutes(g *echo.Group, s Stores) {
@@ -17,7 +19,7 @@ func registerPolicyRoutes(g *echo.Group, s Stores) {
 	registerImportRoute(g, s)
 }
 
-func listPoliciesHandler(s PolicyStore) echo.HandlerFunc {
+func listPoliciesHandler(s requirements.PolicyStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		policies, err := s.ListPolicies(c.Request().Context())
 		if err != nil {
@@ -25,13 +27,13 @@ func listPoliciesHandler(s PolicyStore) echo.HandlerFunc {
 			return jsonError(c, http.StatusInternalServerError, "internal error")
 		}
 		if policies == nil {
-			policies = []Policy{}
+			policies = []requirements.Policy{}
 		}
 		return c.JSON(http.StatusOK, policies)
 	}
 }
 
-func getPolicyHandler(ps PolicyStore, ms MappingStore) echo.HandlerFunc {
+func getPolicyHandler(ps requirements.PolicyStore, ms requirements.MappingStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		id := c.Param("id")
 		if id == "" {
@@ -47,11 +49,11 @@ func getPolicyHandler(ps PolicyStore, ms MappingStore) echo.HandlerFunc {
 		}
 		mappings, _ := ms.ListMappings(c.Request().Context(), id)
 		if mappings == nil {
-			mappings = []MappingDocument{}
+			mappings = []requirements.MappingDocument{}
 		}
 		resp := struct {
-			Policy   *Policy           `json:"policy"`
-			Mappings []MappingDocument `json:"mappings"`
+			Policy   *requirements.Policy           `json:"policy"`
+			Mappings []requirements.MappingDocument `json:"mappings"`
 		}{Policy: p, Mappings: mappings}
 		return c.JSON(http.StatusOK, resp)
 	}

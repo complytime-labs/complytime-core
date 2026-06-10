@@ -16,6 +16,7 @@ import (
 
 	eventbus "github.com/complytime-labs/complytime-core/internal/bus"
 	"github.com/complytime-labs/complytime-core/internal/db"
+	"github.com/complytime-labs/complytime-core/internal/requirements"
 	"github.com/complytime-labs/complytime-core/internal/store"
 	"github.com/complytime-labs/complytime-core/internal/tessera"
 )
@@ -224,7 +225,7 @@ dimensions:
 			defer func() { _ = queryResp.Body.Close() }()
 			Expect(queryResp.StatusCode).To(Equal(http.StatusOK))
 
-			var policyResp store.PolicyQueryResponse
+			var policyResp requirements.PolicyQueryResponse
 			err = json.NewDecoder(queryResp.Body).Decode(&policyResp)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -295,7 +296,7 @@ dimensions:
 		It("returns correct version for each timestamp", func() {
 			By("Registering target at T1 with technologies=[kubernetes]")
 			t1 := time.Now().UTC().Add(-2 * time.Hour)
-			err := st.InsertTarget(ctx, store.TargetRow{
+			err := st.InsertTarget(ctx, requirements.TargetRow{
 				TargetID:        "versioned-target",
 				TesseraLogIndex: 100,
 				TargetName:      "Versioned Target v1",
@@ -312,7 +313,7 @@ dimensions:
 
 			By("Registering target at T2 with technologies=[kubernetes, postgresql]")
 			t2 := time.Now().UTC().Add(-1 * time.Hour)
-			err = st.InsertTarget(ctx, store.TargetRow{
+			err = st.InsertTarget(ctx, requirements.TargetRow{
 				TargetID:        "versioned-target",
 				TesseraLogIndex: 200,
 				TargetName:      "Versioned Target v2",

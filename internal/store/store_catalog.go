@@ -9,10 +9,11 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	"github.com/complytime-labs/complytime-core/internal/consts"
 	"github.com/complytime-labs/complytime-core/internal/gemara"
+	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
 
 // InsertCatalog stores a raw catalog artifact, replacing on conflict.
-func (s *Store) InsertCatalog(ctx context.Context, c Catalog) error {
+func (s *Store) InsertCatalog(ctx context.Context, c requirements.Catalog) error {
 	_, err := s.pool.Exec(ctx,
 		`INSERT INTO catalogs (catalog_id, catalog_type, title, content, policy_id) VALUES ($1, $2, $3, $4, $5)
 		 ON CONFLICT (catalog_id) DO UPDATE SET
@@ -27,7 +28,7 @@ func (s *Store) InsertCatalog(ctx context.Context, c Catalog) error {
 }
 
 // ListCatalogs returns all stored catalogs (without content for efficiency).
-func (s *Store) ListCatalogs(ctx context.Context) ([]Catalog, error) {
+func (s *Store) ListCatalogs(ctx context.Context) ([]requirements.Catalog, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT catalog_id, catalog_type, title, policy_id, imported_at FROM catalogs ORDER BY imported_at DESC`)
 	if err != nil {
@@ -35,9 +36,9 @@ func (s *Store) ListCatalogs(ctx context.Context) ([]Catalog, error) {
 	}
 	defer rows.Close()
 
-	var out []Catalog
+	var out []requirements.Catalog
 	for rows.Next() {
-		var c Catalog
+		var c requirements.Catalog
 		if err := rows.Scan(&c.CatalogID, &c.CatalogType, &c.Title, &c.PolicyID, &c.ImportedAt); err != nil {
 			return nil, fmt.Errorf("scan catalog: %w", err)
 		}
@@ -47,10 +48,10 @@ func (s *Store) ListCatalogs(ctx context.Context) ([]Catalog, error) {
 }
 
 // GetCatalog returns a single catalog with full content.
-func (s *Store) GetCatalog(ctx context.Context, catalogID string) (*Catalog, error) {
+func (s *Store) GetCatalog(ctx context.Context, catalogID string) (*requirements.Catalog, error) {
 	row := s.pool.QueryRow(ctx,
 		`SELECT catalog_id, catalog_type, title, content, policy_id, imported_at FROM catalogs WHERE catalog_id = $1`, catalogID)
-	var c Catalog
+	var c requirements.Catalog
 	if err := row.Scan(&c.CatalogID, &c.CatalogType, &c.Title, &c.Content, &c.PolicyID, &c.ImportedAt); err != nil {
 		return nil, fmt.Errorf("get catalog: %w", err)
 	}
