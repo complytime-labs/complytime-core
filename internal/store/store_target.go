@@ -4,8 +4,11 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
@@ -48,7 +51,7 @@ func (s *Store) InsertTarget(ctx context.Context, t requirements.TargetRow) erro
 		t.RegisteredAt, t.RegisteredBy,
 	)
 	if err != nil {
-		return fmt.Errorf("insert target: %w", err)
+		return classifyErr(fmt.Errorf("insert target: %w", err))
 	}
 	return nil
 }
@@ -69,10 +72,10 @@ func (s *Store) GetLatestTarget(ctx context.Context, targetID string, asOf time.
 		&t.RegisteredAt, &t.RegisteredBy,
 	)
 	if err != nil {
-		if err.Error() == "no rows in result set" {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("get latest target: %w", err)
+		return nil, classifyErr(fmt.Errorf("get latest target: %w", err))
 	}
 	return &t, nil
 }

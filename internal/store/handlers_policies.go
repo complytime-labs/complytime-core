@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
 
 	"github.com/complytime-labs/complytime-core/internal/requirements"
@@ -41,7 +40,7 @@ func getPolicyHandler(ps requirements.PolicyStore, ms requirements.MappingStore)
 		}
 		p, err := ps.GetPolicy(c.Request().Context(), id)
 		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
+			if errors.Is(err, ErrNotFound) {
 				return jsonError(c, http.StatusNotFound, "not found")
 			}
 			slog.Error("get policy failed", "error", err, "id", id)

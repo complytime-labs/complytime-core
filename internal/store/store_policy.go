@@ -43,7 +43,7 @@ func (s *Store) InsertPolicy(ctx context.Context, p requirements.Policy) error {
 		p.EvaluationTimelineStart, p.EvaluationTimelineEnd,
 		nullStr(p.BundleID), p.TesseraLogIndex,
 	)
-	return err
+	return classifyErr(err)
 }
 
 // ListPolicies returns all stored policies ordered by import date.
@@ -72,7 +72,7 @@ func (s *Store) GetPolicy(ctx context.Context, policyID string) (*requirements.P
 		`SELECT policy_id, title, version, oci_reference, content, imported_at, COALESCE(imported_by, '') FROM policies WHERE policy_id = $1`, policyID)
 	var p requirements.Policy
 	if err := row.Scan(&p.PolicyID, &p.Title, &p.Version, &p.OCIReference, &p.Content, &p.ImportedAt, &p.ImportedBy); err != nil {
-		return nil, fmt.Errorf("get policy: %w", err)
+		return nil, classifyErr(fmt.Errorf("get policy: %w", err))
 	}
 	return &p, nil
 }

@@ -39,12 +39,12 @@ func (s *Store) InsertTrustSignals(ctx context.Context, signals []certify.TrustS
 		if _, err := tx.Exec(ctx, q,
 			sig.EvidenceID, sig.Layer, sig.CheckName, sig.Result, sig.Reason, checkedAt,
 		); err != nil {
-			return fmt.Errorf("insert trust signal: %w", err)
+			return classifyErr(fmt.Errorf("insert trust signal: %w", err))
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit trust signals: %w", err)
+		return classifyErr(fmt.Errorf("commit trust signals: %w", err))
 	}
 	return nil
 }
