@@ -133,12 +133,3 @@ func TestExecutorCertifier_MissingEngine(t *testing.T) {
 		t.Errorf("expected fail, got %s", r.Verdict)
 	}
 }
-
-func TestExecutorCertifier_SkipEnrichmentOnly(t *testing.T) {
-	c := &ExecutorCertifier{}
-	row := EvidenceRow{EnrichmentStatus: "Skipped"}
-	r := c.Certify(context.Background(), row)
-	if r.Verdict != VerdictSkip {
-		t.Errorf("expected skip, got %s: %s", r.Verdict, r.Reason)
-	}
-}

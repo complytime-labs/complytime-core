@@ -74,7 +74,7 @@ const EventDebounceDuration = 30 * time.Second
 // CORSMaxAgeSecs is the Access-Control-Max-Age value for preflight caching.
 const CORSMaxAgeSecs = 86400
 
-// Blob / manual evidence enrichment
+// Blob / manual evidence storage
 const (
 	// MsgBlobStorageNotConfigured is returned when a request includes a file
 	// attachment but BLOB_ENDPOINT is not configured.

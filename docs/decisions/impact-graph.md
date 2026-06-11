@@ -21,7 +21,7 @@ A single failed control can affect multiple framework objectives, multiple polic
 
 ## Decision
 
-**Query-time enrichment via structured mapping storage + Effective Policy MCP tool.**
+**Query-time resolution via structured mapping storage + Effective Policy MCP tool.**
 
 Two seams, two concerns:
 
@@ -103,7 +103,7 @@ Effective Policy ───┘                  (blocked on #64)
 | RDF / knowledge graph | Adds infrastructure for relationship types Gemara already models as typed artifacts. |
 | Dedicated `blast_radius` MCP tool | The join is simple enough that a SQL query pattern in the assistant skill handles it. No custom tool needed. |
 | Materialized view (pre-join on insert) | Requires parsing Gemara YAML inside ClickHouse. Couples the schema engine to the storage engine. |
-| Emitter-side enrichment (complyctl populates `frameworks` column) | Couples the scanner to the mapping. Adding a new mapping after scan time wouldn't update old evidence. Studio owns enrichment. |
+| Emitter-side population (complyctl populates `frameworks` column) | Couples the scanner to the mapping. Adding a new mapping after scan time wouldn't update old evidence. Studio owns mapping resolution. |
 | `policy_criteria` structured table | Not needed for impact. The assistant reads policy YAML fine for display. Effective Policy MCP tool handles the resolved view for audit. |
 | Drift detection | Comparing evidence across dates is a Grafana dashboard over ClickHouse. Not a Studio feature. |
 

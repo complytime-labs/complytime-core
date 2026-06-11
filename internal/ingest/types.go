@@ -44,8 +44,6 @@ type EvidenceRow struct {
 	ExceptionID       *string
 	ExceptionActive   *bool
 
-	EnrichmentStatus string
-
 	AttestationRef *string
 	SourceRegistry *string
 	BlobRef        *string

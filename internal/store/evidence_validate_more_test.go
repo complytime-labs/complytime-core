@@ -15,7 +15,6 @@ func TestValidateEvidenceRecordEnums_TableDriven(t *testing.T) {
 	base := evidence.EvidenceRecord{
 		EvalResult:       "Passed",
 		ComplianceStatus: "Compliant",
-		EnrichmentStatus: "Success",
 		Confidence:       "Medium",
 		RiskLevel:        "Low",
 	}
@@ -46,13 +45,6 @@ func TestValidateEvidenceRecordEnums_TableDriven(t *testing.T) {
 				r.ComplianceStatus = "Partial"
 			},
 			substr: "invalid compliance_status",
-		},
-		{
-			name: "bad enrichment_status",
-			mutate: func(r *evidence.EvidenceRecord) {
-				r.EnrichmentStatus = "Nope"
-			},
-			substr: "invalid enrichment_status",
 		},
 		{
 			name: "bad confidence",

@@ -43,8 +43,6 @@ type EvidenceRecord struct {
 	ExceptionID       string `json:"exception_id,omitempty"`
 	ExceptionActive   *bool  `json:"exception_active,omitempty"`
 
-	EnrichmentStatus string `json:"enrichment_status,omitempty"`
-
 	AttestationRef string `json:"attestation_ref,omitempty"`
 	SourceRegistry string `json:"source_registry,omitempty"`
 	BlobRef        string `json:"blob_ref,omitempty"`
@@ -95,7 +93,6 @@ type EvidenceRowLite struct {
 	EngineName       string    `json:"engine_name"`
 	SourceRegistry   string    `json:"source_registry"`
 	AttestationRef   string    `json:"attestation_ref"`
-	EnrichmentStatus string    `json:"enrichment_status"`
 	CollectedAt      time.Time `json:"collected_at"`
 }
 
@@ -146,8 +143,6 @@ type EvidenceRow struct {
 	RemediationDesc   *string
 	ExceptionID       *string
 	ExceptionActive   *bool
-
-	EnrichmentStatus string
 
 	AttestationRef *string
 	SourceRegistry *string

@@ -53,7 +53,6 @@ func TestInsertAndQueryTrustSignals(t *testing.T) {
 			RequirementID:    "test-req",
 			EvalResult:       "Passed",
 			ComplianceStatus: "Compliant",
-			EnrichmentStatus: "Success",
 			CollectedAt:      time.Now(),
 		},
 	})

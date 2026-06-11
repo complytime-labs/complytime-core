@@ -281,7 +281,6 @@ func (a *certificationAdapter) QueryRecentEvidence(
 			EngineName:       r.EngineName,
 			SourceRegistry:   r.SourceRegistry,
 			AttestationRef:   r.AttestationRef,
-			EnrichmentStatus: r.EnrichmentStatus,
 			CollectedAt:      r.CollectedAt,
 		}
 	}

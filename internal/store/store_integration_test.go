@@ -63,8 +63,8 @@ func TestIntegration_InsertAndQueryEvidence(t *testing.T) {
 			RequirementID:    "C-1.01",
 			EvalResult:       "Passed",
 			ComplianceStatus: "Compliant",
-			EnrichmentStatus: "Success",
-			CollectedAt:      time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
+
+			CollectedAt: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
 		},
 		{
 			EvidenceID:       "ev-int-2",
@@ -75,8 +75,8 @@ func TestIntegration_InsertAndQueryEvidence(t *testing.T) {
 			RuleID:           "r-2",
 			EvalResult:       "Failed",
 			ComplianceStatus: "Non-Compliant",
-			EnrichmentStatus: "Success",
-			CollectedAt:      time.Date(2026, 5, 1, 1, 0, 0, 0, time.UTC),
+
+			CollectedAt: time.Date(2026, 5, 1, 1, 0, 0, 0, time.UTC),
 		},
 	}
 
@@ -121,8 +121,8 @@ func TestIntegration_InsertEvidence_Upsert(t *testing.T) {
 		RuleID:           "r-1",
 		EvalResult:       "Failed",
 		ComplianceStatus: "Non-Compliant",
-		EnrichmentStatus: "Success",
-		CollectedAt:      time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
+
+		CollectedAt: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
 	}}
 	if _, err := st.InsertEvidence(ctx, original); err != nil {
 		t.Fatalf("first insert: %v", err)
@@ -137,8 +137,8 @@ func TestIntegration_InsertEvidence_Upsert(t *testing.T) {
 		RuleID:           "r-1",
 		EvalResult:       "Passed",
 		ComplianceStatus: "Compliant",
-		EnrichmentStatus: "Success",
-		CollectedAt:      time.Date(2026, 5, 1, 1, 0, 0, 0, time.UTC),
+
+		CollectedAt: time.Date(2026, 5, 1, 1, 0, 0, 0, time.UTC),
 	}}
 	if _, err := st.InsertEvidence(ctx, updated); err != nil {
 		t.Fatalf("upsert insert: %v", err)
@@ -212,15 +212,15 @@ func TestIntegration_QueryEvidence_Filters(t *testing.T) {
 			EvidenceID: "ev-filt-1", PolicyID: "pol-a", TargetID: "tgt-1",
 			ControlID: "C-1", RequirementID: "C-1.01", RuleID: "r-1",
 			EvalResult: "Passed", ComplianceStatus: "Compliant",
-			EnrichmentStatus: "Success",
-			CollectedAt:      time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
+
+			CollectedAt: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
 		},
 		{
 			EvidenceID: "ev-filt-2", PolicyID: "pol-b", TargetID: "tgt-2",
 			ControlID: "C-2", RequirementID: "C-2.01", RuleID: "r-2",
 			EvalResult: "Failed", ComplianceStatus: "Non-Compliant",
-			EnrichmentStatus: "Success",
-			CollectedAt:      time.Date(2026, 5, 1, 1, 0, 0, 0, time.UTC),
+
+			CollectedAt: time.Date(2026, 5, 1, 1, 0, 0, 0, time.UTC),
 		},
 	}
 	if _, err := st.InsertEvidence(ctx, records); err != nil {
@@ -259,28 +259,28 @@ func TestIntegration_ListInventory(t *testing.T) {
 			TargetType: "cluster", TargetEnv: "prod",
 			ControlID: "C-1", RequirementID: "C-1.01", RuleID: "r-1",
 			EvalResult: "Passed", ComplianceStatus: "Compliant",
-			EnrichmentStatus: "Success", CollectedAt: t0,
+			CollectedAt: t0,
 		},
 		{
 			EvidenceID: "ev-inv-2", PolicyID: "pol-inv-a", TargetID: "tgt-inv",
 			TargetType: "cluster", TargetEnv: "prod",
 			ControlID: "C-2", RequirementID: "C-2.01", RuleID: "r-2",
 			EvalResult: "Failed", ComplianceStatus: "Non-Compliant",
-			EnrichmentStatus: "Success", CollectedAt: t1,
+			CollectedAt: t1,
 		},
 		{
 			EvidenceID: "ev-inv-3", PolicyID: "pol-inv-b", TargetID: "tgt-inv",
 			TargetType: "vm", TargetEnv: "staging",
 			ControlID: "C-3", RequirementID: "C-3.01", RuleID: "r-3",
 			EvalResult: "Passed", ComplianceStatus: "Compliant",
-			EnrichmentStatus: "Success", CollectedAt: t2,
+			CollectedAt: t2,
 		},
 		{
 			EvidenceID: "ev-inv-4", PolicyID: "pol-inv-c", TargetID: "tgt-other",
 			TargetType: "cluster", TargetEnv: "dev",
 			ControlID: "C-4", RequirementID: "C-4.01", RuleID: "r-4",
 			EvalResult: "Unknown", ComplianceStatus: "Unknown",
-			EnrichmentStatus: "Success", CollectedAt: t0,
+			CollectedAt: t0,
 		},
 	}
 	if _, err := st.InsertEvidence(ctx, records); err != nil {

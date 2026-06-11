@@ -52,8 +52,6 @@ Types below use logical / OTel-aligned naming (e.g. `Enum8`, `DateTime64(3)`, `N
 | `compliance.remediation.exception.id` | `exception_id` | Nullable(String) | opt_in |
 | `compliance.remediation.exception.active` | `exception_active` | Nullable(Bool) | opt_in |
 | `compliance.assessment.id` | `evidence_id` | String | recommended |
-| `compliance.enrichment.status` | `enrichment_status` | Enum8 | required |
-
 ### Attestation Provenance (`registry.compliance`)
 
 | Semconv Attribute | DB Column | Type | Requirement |
@@ -90,22 +88,10 @@ The current `beacon.evidence` entity is missing attributes required for Gemara a
 
 ### Populated By
 
-| Attribute | Path A (complyctl/ProofWatch) | Path B (truthbeam enrichment) |
-|:----------|:------------------------------|:------------------------------|
-| `compliance.policy.id` | Emitted by ProofWatch (complyctl knows the policy) | Mapped by truthbeam from rule→control→policy chain |
-| `compliance.assessment.requirement.id` | Emitted by ProofWatch (complyctl evaluates per requirement) | Mapped by truthbeam if control→requirement mapping exists |
-| `compliance.assessment.plan.id` | Emitted by ProofWatch (complyctl drives assessment plans) | Mapped by truthbeam if plan context available |
-| `compliance.assessment.confidence` | Emitted by ProofWatch | Set by truthbeam based on mapping confidence |
-| `compliance.assessment.steps` | Emitted by ProofWatch | Typically NULL for raw policy engine signals |
-
-### Enrichment Provenance
-
-The `compliance.enrichment.status` attribute tracks how compliance context was populated:
-
-| Value | Meaning |
-|:------|:--------|
-| `Success` | Full compliance context available (source-provided or successfully enriched) |
-| `Partial` | Some compliance attributes mapped, others missing |
-| `Unmapped` | No mapping found for the policy rule — compliance context absent |
-| `Unknown` | Enrichment status not determined |
-| `Skipped` | Enrichment was not attempted (e.g., passthrough mode) |
+| Attribute | Populated By |
+|:----------|:-------------|
+| `compliance.policy.id` | Emitted by ProofWatch (complyctl knows the policy) |
+| `compliance.assessment.requirement.id` | Emitted by ProofWatch (complyctl evaluates per requirement) |
+| `compliance.assessment.plan.id` | Emitted by ProofWatch (complyctl drives assessment plans) |
+| `compliance.assessment.confidence` | Emitted by ProofWatch |
+| `compliance.assessment.steps` | Emitted by ProofWatch |

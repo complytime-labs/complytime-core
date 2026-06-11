@@ -55,7 +55,6 @@ func ToEvidenceRecordsWithLogIndex(rows []EvidenceRow, logIndex *uint64, publish
 			RemediationDesc:      derefStr(row.RemediationDesc),
 			ExceptionID:          derefStr(row.ExceptionID),
 			ExceptionActive:      row.ExceptionActive,
-			EnrichmentStatus:     row.EnrichmentStatus,
 			AttestationRef:       derefStr(row.AttestationRef),
 			SourceRegistry:       derefStr(row.SourceRegistry),
 			BlobRef:              derefStr(row.BlobRef),
