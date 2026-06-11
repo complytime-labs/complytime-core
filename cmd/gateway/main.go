@@ -39,14 +39,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	port := httputil.EnvOr("PORT", "8080")
-
-	pgCfg, ok := pgstore.ConfigFromEnv()
-	if !ok {
-		slog.Error("POSTGRES_URL is required")
+	cfg, err := config.GatewayFromEnv()
+	if err != nil {
+		slog.Error("configuration error", "error", err)
 		os.Exit(1)
 	}
-	pgClient, err := pgstore.New(ctx, pgCfg)
+
+	pgClient, err := pgstore.New(ctx, pgstore.Config{URL: cfg.PostgresURL})
 	if err != nil {
 		slog.Error("postgres connection failed", "error", err)
 		os.Exit(1)
@@ -60,18 +59,25 @@ func main() {
 	st := store.New(pgClient.Pool())
 
 	var blobStore blob.BlobStore
-	if cfg, ok := blob.ConfigFromEnv(); ok {
-		if cfg.AccessKey == "" || cfg.SecretKey == "" {
+	if cfg.BlobEnabled() {
+		if cfg.BlobAccessKey == "" || cfg.BlobSecretKey == "" {
 			slog.Error("blob storage enabled but BLOB_ACCESS_KEY / BLOB_SECRET_KEY missing")
 			os.Exit(1)
 		}
-		bs, err := blob.NewMinioBlobStore(ctx, cfg)
+		blobCfg := blob.Config{
+			Endpoint:  cfg.BlobEndpoint,
+			Bucket:    cfg.BlobBucket,
+			AccessKey: cfg.BlobAccessKey,
+			SecretKey: cfg.BlobSecretKey,
+			UseSSL:    cfg.BlobUseSSL,
+		}
+		bs, err := blob.NewMinioBlobStore(ctx, blobCfg)
 		if err != nil {
 			slog.Error("blob storage init failed", "error", err)
 			os.Exit(1)
 		}
 		blobStore = bs
-		slog.Info("blob storage configured", "endpoint", cfg.Endpoint, "bucket", cfg.Bucket)
+		slog.Info("blob storage configured", "endpoint", cfg.BlobEndpoint, "bucket", cfg.BlobBucket)
 	}
 
 	registryConfig := store.LoadRegistryConfig()
@@ -98,12 +104,7 @@ func main() {
 		slog.Info("startup backfill complete")
 	}()
 
-	natsURL := os.Getenv("NATS_URL")
-	if natsURL == "" {
-		slog.Error("NATS_URL is required — event bus drives the certification pipeline")
-		os.Exit(1)
-	}
-	bus, busErr := eventbus.Connect(natsURL)
+	bus, busErr := eventbus.Connect(cfg.NatsURL)
 	if busErr != nil {
 		slog.Error("nats connection failed", "error", busErr)
 		os.Exit(1)
@@ -111,8 +112,8 @@ func main() {
 	defer bus.Close()
 
 	ingestStreamCfg := eventbus.IngestStreamConfig{
-		MaxDeliver: envInt("NATS_INGEST_MAX_DELIVER", eventbus.DefaultMaxDeliver),
-		AckWait:    envDuration("NATS_INGEST_ACK_WAIT", eventbus.DefaultAckWait),
+		MaxDeliver: cfg.IngestMaxDeliver,
+		AckWait:    cfg.IngestAckWait,
 	}
 	if err := bus.EnsureIngestStream(ctx, ingestStreamCfg); err != nil {
 		slog.Error("jetstream stream setup failed", "error", err)
@@ -123,8 +124,7 @@ func main() {
 	ingestTracker := store.NewIngestTracker()
 
 	// Initialize Tessera client for transparency log
-	tesseraPath := httputil.EnvOr("TESSERA_PATH", "/data/tessera")
-	tesseraClient, err := tessera.NewClient(ctx, tesseraPath, tessera.DefaultOptions())
+	tesseraClient, err := tessera.NewClient(ctx, cfg.TesseraPath, tessera.DefaultOptions())
 	if err != nil {
 		slog.Error("tessera client init failed", "error", err)
 		os.Exit(1)
@@ -134,16 +134,14 @@ func main() {
 			slog.Warn("tessera client close failed", "error", err)
 		}
 	}()
-	slog.Info("tessera client ready", "path", tesseraPath)
+	slog.Info("tessera client ready", "path", cfg.TesseraPath)
 
 	// Initialize JWT verifier with allowed issuers from environment
-	allowedIssuers := splitComma(os.Getenv("JWT_ISSUERS"))
-	if len(allowedIssuers) == 0 {
+	if len(cfg.JWTIssuers) == 0 {
 		slog.Warn("JWT_ISSUERS not configured — trusted publisher ingestion will be unavailable")
 	}
-	jwtAudience := os.Getenv("JWT_AUDIENCE")
-	jwtVerifier := auth.NewJWTVerifier(ctx, allowedIssuers, jwtAudience)
-	slog.Info("jwt verifier ready", "allowed_issuers", len(allowedIssuers), "audience", jwtAudience)
+	jwtVerifier := auth.NewJWTVerifier(ctx, cfg.JWTIssuers, cfg.JWTAudience)
+	slog.Info("jwt verifier ready", "allowed_issuers", len(cfg.JWTIssuers), "audience", cfg.JWTAudience)
 
 	stores := store.Stores{
 		Policies:            st,
@@ -180,7 +178,7 @@ func main() {
 		"/api/mappings",
 	})
 
-	pipeline := buildCertifierPipeline()
+	pipeline := buildCertifierPipeline(cfg.KnownRegistries, cfg.KnownEngines)
 	certAdapter := &certificationAdapter{store: st}
 	certHandler := certify.CertificationHandler(ctx, pipeline, certAdapter, certAdapter)
 	certDebouncer := certify.NewDebouncer(consts.EventDebounceDuration, certHandler)
@@ -232,15 +230,15 @@ func main() {
 		ReferrerPolicy:        "strict-origin-when-cross-origin",
 	}))
 
-	if origins := splitComma(os.Getenv("CORS_ORIGINS")); len(origins) > 0 {
+	if len(cfg.CORSOrigins) > 0 {
 		e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-			AllowOrigins:     origins,
+			AllowOrigins:     cfg.CORSOrigins,
 			AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
 			AllowHeaders:     []string{"Content-Type", "Authorization"},
 			AllowCredentials: true,
 			MaxAge:           consts.CORSMaxAgeSecs,
 		}))
-		slog.Info("CORS enabled", "origins", origins)
+		slog.Info("CORS enabled", "origins", cfg.CORSOrigins)
 	}
 
 	subsystems := map[string]pgstore.Pinger{
@@ -265,15 +263,15 @@ func main() {
 	authHandler.RegisterUserAPI(apiGroup)
 	config.Register(apiGroup, config.Options{
 		Values: map[string]string{
-			"github_org":        httputil.EnvOr("GITHUB_ORG", ""),
-			"github_repo":       httputil.EnvOr("GITHUB_REPO", "complytime-studio"),
-			"registry_insecure": httputil.EnvOr("REGISTRY_INSECURE", ""),
+			"github_org":        cfg.GitHubOrg,
+			"github_repo":       cfg.GitHubRepo,
+			"registry_insecure": strconv.FormatBool(cfg.RegistryInsecure),
 		},
 	})
 
 	apiGroup.GET("/system-info", func(c echo.Context) error {
 		authProvider := "OAuth2 Proxy (external)"
-		if os.Getenv("OAUTH2_PROXY_ENABLED") == "false" {
+		if !cfg.OAuth2ProxyEnabled {
 			authProvider = "none (dev mode)"
 		}
 		dbStatus := "connected"
@@ -281,7 +279,7 @@ func main() {
 			dbStatus = "unreachable"
 		}
 		return c.JSON(http.StatusOK, map[string]any{
-			"version":       httputil.EnvOr("STUDIO_VERSION", "dev"),
+			"version":       cfg.StudioVersion,
 			"database":      "PostgreSQL — " + dbStatus,
 			"auth_provider": authProvider,
 		})
@@ -289,10 +287,9 @@ func main() {
 
 	slog.Info("api routes registered", "groups", []string{"store", "users", "config"})
 
-	workbenchURL := httputil.EnvOr("WORKBENCH_URL", "http://studio-workbench:8090")
-	wbTarget, err := url.Parse(workbenchURL)
+	wbTarget, err := url.Parse(cfg.WorkbenchURL)
 	if err != nil {
-		slog.Error("invalid WORKBENCH_URL", "url", workbenchURL, "error", err)
+		slog.Error("invalid WORKBENCH_URL", "url", cfg.WorkbenchURL, "error", err)
 		os.Exit(1)
 	}
 	wbProxy := nethttputil.NewSingleHostReverseProxy(wbTarget)
@@ -304,7 +301,7 @@ func main() {
 		})
 	}
 	e.Any("/workbench/*", echo.WrapHandler(wbProxy))
-	slog.Info("workbench proxy registered", "upstream", workbenchURL)
+	slog.Info("workbench proxy registered", "upstream", cfg.WorkbenchURL)
 
 	go func() {
 		<-ctx.Done()
@@ -313,8 +310,7 @@ func main() {
 		_ = e.Shutdown(shutdownCtx)
 	}()
 
-	listenHost := httputil.EnvOr("LISTEN_HOST", "0.0.0.0")
-	addr := net.JoinHostPort(listenHost, port)
+	addr := net.JoinHostPort(cfg.ListenHost, cfg.Port)
 
 	e.Server.ReadTimeout = consts.ServerReadTimeout
 	e.Server.WriteTimeout = consts.ServerWriteTimeout
@@ -326,46 +322,6 @@ func main() {
 		slog.Error("http server failed", "error", err)
 		os.Exit(1)
 	}
-}
-
-func splitComma(raw string) []string {
-	if raw == "" {
-		return nil
-	}
-	var out []string
-	for _, s := range strings.Split(raw, ",") {
-		s = strings.TrimSpace(s)
-		if s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
-func envInt(key string, fallback int) int {
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		slog.Warn("invalid int env", "key", key, "value", v, "fallback", fallback)
-		return fallback
-	}
-	return n
-}
-
-func envDuration(key string, fallback time.Duration) time.Duration {
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback
-	}
-	d, err := time.ParseDuration(v)
-	if err != nil {
-		slog.Warn("invalid duration env", "key", key, "value", v, "fallback", fallback)
-		return fallback
-	}
-	return d
 }
 
 // writeProtect gates POST/PUT/PATCH/DELETE on /api/* through adminGuard.
@@ -388,14 +344,14 @@ func writeProtect(adminGuard echo.MiddlewareFunc) echo.MiddlewareFunc {
 	}
 }
 
-// buildCertifierPipeline constructs the certifier pipeline from environment.
-func buildCertifierPipeline() *certify.Pipeline {
-	knownRegistries := make(map[string]bool)
-	for _, r := range splitComma(os.Getenv("KNOWN_REGISTRIES")) {
+// buildCertifierPipeline constructs the certifier pipeline from pre-loaded config slices.
+func buildCertifierPipeline(registries, engines []string) *certify.Pipeline {
+	knownRegistries := make(map[string]bool, len(registries))
+	for _, r := range registries {
 		knownRegistries[r] = true
 	}
-	knownEngines := make(map[string]bool)
-	for _, e := range splitComma(os.Getenv("KNOWN_ENGINES")) {
+	knownEngines := make(map[string]bool, len(engines))
+	for _, e := range engines {
 		knownEngines[e] = true
 	}
 	return certify.NewPipeline(

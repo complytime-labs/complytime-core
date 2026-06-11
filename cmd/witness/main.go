@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/complytime-labs/complytime-core/internal/config"
 	"github.com/complytime-labs/complytime-core/internal/db"
 	"github.com/complytime-labs/complytime-core/internal/store"
 	"github.com/complytime-labs/complytime-core/internal/tessera"
@@ -21,27 +22,23 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	// Load configuration
-	configPath := os.Getenv("WITNESS_CONFIG_PATH")
-	if configPath == "" {
-		configPath = "/etc/witness/config.yaml"
+	envCfg, err := config.WitnessFromEnv()
+	if err != nil {
+		slog.Error("configuration error", "error", err)
+		os.Exit(1)
 	}
 
-	config, err := LoadConfig(configPath)
+	// Load configuration
+	witnessCfg, err := LoadConfig(envCfg.ConfigPath)
 	if err != nil {
 		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
 
-	slog.Info("witness service starting", "name", config.Witness.Name)
+	slog.Info("witness service starting", "name", witnessCfg.Witness.Name)
 
 	// Load state
-	statePath := os.Getenv("WITNESS_STATE_PATH")
-	if statePath == "" {
-		statePath = "/var/lib/witness/state.json"
-	}
-
-	state, err := LoadState(statePath)
+	state, err := LoadState(envCfg.StatePath)
 	if err != nil {
 		slog.Error("failed to load state", "error", err)
 		os.Exit(1)
@@ -50,24 +47,13 @@ func main() {
 	slog.Info("loaded witness state", "last_verified_index", state.LastVerifiedIndex)
 
 	// Initialize read-only Tessera reader (no appender, no signer)
-	tesseraPath := os.Getenv("TESSERA_PATH")
-	if tesseraPath == "" {
-		tesseraPath = "/var/lib/tessera"
-	}
-
-	tesseraReader := tessera.NewReader(tesseraPath)
+	tesseraReader := tessera.NewReader(envCfg.TesseraPath)
 	defer func() { _ = tesseraReader.Close() }()
 
-	slog.Info("tessera reader initialized", "path", tesseraPath)
+	slog.Info("tessera reader initialized", "path", envCfg.TesseraPath)
 
 	// Initialize PostgreSQL connection
-	pgURL := os.Getenv("POSTGRES_URL")
-	if pgURL == "" {
-		slog.Error("POSTGRES_URL environment variable is required")
-		os.Exit(1)
-	}
-
-	pgClient, err := db.New(ctx, db.Config{URL: pgURL})
+	pgClient, err := db.New(ctx, db.Config{URL: envCfg.PostgresURL})
 	if err != nil {
 		slog.Error("failed to connect to PostgreSQL", "error", err)
 		os.Exit(1)
@@ -79,14 +65,14 @@ func main() {
 	storeClient := store.New(pgClient.Pool())
 
 	// Create verifier adapter
-	verifier := NewVerifier(&tesseraAdapter{tesseraReader}, &postgresAdapter{storeClient}, config)
+	verifier := NewVerifier(&tesseraAdapter{tesseraReader}, &postgresAdapter{storeClient}, witnessCfg)
 
 	// Start verification loop with WaitGroup for clean shutdown
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		verificationLoop(ctx, verifier, storeClient, state, config, statePath)
+		verificationLoop(ctx, verifier, storeClient, state, witnessCfg, envCfg.StatePath)
 	}()
 
 	// Wait for shutdown signal
@@ -98,7 +84,7 @@ func main() {
 
 	// Save state after loop has fully stopped
 	state.UpdatedAt = time.Now()
-	if err := SaveState(statePath, state); err != nil {
+	if err := SaveState(envCfg.StatePath, state); err != nil {
 		slog.Error("failed to save state", "error", err)
 	}
 	slog.Info("witness state saved", "last_verified_index", state.LastVerifiedIndex)
