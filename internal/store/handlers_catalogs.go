@@ -3,6 +3,7 @@
 package store
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -88,6 +89,9 @@ func importCatalogHandler(
 				Content:     req.Content,
 				PolicyID:    req.PolicyID,
 			}); err != nil {
+				if errors.Is(err, ErrConflict) {
+					return jsonError(c, http.StatusConflict, "catalog already exists")
+				}
 				slog.Error("insert catalog failed", "error", err)
 				return jsonError(c, http.StatusInternalServerError, "insert failed")
 			}

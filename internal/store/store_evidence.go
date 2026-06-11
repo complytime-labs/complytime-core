@@ -126,12 +126,12 @@ func (s *Store) InsertEvidence(ctx context.Context, records []evidence.EvidenceR
 			nullStr(r.Owner), r.CollectedAt, r.LogIndex,
 			nullStr(r.PublisherIssuer), nullStr(r.SubmittedBy), nullStr(r.PublisherType),
 		); err != nil {
-			return count, fmt.Errorf("insert evidence row: %w", err)
+			return count, classifyErr(fmt.Errorf("insert evidence row: %w", err))
 		}
 		count++
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return 0, fmt.Errorf("commit evidence: %w", err)
+		return 0, classifyErr(fmt.Errorf("commit evidence: %w", err))
 	}
 	return count, nil
 }
@@ -350,7 +350,7 @@ func (s *Store) QueryEvidenceByLogIndex(ctx context.Context, logIndex uint64) (*
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("query evidence by log_index: %w", err)
+		return nil, classifyErr(fmt.Errorf("query evidence by log_index: %w", err))
 	}
 
 	return &row, nil

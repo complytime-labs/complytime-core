@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
 
 	"github.com/complytime-labs/complytime-core/internal/audit"
@@ -47,7 +46,7 @@ func getAuditLogHandler(s audit.AuditLogStore) echo.HandlerFunc {
 		}
 		a, err := s.GetAuditLog(c.Request().Context(), id)
 		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
+			if errors.Is(err, ErrNotFound) {
 				return jsonError(c, http.StatusNotFound, "not found")
 			}
 			slog.Error("get audit log failed", "error", err, "id", id)
@@ -217,7 +216,7 @@ func getDraftAuditLogHandler(s audit.DraftAuditLogStore) echo.HandlerFunc {
 		}
 		draft, err := s.GetDraftAuditLog(c.Request().Context(), draftID)
 		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
+			if errors.Is(err, ErrNotFound) {
 				return jsonError(c, http.StatusNotFound, "draft not found")
 			}
 			slog.Error("get draft audit log failed", "error", err, "id", draftID)

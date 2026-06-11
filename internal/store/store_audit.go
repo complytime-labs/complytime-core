@@ -68,7 +68,7 @@ func (s *Store) GetAuditLog(ctx context.Context, auditID string) (*audit.AuditLo
 		`SELECT audit_id, policy_id, audit_start, audit_end, framework, created_at, created_by, content, summary, model, prompt_version FROM audit_logs WHERE audit_id = $1`, auditID)
 	var a audit.AuditLog
 	if err := row.Scan(&a.AuditID, &a.PolicyID, &a.AuditStart, &a.AuditEnd, &a.Framework, &a.CreatedAt, &a.CreatedBy, &a.Content, &a.Summary, &a.Model, &a.PromptVersion); err != nil {
-		return nil, fmt.Errorf("get audit log: %w", err)
+		return nil, classifyErr(fmt.Errorf("get audit log: %w", err))
 	}
 	return &a, nil
 }
@@ -154,7 +154,7 @@ func (s *Store) GetDraftAuditLog(ctx context.Context, draftID string) (*audit.Dr
 		`SELECT draft_id, policy_id, audit_start, audit_end, framework, created_at, status, content, summary, agent_reasoning, model, prompt_version, reviewed_by, promoted_at, reviewer_edits FROM draft_audit_logs WHERE draft_id = $1`, draftID)
 	var d audit.DraftAuditLog
 	if err := row.Scan(&d.DraftID, &d.PolicyID, &d.AuditStart, &d.AuditEnd, &d.Framework, &d.CreatedAt, &d.Status, &d.Content, &d.Summary, &d.AgentReasoning, &d.Model, &d.PromptVersion, &d.ReviewedBy, &d.PromotedAt, &d.ReviewerEdits); err != nil {
-		return nil, fmt.Errorf("get draft audit log: %w", err)
+		return nil, classifyErr(fmt.Errorf("get draft audit log: %w", err))
 	}
 	return &d, nil
 }

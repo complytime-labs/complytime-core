@@ -28,7 +28,7 @@ func (s *Store) InsertMapping(ctx context.Context, m requirements.MappingDocumen
 		   imported_at = now()`,
 		m.MappingID, m.SourceCatalogID, m.TargetCatalogID, m.Framework, m.Content,
 	)
-	return err
+	return classifyErr(err)
 }
 
 // ListMappings returns mapping documents for a given source catalog (backward-compat shim).
@@ -144,11 +144,11 @@ func (s *Store) InsertMappingEntries(ctx context.Context, entries []gemara.Mappi
 			e.ControlID, e.RequirementID, e.Framework, e.Reference,
 			e.Strength, e.Confidence,
 		); err != nil {
-			return fmt.Errorf("insert mapping entry: %w", err)
+			return classifyErr(fmt.Errorf("insert mapping entry: %w", err))
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit mapping entries: %w", err)
+		return classifyErr(fmt.Errorf("commit mapping entries: %w", err))
 	}
 	return nil
 }

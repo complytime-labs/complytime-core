@@ -24,7 +24,7 @@ func (s *Store) InsertCatalog(ctx context.Context, c requirements.Catalog) error
 		   imported_at = now()`,
 		c.CatalogID, c.CatalogType, c.Title, c.Content, c.PolicyID,
 	)
-	return err
+	return classifyErr(err)
 }
 
 // ListCatalogs returns all stored catalogs (without content for efficiency).
@@ -53,7 +53,7 @@ func (s *Store) GetCatalog(ctx context.Context, catalogID string) (*requirements
 		`SELECT catalog_id, catalog_type, title, content, policy_id, imported_at FROM catalogs WHERE catalog_id = $1`, catalogID)
 	var c requirements.Catalog
 	if err := row.Scan(&c.CatalogID, &c.CatalogType, &c.Title, &c.Content, &c.PolicyID, &c.ImportedAt); err != nil {
-		return nil, fmt.Errorf("get catalog: %w", err)
+		return nil, classifyErr(fmt.Errorf("get catalog: %w", err))
 	}
 	return &c, nil
 }
