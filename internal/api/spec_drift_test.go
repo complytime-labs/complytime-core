@@ -125,6 +125,7 @@ func buildRouter(t *testing.T) *echo.Echo {
 		Targets:             &nopTargetStore{},
 		PolicyDimensions:    &nopPolicyDimensionStore{},
 		TrustSignals:        &nopTrustSignalStore{},
+		Coverage:            &nopCoverageStore{},
 	}
 	store.Register(apiGroup, s)
 
@@ -444,6 +445,12 @@ func (*nopTrustSignalStore) QueryTrustSignals(context.Context, string) ([]certif
 	panic("nop")
 }
 func (*nopTrustSignalStore) HasFailedTrustSignals(context.Context, string) (bool, error) {
+	panic("nop")
+}
+
+type nopCoverageStore struct{}
+
+func (*nopCoverageStore) QueryCoverage(context.Context, posture.CoverageFilter) (*posture.CoverageResult, error) {
 	panic("nop")
 }
 

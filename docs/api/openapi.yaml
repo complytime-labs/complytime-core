@@ -168,6 +168,41 @@ paths:
         '404':
           description: Policy not found
 
+  /api/policies/{id}/coverage:
+    get:
+      tags: [Policies]
+      operationId: getPolicyCoverage
+      summary: Gap analysis — controls with and without evidence
+      description: >-
+        Returns which controls in a policy have evidence (covered),
+        which don't (gaps), and which have stale evidence exceeding
+        max_age. Freshness and relevance are evaluated at query time.
+      parameters:
+        - $ref: '#/components/parameters/PolicyId'
+        - name: target_id
+          in: query
+          description: Filter evidence to a specific target
+          schema:
+            type: string
+        - name: since
+          in: query
+          description: Only count evidence collected after this date (RFC3339 or YYYY-MM-DD)
+          schema:
+            type: string
+        - name: max_age
+          in: query
+          description: Flag evidence older than this as stale (Go duration, e.g. 720h)
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoverageResult'
+        '404':
+          description: No controls found for this policy
+
   /api/import:
     post:
       tags: [Import]
@@ -1611,6 +1646,30 @@ components:
         evaluation_end:
           type: string
           format: date-time
+
+    CoverageResult:
+      type: object
+      properties:
+        policy_id:
+          type: string
+        total_controls:
+          type: integer
+        covered_controls:
+          type: integer
+        coverage_pct:
+          type: number
+        covered:
+          type: array
+          items:
+            type: string
+        gaps:
+          type: array
+          items:
+            type: string
+        stale:
+          type: array
+          items:
+            type: string
 
     TrustSignal:
       type: object

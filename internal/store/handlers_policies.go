@@ -6,15 +6,20 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/complytime-labs/complytime-core/internal/posture"
 	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
 
 func registerPolicyRoutes(g *echo.Group, s Stores) {
 	g.GET("/policies", listPoliciesHandler(s.Policies))
 	g.GET("/policies/:id", getPolicyHandler(s.Policies, s.Mappings))
+	if s.Coverage != nil {
+		g.GET("/policies/:id/coverage", coverageHandler(s.Coverage))
+	}
 	registerImportRoute(g, s)
 }
 
@@ -29,6 +34,42 @@ func listPoliciesHandler(s requirements.PolicyStore) echo.HandlerFunc {
 			policies = []requirements.Policy{}
 		}
 		return c.JSON(http.StatusOK, policies)
+	}
+}
+
+func coverageHandler(cs posture.CoverageStore) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		policyID := c.Param("id")
+		if policyID == "" {
+			return jsonError(c, http.StatusBadRequest, "missing policy id")
+		}
+
+		f := posture.CoverageFilter{PolicyID: policyID}
+		f.TargetID = c.QueryParam("target_id")
+
+		if v := c.QueryParam("since"); v != "" {
+			if t, err := time.Parse(time.RFC3339, v); err == nil {
+				f.Since = t
+			} else if t, err := time.Parse("2006-01-02", v); err == nil {
+				f.Since = t
+			}
+		}
+		if v := c.QueryParam("max_age"); v != "" {
+			if d, err := time.ParseDuration(v); err == nil {
+				f.MaxAge = d
+			}
+		}
+
+		result, err := cs.QueryCoverage(c.Request().Context(), f)
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return jsonError(c, http.StatusNotFound, "no controls found for this policy")
+			}
+			slog.Error("query coverage failed", "error", err)
+			return jsonError(c, http.StatusInternalServerError, "query failed")
+		}
+
+		return c.JSON(http.StatusOK, result)
 	}
 }
 

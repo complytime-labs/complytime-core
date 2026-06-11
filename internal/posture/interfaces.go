@@ -10,6 +10,11 @@ type RequirementStore interface {
 	ListRequirementEvidence(ctx context.Context, requirementID string, f RequirementFilter) ([]RequirementEvidenceRow, error)
 }
 
+// CoverageStore defines the gap detection query.
+type CoverageStore interface {
+	QueryCoverage(ctx context.Context, f CoverageFilter) (*CoverageResult, error)
+}
+
 // InventoryStore lists evidence inventory aggregates by target.
 type InventoryStore interface {
 	ListInventory(ctx context.Context, filters InventoryFilter) ([]InventoryItem, error)
