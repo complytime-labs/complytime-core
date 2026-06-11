@@ -12,12 +12,16 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/complytime-labs/complytime-core/internal/certify"
 	"github.com/complytime-labs/complytime-core/internal/consts"
 	"github.com/complytime-labs/complytime-core/internal/evidence"
 )
 
 func registerEvidenceRoutes(g *echo.Group, s Stores) {
 	g.GET("/evidence", queryEvidenceHandler(s.Evidence))
+	if s.TrustSignals != nil {
+		g.GET("/evidence/:id/verification", verificationHandler(s.TrustSignals))
+	}
 }
 
 func registerCertificationsRoutes(g *echo.Group, s Stores) {
@@ -105,5 +109,43 @@ func queryEvidenceHandler(s evidence.EvidenceStore) echo.HandlerFunc {
 			records = []evidence.EvidenceRecord{}
 		}
 		return c.JSON(http.StatusOK, records)
+	}
+}
+
+type verificationResponse struct {
+	EvidenceID string                   `json:"evidence_id"`
+	Verified   bool                     `json:"verified"`
+	Signals    []certify.TrustSignalRow `json:"signals"`
+}
+
+func verificationHandler(ts certify.TrustSignalStore) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		evidenceID := c.Param("id")
+		if evidenceID == "" {
+			return jsonError(c, http.StatusBadRequest, "missing evidence id")
+		}
+
+		signals, err := ts.QueryTrustSignals(c.Request().Context(), evidenceID)
+		if err != nil {
+			slog.Error("query trust signals failed", "error", err)
+			return jsonError(c, http.StatusInternalServerError, "query failed")
+		}
+		if len(signals) == 0 {
+			return jsonError(c, http.StatusNotFound, "no verification results for this evidence")
+		}
+
+		verified := true
+		for _, s := range signals {
+			if s.Result == certify.ResultFail || s.Result == certify.ResultError {
+				verified = false
+				break
+			}
+		}
+
+		return c.JSON(http.StatusOK, verificationResponse{
+			EvidenceID: evidenceID,
+			Verified:   verified,
+			Signals:    signals,
+		})
 	}
 }

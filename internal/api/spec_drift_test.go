@@ -20,6 +20,7 @@ import (
 	"github.com/complytime-labs/complytime-core/internal/audit"
 	"github.com/complytime-labs/complytime-core/internal/auth"
 	"github.com/complytime-labs/complytime-core/internal/bus"
+	"github.com/complytime-labs/complytime-core/internal/certify"
 	"github.com/complytime-labs/complytime-core/internal/config"
 	"github.com/complytime-labs/complytime-core/internal/evidence"
 	"github.com/complytime-labs/complytime-core/internal/gemara"
@@ -123,6 +124,7 @@ func buildRouter(t *testing.T) *echo.Echo {
 		JWTVerifier:         &nopJWTVerifier{},
 		Targets:             &nopTargetStore{},
 		PolicyDimensions:    &nopPolicyDimensionStore{},
+		TrustSignals:        &nopTrustSignalStore{},
 	}
 	store.Register(apiGroup, s)
 
@@ -430,6 +432,18 @@ func (*nopTargetStore) ListTargets(context.Context) ([]requirements.TargetRow, e
 type nopPolicyDimensionStore struct{}
 
 func (*nopPolicyDimensionStore) QueryPoliciesByDimensions(context.Context, requirements.DimensionQuery) ([]requirements.PolicyWithDimensions, error) {
+	panic("nop")
+}
+
+type nopTrustSignalStore struct{}
+
+func (*nopTrustSignalStore) InsertTrustSignals(context.Context, []certify.TrustSignalRow) error {
+	panic("nop")
+}
+func (*nopTrustSignalStore) QueryTrustSignals(context.Context, string) ([]certify.TrustSignalRow, error) {
+	panic("nop")
+}
+func (*nopTrustSignalStore) HasFailedTrustSignals(context.Context, string) (bool, error) {
 	panic("nop")
 }
 
