@@ -169,6 +169,7 @@ func main() {
 		JWTVerifier:         jwtVerifier,
 		Targets:             st,
 		PolicyDimensions:    st,
+		TrustSignals:        st,
 	}
 	slog.Info("store API registered", "routes", []string{
 		"/api/policies",

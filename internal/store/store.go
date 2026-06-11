@@ -74,6 +74,7 @@ type Stores struct {
 	JWTVerifier         JWTVerifier
 	Targets             requirements.TargetStore
 	PolicyDimensions    requirements.PolicyDimensionStore
+	TrustSignals        certify.TrustSignalStore
 }
 
 // InsertBundleArtifact inserts a bundle artifact if the Evidence store supports it.

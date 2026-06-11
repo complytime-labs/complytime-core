@@ -284,6 +284,39 @@ paths:
         '500':
           description: Query failed
 
+  /api/evidence/{id}/verification:
+    get:
+      tags: [Evidence]
+      operationId: getEvidenceVerification
+      summary: Get trust signal verification for an evidence record
+      description: >-
+        Returns all trust signals for an evidence record with an overall
+        verified boolean. Verified is true when no signal has result
+        'fail' or 'error'.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  evidence_id:
+                    type: string
+                  verified:
+                    type: boolean
+                  signals:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TrustSignal'
+        '404':
+          description: No verification results for this evidence
+
   /api/ingest:
     post:
       tags: [Ingest]
@@ -1576,6 +1609,26 @@ components:
           type: string
           format: date-time
         evaluation_end:
+          type: string
+          format: date-time
+
+    TrustSignal:
+      type: object
+      properties:
+        evidence_id:
+          type: string
+        layer:
+          type: string
+          enum: [identity, quality, attestation]
+        check_name:
+          type: string
+          enum: [schema, provenance, executor, publisher_auth]
+        result:
+          type: string
+          enum: [pass, fail, skip, error]
+        reason:
+          type: string
+        checked_at:
           type: string
           format: date-time
 
