@@ -20,13 +20,13 @@ test:
 
 test-integration:
 	@test -n "$(POSTGRES_TEST_URL)" || (echo "POSTGRES_TEST_URL required — e.g. postgres://user:pass@localhost:5432/test?sslmode=disable" && exit 1)
-	POSTGRES_TEST_URL=$(POSTGRES_TEST_URL) go test -v -race -cover ./internal/store/ ./internal/postgres/
+	POSTGRES_TEST_URL=$(POSTGRES_TEST_URL) go test -v -race -cover -tags integration ./...
 
 lint:
 	golangci-lint run ./...
 
 lint-openapi:
-	go test ./internal/openapi/... -run TestSpecDrift -v -count=1
+	go test ./internal/api/... -run TestSpecDrift -v -count=1
 
 clean:
 	rm -rf bin/
