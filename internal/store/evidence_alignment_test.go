@@ -61,7 +61,6 @@ func otelShapeFromREST(r evidence.EvidenceRecord) ingest.EvidenceRow {
 		RemediationDesc:      sp(r.RemediationDesc),
 		ExceptionID:          sp(r.ExceptionID),
 		ExceptionActive:      active,
-		EnrichmentStatus:     r.EnrichmentStatus,
 		AttestationRef:       sp(r.AttestationRef),
 		SourceRegistry:       sp(r.SourceRegistry),
 		BlobRef:              sp(r.BlobRef),
@@ -81,7 +80,6 @@ func TestRESTJSON_IngestRowColumnAlignment(t *testing.T) {
 		"plan_id": "plan-int",
 		"confidence": "Low",
 		"compliance_status": "Exempt",
-		"enrichment_status": "Unmapped",
 		"source_registry": "oci://reg/ns",
 		"blob_ref": "s3://bkt/obj",
 		"collected_at": "2026-04-25T18:00:00Z"
@@ -100,7 +98,6 @@ func TestRESTJSON_IngestRowColumnAlignment(t *testing.T) {
 		PlanID:           sp("plan-int"),
 		Confidence:       sp("Low"),
 		ComplianceStatus: "Exempt",
-		EnrichmentStatus: "Unmapped",
 		SourceRegistry:   sp("oci://reg/ns"),
 		BlobRef:          sp("s3://bkt/obj"),
 		CollectedAt:      time.Date(2026, 4, 25, 18, 0, 0, 0, time.UTC),

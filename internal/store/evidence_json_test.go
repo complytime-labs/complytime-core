@@ -75,7 +75,6 @@ func TestEvidenceRecordJSON_FullSemconvShape(t *testing.T) {
 		"remediation_desc": "add labels",
 		"exception_id": "ex-1",
 		"exception_active": true,
-		"enrichment_status": "Partial",
 		"attestation_ref": "sha256:abcd",
 		"source_registry": "oci://registry.example/ns",
 		"blob_ref": "s3://bucket/obj/key",
@@ -93,7 +92,7 @@ func TestEvidenceRecordJSON_FullSemconvShape(t *testing.T) {
 	if r.RequirementID != "req-42" || r.PlanID != "plan-q1" || r.Confidence != "High" {
 		t.Fatalf("assessment fields: %+v", r)
 	}
-	if r.ComplianceStatus != "Non-Compliant" || r.EnrichmentStatus != "Partial" {
+	if r.ComplianceStatus != "Non-Compliant" {
 		t.Fatalf("status fields: %+v", r)
 	}
 	if r.BlobRef != "s3://bucket/obj/key" || r.AttestationRef != "sha256:abcd" {

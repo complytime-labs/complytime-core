@@ -102,9 +102,9 @@ Trust Boundary                         Central Studio
 
 **Current position**: REST/CSV upload exists but populates a thin subset of columns compared to the OTel path. `POST /api/evidence` uses `EvidenceRecord` with 7 fields; the full `evidence` table has 30+ columns.
 
-**Problem**: Analysts upload spreadsheets and attach screenshots. That's the primary evidence path for teams not running OTel collectors. Treating it as a bootstrap utility means manually-ingested evidence lacks requirement linkage, plan association, and enrichment metadata — making it invisible to posture checks and audit workflows.
+**Problem**: Analysts upload spreadsheets and attach screenshots. That's the primary evidence path for teams not running OTel collectors. Treating it as a bootstrap utility means manually-ingested evidence lacks requirement linkage, plan association, and assessment metadata — making it invisible to posture checks and audit workflows.
 
-**New position**: REST/CSV/file upload populates the same columns as OTel ingest. Upload handlers accept `requirement_id`, `plan_id`, and enrichment fields. File evidence (screenshots, PDFs, logs) is stored in S3-compatible blob storage with a metadata pointer in ClickHouse. Both paths produce the same downstream events.
+**New position**: REST/CSV/file upload populates the same columns as OTel ingest. Upload handlers accept `requirement_id`, `plan_id`, and assessment fields. File evidence (screenshots, PDFs, logs) is stored in S3-compatible blob storage with a metadata pointer in ClickHouse. Both paths produce the same downstream events.
 
 **What changes**:
 
@@ -145,4 +145,4 @@ These non-goals are constraints, not aesthetic preferences. They stay.
 | Sovereignty relies on complyctl discipline | If complyctl pushes raw evidence instead of summaries, Studio has no enforcement. Mitigated by documenting the boundary contract and validating that evidence rows do not contain blob payloads. |
 | `source_registry` adds a new column | Nullable, optional, zero impact on existing data. complyctl populates it; manual uploads leave it NULL. |
 | Event bus adds internal complexity | In-process Go channels or ClickHouse MV triggers, not an external broker. Complexity is bounded. |
-| Manual ingest enrichment requires UI work | Column mapping UI can start as a documented CSV format. Wizard is Phase 2. |
+| Manual ingest column mapping requires UI work | Column mapping UI can start as a documented CSV format. Wizard is Phase 2. |

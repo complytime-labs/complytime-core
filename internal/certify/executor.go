@@ -22,11 +22,6 @@ func (c *ExecutorCertifier) Certify(_ context.Context, row EvidenceRow) CertResu
 	result := CertResult{Certifier: c.Name(), Version: c.Version()}
 
 	if row.EngineName == "" {
-		if row.EnrichmentStatus == "Skipped" {
-			result.Verdict = VerdictSkip
-			result.Reason = "no engine context"
-			return result
-		}
 		result.Verdict = VerdictFail
 		result.Reason = "engine_name is missing"
 		return result

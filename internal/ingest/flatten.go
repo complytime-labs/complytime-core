@@ -96,8 +96,6 @@ func FlattenEvaluationLog(log *gemara.EvaluationLog, policyID string) ([]Evidenc
 				Frameworks:           []string{},
 				Requirements:         []string{},
 
-				EnrichmentStatus: "Success",
-
 				CollectedAt: collectedAt,
 			}
 
@@ -197,8 +195,6 @@ func FlattenEnforcementLog(log *gemara.EnforcementLog, policyID string) ([]Evide
 				RemediationDesc:   action.Message,
 				ExceptionID:       exceptionID,
 				ExceptionActive:   &hasException,
-
-				EnrichmentStatus: "Success",
 
 				CollectedAt: collectedAt,
 			})

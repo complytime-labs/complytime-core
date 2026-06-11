@@ -52,9 +52,6 @@ func normalizeEvidence(r *evidence.EvidenceRecord) {
 	if r.EvidenceID == "" {
 		r.EvidenceID = uuid.New().String()
 	}
-	if r.EnrichmentStatus == "" {
-		r.EnrichmentStatus = "Success"
-	}
 	if r.ComplianceStatus == "" {
 		r.ComplianceStatus = "Unknown"
 	}
@@ -90,11 +87,10 @@ func (s *Store) InsertEvidence(ctx context.Context, records []evidence.EvidenceR
 		risk_level, requirements,
 		remediation_action, remediation_status, remediation_desc,
 		exception_id, exception_active,
-		enrichment_status,
 		attestation_ref, source_registry, blob_ref,
 		owner, collected_at, log_index,
 		publisher_issuer, submitted_by, publisher_type
-	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39)
+	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38)
 	ON CONFLICT (evidence_id, control_id, requirement_id) DO UPDATE SET
 		target_name = EXCLUDED.target_name,
 		target_type = EXCLUDED.target_type,
@@ -126,7 +122,6 @@ func (s *Store) InsertEvidence(ctx context.Context, records []evidence.EvidenceR
 			nullStr(r.RiskLevel), r.Requirements,
 			nullStr(r.RemediationAction), nullStr(r.RemediationStatus), nullStr(r.RemediationDesc),
 			nullStr(r.ExceptionID), r.ExceptionActive,
-			r.EnrichmentStatus,
 			nullStr(r.AttestationRef), nullStr(r.SourceRegistry), nullStr(r.BlobRef),
 			nullStr(r.Owner), r.CollectedAt, r.LogIndex,
 			nullStr(r.PublisherIssuer), nullStr(r.SubmittedBy), nullStr(r.PublisherType),
@@ -163,7 +158,6 @@ func (s *Store) QueryEvidence(ctx context.Context, f evidence.EvidenceFilter) ([
 		"e.compliance_status",
 		"COALESCE(e.risk_level, '') AS risk_level",
 		"e.requirements",
-		"e.enrichment_status",
 		"COALESCE(e.attestation_ref, '') AS attestation_ref",
 		"COALESCE(e.source_registry, '') AS source_registry",
 		"COALESCE(e.blob_ref, '') AS blob_ref",
@@ -239,7 +233,6 @@ func (s *Store) QueryEvidence(ctx context.Context, f evidence.EvidenceFilter) ([
 			&r.RequirementID, &r.PlanID,
 			&r.Confidence, &r.ComplianceStatus,
 			&r.RiskLevel, &r.Requirements,
-			&r.EnrichmentStatus,
 			&r.AttestationRef, &r.SourceRegistry, &r.BlobRef,
 			&r.CollectedAt,
 			&r.LogIndex,
@@ -319,7 +312,7 @@ func (s *Store) QueryRecentEvidence(
 			COALESCE(engine_name, '') AS engine_name,
 			COALESCE(source_registry, '') AS source_registry,
 			COALESCE(attestation_ref, '') AS attestation_ref,
-			enrichment_status, collected_at
+			collected_at
 		 FROM evidence
 		 WHERE policy_id = $1 AND ingested_at >= $2
 		 ORDER BY ingested_at DESC`, policyID, since)
@@ -334,7 +327,7 @@ func (s *Store) QueryRecentEvidence(
 		if err := rows.Scan(
 			&r.EvidenceID, &r.TargetID, &r.RuleID, &r.EvalResult,
 			&r.ComplianceStatus, &r.EngineName, &r.SourceRegistry,
-			&r.AttestationRef, &r.EnrichmentStatus, &r.CollectedAt,
+			&r.AttestationRef, &r.CollectedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan recent evidence: %w", err)
 		}

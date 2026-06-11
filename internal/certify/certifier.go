@@ -79,7 +79,6 @@ type EvidenceRow struct {
 	EngineName       string
 	SourceRegistry   string
 	AttestationRef   string
-	EnrichmentStatus string
 	CollectedAt      time.Time
 }
 

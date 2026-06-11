@@ -18,9 +18,6 @@ var (
 		"Compliant": {}, "Non-Compliant": {}, "Exempt": {},
 		"Not Applicable": {}, "Unknown": {},
 	}
-	validEnrichmentStatus = map[string]struct{}{
-		"Success": {}, "Unmapped": {}, "Partial": {}, "Unknown": {}, "Skipped": {},
-	}
 	validConfidence = map[string]struct{}{
 		"Undetermined": {}, "Low": {}, "Medium": {}, "High": {},
 	}
@@ -41,11 +38,6 @@ func ValidateEvidenceRecordEnums(rec EvidenceRecord, row int) []string {
 	if rec.ComplianceStatus != "" {
 		if _, ok := validComplianceStatus[rec.ComplianceStatus]; !ok {
 			out = append(out, prefix+fmt.Sprintf("invalid compliance_status %q", rec.ComplianceStatus))
-		}
-	}
-	if rec.EnrichmentStatus != "" {
-		if _, ok := validEnrichmentStatus[rec.EnrichmentStatus]; !ok {
-			out = append(out, prefix+fmt.Sprintf("invalid enrichment_status %q", rec.EnrichmentStatus))
 		}
 	}
 	if rec.Confidence != "" {
