@@ -170,6 +170,7 @@ func main() {
 		Targets:             st,
 		PolicyDimensions:    st,
 		TrustSignals:        st,
+		Coverage:            st,
 	}
 	slog.Info("store API registered", "routes", []string{
 		"/api/policies",

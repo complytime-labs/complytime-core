@@ -1,0 +1,62 @@
+title: Test Control Catalog
+metadata:
+  id: test-controls
+  type: ControlCatalog
+  gemara-version: "1.0.0"
+  description: Sample controls for coverage testing
+  author:
+    id: test-org
+    name: Test Organization
+    type: Human
+  applicability-groups:
+    - id: all
+      title: All
+      description: All environments
+groups:
+  - id: access-control
+    title: Access Control
+    description: Access control family
+  - id: config-mgmt
+    title: Configuration Management
+    description: Config management family
+controls:
+  - id: AC-1
+    title: Access Control Policy
+    objective: Establish access control policy
+    group: access-control
+    state: Active
+    assessment-requirements:
+      - id: AC-1.1
+        text: Organization defines access control policy
+        applicability: [all]
+        state: Active
+  - id: AC-2
+    title: Account Management
+    objective: Manage system accounts
+    group: access-control
+    state: Active
+    assessment-requirements:
+      - id: AC-2.1
+        text: Organization manages accounts
+        applicability: [all]
+        state: Active
+  - id: AC-3
+    title: Access Enforcement
+    objective: Enforce approved authorizations
+    group: access-control
+    state: Active
+    assessment-requirements:
+      - id: AC-3.1
+        text: System enforces approved authorizations
+        applicability: [all]
+        state: Active
+  - id: CM-1
+    title: Configuration Management Policy
+    objective: Establish configuration management policy
+    group: config-mgmt
+    state: Active
+    assessment-requirements:
+      - id: CM-1.1
+        text: Organization defines configuration management policy
+        applicability: [all]
+        state: Active

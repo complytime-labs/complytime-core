@@ -75,6 +75,7 @@ type Stores struct {
 	Targets             requirements.TargetStore
 	PolicyDimensions    requirements.PolicyDimensionStore
 	TrustSignals        certify.TrustSignalStore
+	Coverage            posture.CoverageStore
 }
 
 // InsertBundleArtifact inserts a bundle artifact if the Evidence store supports it.

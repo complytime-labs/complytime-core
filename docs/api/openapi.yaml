@@ -168,6 +168,45 @@ paths:
         '404':
           description: Policy not found
 
+  /api/policies/{id}/coverage:
+    get:
+      tags: [Policies]
+      operationId: getPolicyCoverage
+      summary: Gap analysis — requirements with and without evidence
+      description: >-
+        Returns which assessment requirements in a policy have evidence
+        (covered), which don't (gaps), which have stale evidence, and
+        which evidence is unaligned to any requirement. Staleness is
+        driven by assessment plan frequencies from the policy's adherence
+        section; max_age is a fallback for requirements without a plan.
+      parameters:
+        - $ref: '#/components/parameters/PolicyId'
+        - name: target_id
+          in: query
+          description: Filter evidence to a specific target
+          schema:
+            type: string
+        - name: since
+          in: query
+          description: Only count evidence collected after this date (RFC3339 or YYYY-MM-DD)
+          schema:
+            type: string
+        - name: max_age
+          in: query
+          description: >-
+            Fallback staleness threshold for requirements without an
+            adherence assessment plan (Go duration, e.g. 720h)
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoverageResult'
+        '404':
+          description: No requirements found for this policy
+
   /api/import:
     post:
       tags: [Import]
@@ -1611,6 +1650,38 @@ components:
         evaluation_end:
           type: string
           format: date-time
+
+    CoverageResult:
+      type: object
+      properties:
+        policy_id:
+          type: string
+        total_requirements:
+          type: integer
+        covered_requirements:
+          type: integer
+        coverage_pct:
+          type: number
+        covered:
+          type: array
+          items:
+            type: string
+          description: Requirement IDs with evidence
+        gaps:
+          type: array
+          items:
+            type: string
+          description: Requirement IDs with no evidence
+        stale:
+          type: array
+          items:
+            type: string
+          description: Requirement IDs with evidence older than adherence frequency
+        unaligned:
+          type: array
+          items:
+            type: string
+          description: Control IDs with evidence not mapped to a specific requirement
 
     TrustSignal:
       type: object

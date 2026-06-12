@@ -16,7 +16,12 @@ implementation-plan:
     start: "2026-04-01T00:00:00Z"
     end: "2026-06-30T00:00:00Z"
 adherence:
-  requirements:
-    - entryId: AC-1
-      title: Access Control Policy
-      referenceId: nist-800-53
+  assessment-plans:
+    - id: plan-ac1
+      requirement-id: AC-1.1
+      frequency: monthly
+      evaluation-methods:
+        - id: eval-ac1
+          type: Behavioral
+          mode: Automated
+          required: true
