@@ -10,6 +10,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/complytime-labs/complytime-core/internal/gemara"
 	"github.com/complytime-labs/complytime-core/internal/posture"
 	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
@@ -18,7 +19,7 @@ func registerPolicyRoutes(g *echo.Group, s Stores) {
 	g.GET("/policies", listPoliciesHandler(s.Policies))
 	g.GET("/policies/:id", getPolicyHandler(s.Policies, s.Mappings))
 	if s.Coverage != nil {
-		g.GET("/policies/:id/coverage", coverageHandler(s.Coverage))
+		g.GET("/policies/:id/coverage", coverageHandler(s.Coverage, s.Policies))
 	}
 	registerImportRoute(g, s)
 }
@@ -37,7 +38,7 @@ func listPoliciesHandler(s requirements.PolicyStore) echo.HandlerFunc {
 	}
 }
 
-func coverageHandler(cs posture.CoverageStore) echo.HandlerFunc {
+func coverageHandler(cs posture.CoverageStore, ps requirements.PolicyStore) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		policyID := c.Param("id")
 		if policyID == "" {
@@ -60,10 +61,16 @@ func coverageHandler(cs posture.CoverageStore) echo.HandlerFunc {
 			}
 		}
 
+		if ps != nil {
+			if pol, err := ps.GetPolicy(c.Request().Context(), policyID); err == nil && pol.Content != "" {
+				f.Freshness = gemara.ExtractAdherenceFrequencies(pol.Content)
+			}
+		}
+
 		result, err := cs.QueryCoverage(c.Request().Context(), f)
 		if err != nil {
 			if errors.Is(err, ErrNotFound) {
-				return jsonError(c, http.StatusNotFound, "no controls found for this policy")
+				return jsonError(c, http.StatusNotFound, "no requirements found for this policy")
 			}
 			slog.Error("query coverage failed", "error", err)
 			return jsonError(c, http.StatusInternalServerError, "query failed")

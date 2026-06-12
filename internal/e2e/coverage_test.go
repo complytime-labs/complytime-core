@@ -21,6 +21,7 @@ import (
 	"github.com/complytime-labs/complytime-core/internal/evidence"
 	"github.com/complytime-labs/complytime-core/internal/gemara"
 	"github.com/complytime-labs/complytime-core/internal/posture"
+	"github.com/complytime-labs/complytime-core/internal/requirements"
 	"github.com/complytime-labs/complytime-core/internal/store"
 )
 
@@ -83,30 +84,43 @@ var _ = Describe("Coverage Endpoint", func() {
 		e := echo.New()
 		e.HideBanner = true
 		apiStores := store.Stores{
-			Policies:    st,
-			Mappings:    st,
-			Coverage:    st,
-			Evidence:    st,
-			Controls:    st,
-			Catalogs:    st,
+			Policies: st,
+			Mappings: st,
+			Coverage: st,
+			Evidence: st,
+			Controls: st,
+			Catalogs: st,
 		}
 		store.Register(e.Group("/api"), apiStores)
 		apiServer = httptest.NewServer(e)
 		DeferCleanup(apiServer.Close)
 	})
 
-	It("reports coverage with gaps and covered controls", func() {
-		By("Inserting controls for test-policy directly")
+	// insertTestControlsAndRequirements sets up controls and their assessment
+	// requirements for the test-controls catalog and test-policy.
+	insertTestControlsAndRequirements := func() {
 		controls := []gemara.ControlRow{
 			{CatalogID: "test-controls", ControlID: "AC-1", Title: "Access Control Policy", PolicyID: "test-policy"},
 			{CatalogID: "test-controls", ControlID: "AC-2", Title: "Account Management", PolicyID: "test-policy"},
 			{CatalogID: "test-controls", ControlID: "AC-3", Title: "Access Enforcement", PolicyID: "test-policy"},
 			{CatalogID: "test-controls", ControlID: "CM-1", Title: "Configuration Management Policy", PolicyID: "test-policy"},
 		}
-		err := st.InsertControls(ctx, controls)
-		Expect(err).NotTo(HaveOccurred())
+		Expect(st.InsertControls(ctx, controls)).To(Succeed())
 
-		By("Ingesting evidence that covers AC-1 only")
+		reqs := []gemara.AssessmentRequirementRow{
+			{CatalogID: "test-controls", ControlID: "AC-1", RequirementID: "AC-1.1", Text: "Organization defines access control policy", Applicability: []string{"all"}, State: "Active"},
+			{CatalogID: "test-controls", ControlID: "AC-2", RequirementID: "AC-2.1", Text: "Organization manages accounts", Applicability: []string{"all"}, State: "Active"},
+			{CatalogID: "test-controls", ControlID: "AC-3", RequirementID: "AC-3.1", Text: "System enforces approved authorizations", Applicability: []string{"all"}, State: "Active"},
+			{CatalogID: "test-controls", ControlID: "CM-1", RequirementID: "CM-1.1", Text: "Organization defines configuration management policy", Applicability: []string{"all"}, State: "Active"},
+		}
+		Expect(st.InsertAssessmentRequirements(ctx, reqs)).To(Succeed())
+	}
+
+	It("reports coverage with gaps and covered requirements", func() {
+		By("Inserting controls and assessment requirements")
+		insertTestControlsAndRequirements()
+
+		By("Ingesting evidence that covers AC-1.1 only")
 		evalLogYAML, err := os.ReadFile("testdata/evaluation_log_certifiable.yaml")
 		Expect(err).NotTo(HaveOccurred())
 
@@ -133,20 +147,20 @@ var _ = Describe("Coverage Endpoint", func() {
 		err = json.NewDecoder(coverageResp.Body).Decode(&coverage)
 		Expect(err).NotTo(HaveOccurred())
 
-		GinkgoWriter.Printf("Coverage: %d/%d controls (%.1f%%)\n",
-			coverage.CoveredControls, coverage.TotalControls, coverage.CoveragePct)
+		GinkgoWriter.Printf("Coverage: %d/%d requirements (%.1f%%)\n",
+			coverage.CoveredRequirements, coverage.TotalRequirements, coverage.CoveragePct)
 		GinkgoWriter.Printf("  Covered: %v\n", coverage.Covered)
 		GinkgoWriter.Printf("  Gaps:    %v\n", coverage.Gaps)
 
 		Expect(coverage.PolicyID).To(Equal("test-policy"))
-		Expect(coverage.TotalControls).To(Equal(4))
-		Expect(coverage.Covered).To(ContainElement("AC-1"))
-		Expect(coverage.Gaps).To(ContainElements("AC-2", "AC-3", "CM-1"))
-		Expect(coverage.CoveredControls).To(Equal(1))
+		Expect(coverage.TotalRequirements).To(Equal(4))
+		Expect(coverage.Covered).To(ContainElement("AC-1.1"))
+		Expect(coverage.Gaps).To(ContainElements("AC-2.1", "AC-3.1", "CM-1.1"))
+		Expect(coverage.CoveredRequirements).To(Equal(1))
 		Expect(coverage.CoveragePct).To(Equal(25.0))
 	})
 
-	It("returns 404 for a policy with no controls", func() {
+	It("returns 404 for a policy with no requirements", func() {
 		coverageURL := fmt.Sprintf("%s/api/policies/nonexistent-policy/coverage", apiServer.URL)
 		resp, err := http.Get(coverageURL) //nolint:gosec // G107: test server URL
 		Expect(err).NotTo(HaveOccurred())
@@ -155,18 +169,13 @@ var _ = Describe("Coverage Endpoint", func() {
 		Expect(resp.StatusCode).To(Equal(http.StatusNotFound))
 	})
 
-	It("detects stale evidence with max_age", func() {
-		By("Inserting controls")
-		controls := []gemara.ControlRow{
-			{CatalogID: "test-controls", ControlID: "AC-1", Title: "Access Control Policy", PolicyID: "test-policy"},
-			{CatalogID: "test-controls", ControlID: "AC-2", Title: "Account Management", PolicyID: "test-policy"},
-		}
-		err := st.InsertControls(ctx, controls)
-		Expect(err).NotTo(HaveOccurred())
+	It("detects stale evidence with max_age fallback", func() {
+		By("Inserting controls and assessment requirements")
+		insertTestControlsAndRequirements()
 
-		By("Inserting old evidence directly")
+		By("Inserting old evidence directly with requirement_id")
 		oldTime := time.Now().Add(-60 * 24 * time.Hour) // 60 days ago
-		_, err = pgClient.Pool().Exec(ctx,
+		_, err := pgClient.Pool().Exec(ctx,
 			`INSERT INTO evidence (evidence_id, target_id, policy_id, control_id, requirement_id,
 				rule_id, eval_result, compliance_status, collected_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
@@ -186,10 +195,104 @@ var _ = Describe("Coverage Endpoint", func() {
 		err = json.NewDecoder(coverageResp.Body).Decode(&coverage)
 		Expect(err).NotTo(HaveOccurred())
 
-		GinkgoWriter.Printf("Stale controls: %v\n", coverage.Stale)
+		GinkgoWriter.Printf("Stale requirements: %v\n", coverage.Stale)
 
-		Expect(coverage.Covered).To(ContainElement("AC-1"))
-		Expect(coverage.Stale).To(ContainElement("AC-1"))
-		Expect(coverage.Gaps).To(ContainElement("AC-2"))
+		Expect(coverage.Covered).To(ContainElement("AC-1.1"))
+		Expect(coverage.Stale).To(ContainElement("AC-1.1"))
+		Expect(coverage.Gaps).To(ContainElements("AC-2.1", "AC-3.1", "CM-1.1"))
+	})
+
+	It("surfaces unaligned evidence", func() {
+		By("Inserting controls and assessment requirements")
+		insertTestControlsAndRequirements()
+
+		By("Inserting evidence with empty requirement_id")
+		_, err := pgClient.Pool().Exec(ctx,
+			`INSERT INTO evidence (evidence_id, target_id, policy_id, control_id, requirement_id,
+				rule_id, eval_result, compliance_status, collected_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+			"unaligned-ev-1", "tgt-1", "test-policy", "AC-1", "",
+			"rule-1", "Passed", "Compliant", time.Now())
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Querying coverage")
+		coverageURL := fmt.Sprintf("%s/api/policies/test-policy/coverage", apiServer.URL)
+		coverageResp, err := http.Get(coverageURL) //nolint:gosec // G107: test server URL
+		Expect(err).NotTo(HaveOccurred())
+		defer func() { _ = coverageResp.Body.Close() }()
+
+		Expect(coverageResp.StatusCode).To(Equal(http.StatusOK))
+
+		var coverage posture.CoverageResult
+		err = json.NewDecoder(coverageResp.Body).Decode(&coverage)
+		Expect(err).NotTo(HaveOccurred())
+
+		GinkgoWriter.Printf("Unaligned: %v\n", coverage.Unaligned)
+
+		Expect(coverage.Unaligned).To(ContainElement("AC-1"))
+		Expect(coverage.CoveredRequirements).To(Equal(0))
+		Expect(coverage.Gaps).To(HaveLen(4))
+	})
+
+	It("detects stale evidence from adherence frequency", func() {
+		By("Inserting a policy with adherence assessment-plans")
+		policyContent := `metadata:
+  type: Policy
+  id: test-policy
+  version: "1.0.0"
+  gemara-version: "1.0.0"
+title: Test Policy
+adherence:
+  assessment-plans:
+    - id: plan-ac1
+      requirement-id: AC-1.1
+      frequency: monthly
+      evaluation-methods:
+        - id: eval-ac1
+          type: Behavioral
+          mode: Automated
+          required: true`
+		Expect(st.InsertPolicy(ctx, requirements.Policy{
+			PolicyID:     "test-policy",
+			Title:        "Test Policy",
+			Version:      "1.0.0",
+			Content:      policyContent,
+			Technologies: []string{},
+			Geopolitical: []string{},
+			Sensitivity:  []string{},
+			Users:        []string{},
+			Groups:       []string{},
+		})).To(Succeed())
+
+		By("Inserting controls and assessment requirements")
+		insertTestControlsAndRequirements()
+
+		By("Inserting evidence older than monthly (45 days ago)")
+		oldTime := time.Now().Add(-45 * 24 * time.Hour)
+		_, err := pgClient.Pool().Exec(ctx,
+			`INSERT INTO evidence (evidence_id, target_id, policy_id, control_id, requirement_id,
+				rule_id, eval_result, compliance_status, collected_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+			"stale-ev-1", "tgt-1", "test-policy", "AC-1", "AC-1.1",
+			"rule-1", "Passed", "Compliant", oldTime)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Querying coverage (no max_age — staleness from adherence)")
+		coverageURL := fmt.Sprintf("%s/api/policies/test-policy/coverage", apiServer.URL)
+		coverageResp, err := http.Get(coverageURL) //nolint:gosec // G107: test server URL
+		Expect(err).NotTo(HaveOccurred())
+		defer func() { _ = coverageResp.Body.Close() }()
+
+		Expect(coverageResp.StatusCode).To(Equal(http.StatusOK))
+
+		var coverage posture.CoverageResult
+		err = json.NewDecoder(coverageResp.Body).Decode(&coverage)
+		Expect(err).NotTo(HaveOccurred())
+
+		GinkgoWriter.Printf("Covered: %v  Stale: %v\n", coverage.Covered, coverage.Stale)
+
+		Expect(coverage.Covered).To(ContainElement("AC-1.1"))
+		Expect(coverage.Stale).To(ContainElement("AC-1.1"))
+		Expect(coverage.Gaps).To(ContainElements("AC-2.1", "AC-3.1", "CM-1.1"))
 	})
 })
