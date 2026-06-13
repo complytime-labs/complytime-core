@@ -279,7 +279,7 @@ func handleTargetRegistrationJS(
 
 	// Process trusted-publishers additions
 	if len(reg.Target.TrustedPublishers) > 0 && trustedPubs != nil {
-		logIdx := int64(ref.LogIndex)
+		logIdx := int64(ref.LogIndex) //nolint:gosec // tessera log indices are sequential from 0
 		addedBy := ref.PublisherIdentity.Sub
 		pubRows := make([]requirements.TrustedPublisherRow, len(reg.Target.TrustedPublishers))
 		for i, p := range reg.Target.TrustedPublishers {
