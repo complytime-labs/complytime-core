@@ -58,7 +58,7 @@ func (s *Store) GetTrustedPublishers(ctx context.Context, targetID string) ([]re
 
 	rows, err := s.pool.Query(ctx, q, targetID)
 	if err != nil {
-		return nil, fmt.Errorf("get trusted publishers: %w", err)
+		return nil, classifyErr(fmt.Errorf("get trusted publishers: %w", err))
 	}
 	defer rows.Close()
 
@@ -69,7 +69,7 @@ func (s *Store) GetTrustedPublishers(ctx context.Context, targetID string) ([]re
 			&r.TargetID, &r.Issuer, &r.SubPattern, &r.Environment,
 			&r.AddedAt, &r.AddedBy, &r.TesseraLogIndex,
 		); err != nil {
-			return nil, fmt.Errorf("scan trusted publisher: %w", err)
+			return nil, classifyErr(fmt.Errorf("scan trusted publisher: %w", err))
 		}
 		out = append(out, r)
 	}
