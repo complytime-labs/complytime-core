@@ -75,6 +75,7 @@ type Stores struct {
 	Targets             requirements.TargetStore
 	PolicyDimensions    requirements.PolicyDimensionStore
 	TrustSignals        certify.TrustSignalStore
+	TrustedPublishers   requirements.TrustedPublisherStore
 	Coverage            posture.CoverageStore
 }
 
@@ -117,6 +118,7 @@ var (
 	_ requirements.PolicyDimensionStore = (*Store)(nil)
 	_ certify.TrustSignalStore          = (*Store)(nil)
 	_ posture.InventoryStore            = (*Store)(nil)
+	_ requirements.TrustedPublisherStore = (*Store)(nil)
 )
 
 // New wraps a PostgreSQL connection pool.
