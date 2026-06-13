@@ -74,6 +74,7 @@ fix_coredns_for_podman() {
         -o jsonpath='{.data.Corefile}')
 
     local patched_corefile
+    # shellcheck disable=SC2001 # bash parameter expansion can't target mid-string patterns in multiline content
     patched_corefile=$(echo "$current_corefile" \
         | sed "s|forward \. /etc/resolv\.conf|forward . ${nameservers}|g")
 
