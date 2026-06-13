@@ -61,6 +61,17 @@ type TargetRow struct {
 	RegisteredBy    string    `json:"registered_by"`
 }
 
+// TrustedPublisherRow represents an authorized OIDC identity for a target.
+type TrustedPublisherRow struct {
+	TargetID        string    `json:"target_id"`
+	Issuer          string    `json:"issuer"`
+	SubPattern      string    `json:"sub_pattern"`
+	Environment     *string   `json:"environment,omitempty"`
+	AddedAt         time.Time `json:"added_at"`
+	AddedBy         *string   `json:"added_by,omitempty"`
+	TesseraLogIndex *int64    `json:"tessera_log_index,omitempty"`
+}
+
 // BundleArtifactRow represents an artifact within an OCI bundle.
 type BundleArtifactRow struct {
 	BundleID        string
