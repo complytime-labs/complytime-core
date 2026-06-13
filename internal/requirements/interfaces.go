@@ -71,6 +71,13 @@ type TargetStore interface {
 	ListTargets(ctx context.Context) ([]TargetRow, error)
 }
 
+// TrustedPublisherStore defines operations for target-scoped publisher authorizations.
+type TrustedPublisherStore interface {
+	InsertTrustedPublishers(ctx context.Context, rows []TrustedPublisherRow) error
+	GetTrustedPublishers(ctx context.Context, targetID string) ([]TrustedPublisherRow, error)
+	DeleteTrustedPublishers(ctx context.Context, targetID string) error
+}
+
 // PolicyDimensionStore defines queries for policies with dimension matching.
 type PolicyDimensionStore interface {
 	QueryPoliciesByDimensions(ctx context.Context, dims DimensionQuery) ([]PolicyWithDimensions, error)
