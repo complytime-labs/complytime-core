@@ -44,6 +44,7 @@ func testStore(t *testing.T) *Store {
 		_, _ = pool.Exec(bg, "DELETE FROM workbench.programs")
 		_, _ = pool.Exec(bg, "DELETE FROM evidence WHERE evidence_id LIKE 'ev-%'")
 		_, _ = pool.Exec(bg, "DELETE FROM policies WHERE policy_id LIKE 'pol-%'")
+		_, _ = pool.Exec(bg, "DELETE FROM target_trusted_publishers WHERE target_id LIKE 'tgt-%'")
 		client.Close()
 	})
 	return New(client.Pool())
@@ -349,3 +350,95 @@ func TestIntegration_ListInventory(t *testing.T) {
 		t.Fatalf("program filter: %+v", byProg)
 	}
 }
+
+func TestIntegration_TrustedPublishers(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+
+	env := "production"
+	var logIdx int64 = 42
+
+	rows := []requirements.TrustedPublisherRow{
+		{
+			TargetID:        "tgt-tp-1",
+			Issuer:          "https://token.actions.githubusercontent.com",
+			SubPattern:      "repo:org/repo-*:ref:refs/heads/main",
+			Environment:     &env,
+			AddedAt:         time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+			AddedBy:         strPtr("admin@example.com"),
+			TesseraLogIndex: &logIdx,
+		},
+		{
+			TargetID:   "tgt-tp-1",
+			Issuer:     "https://token.actions.githubusercontent.com",
+			SubPattern: "repo:org/other-repo:ref:refs/heads/*",
+			AddedAt:    time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		},
+	}
+
+	// Insert
+	err := st.InsertTrustedPublishers(ctx, rows)
+	if err != nil {
+		t.Fatalf("InsertTrustedPublishers: %v", err)
+	}
+
+	// Get
+	got, err := st.GetTrustedPublishers(ctx, "tgt-tp-1")
+	if err != nil {
+		t.Fatalf("GetTrustedPublishers: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(got))
+	}
+
+	// Upsert idempotency — update environment on existing row
+	updatedEnv := "staging"
+	rows[0].Environment = &updatedEnv
+	err = st.InsertTrustedPublishers(ctx, rows[:1])
+	if err != nil {
+		t.Fatalf("upsert InsertTrustedPublishers: %v", err)
+	}
+	got, err = st.GetTrustedPublishers(ctx, "tgt-tp-1")
+	if err != nil {
+		t.Fatalf("GetTrustedPublishers after upsert: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("upsert should not duplicate: expected 2 rows, got %d", len(got))
+	}
+	if got[0].Environment == nil || *got[0].Environment != "staging" {
+		t.Fatalf("upsert should update environment to 'staging', got %v", got[0].Environment)
+	}
+
+	// Delete
+	err = st.DeleteTrustedPublishers(ctx, "tgt-tp-1")
+	if err != nil {
+		t.Fatalf("DeleteTrustedPublishers: %v", err)
+	}
+	got, err = st.GetTrustedPublishers(ctx, "tgt-tp-1")
+	if err != nil {
+		t.Fatalf("GetTrustedPublishers after delete: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected 0 rows after delete, got %d", len(got))
+	}
+
+	// Get on nonexistent target returns empty slice
+	got, err = st.GetTrustedPublishers(ctx, "tgt-nonexistent")
+	if err != nil {
+		t.Fatalf("GetTrustedPublishers nonexistent: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected empty slice, got nil")
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected 0 rows for nonexistent target, got %d", len(got))
+	}
+
+	// Insert empty slice is a no-op
+	err = st.InsertTrustedPublishers(ctx, nil)
+	if err != nil {
+		t.Fatalf("InsertTrustedPublishers(nil): %v", err)
+	}
+}
+
+func strPtr(s string) *string { return &s }
