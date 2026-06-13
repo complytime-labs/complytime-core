@@ -65,7 +65,7 @@ func IngestWorker(
 		if err != nil {
 			typeStr := evidence.DetectArtifactTypeString(yaml)
 			if typeStr == "TargetRegistration" {
-				applyOutcome(msg, handleTargetRegistrationJS(ctx, ref, yaml, stores.Targets, pub, tracker))
+				applyOutcome(msg, handleTargetRegistrationJS(ctx, ref, yaml, stores.Targets, stores.TrustedPublishers, pub, tracker))
 				return
 			}
 			tracker.Fail(ref.JobID, fmt.Sprintf("invalid artifact: %v", err))
@@ -235,6 +235,7 @@ func handleTargetRegistrationJS(
 	ref bus.IngestRef,
 	yaml []byte,
 	targets requirements.TargetStore,
+	trustedPubs requirements.TrustedPublisherStore,
 	pub EventPublisher,
 	tracker *IngestTracker,
 ) ingestOutcome {
@@ -242,7 +243,13 @@ func handleTargetRegistrationJS(
 	if err != nil {
 		tracker.Fail(ref.JobID, fmt.Sprintf("parse failed: %v", err))
 		slog.Warn("async ingest: TargetRegistration parse failed", "job_id", ref.JobID, "error", err)
-		return outcomeTerm // Parse failure is permanent
+		return outcomeTerm
+	}
+
+	if err := evidence.ValidateTargetRegistration(reg); err != nil {
+		tracker.Fail(ref.JobID, fmt.Sprintf("validation failed: %v", err))
+		slog.Warn("async ingest: TargetRegistration validation failed", "job_id", ref.JobID, "error", err)
+		return outcomeTerm
 	}
 
 	registeredAt, err := time.Parse(time.RFC3339, reg.Metadata.Date)
@@ -267,7 +274,51 @@ func handleTargetRegistrationJS(
 	if err := targets.InsertTarget(ctx, row); err != nil {
 		tracker.Fail(ref.JobID, fmt.Sprintf("insert failed: %v", err))
 		slog.Error("async ingest: TargetRegistration insert failed", "job_id", ref.JobID, "error", err)
-		return outcomeNak // Store failure is transient
+		return outcomeNak
+	}
+
+	// Process trusted-publishers additions
+	if len(reg.Target.TrustedPublishers) > 0 && trustedPubs != nil {
+		logIdx := int64(ref.LogIndex)
+		addedBy := ref.PublisherIdentity.Sub
+		pubRows := make([]requirements.TrustedPublisherRow, len(reg.Target.TrustedPublishers))
+		for i, p := range reg.Target.TrustedPublishers {
+			pubRows[i] = requirements.TrustedPublisherRow{
+				TargetID:        reg.Target.ID,
+				Issuer:          p.Issuer,
+				SubPattern:      p.SubPattern,
+				AddedAt:         registeredAt,
+				AddedBy:         &addedBy,
+				TesseraLogIndex: &logIdx,
+			}
+			if p.Environment != "" {
+				env := p.Environment
+				pubRows[i].Environment = &env
+			}
+		}
+		if err := trustedPubs.InsertTrustedPublishers(ctx, pubRows); err != nil {
+			tracker.Fail(ref.JobID, fmt.Sprintf("insert trusted publishers failed: %v", err))
+			slog.Error("async ingest: trusted publishers insert failed", "job_id", ref.JobID, "error", err)
+			return outcomeNak
+		}
+		slog.Info("trusted publishers added", "job_id", ref.JobID, "target_id", reg.Target.ID, "count", len(pubRows))
+	}
+
+	// Process remove-publishers removals
+	if len(reg.Target.RemovePublishers) > 0 && trustedPubs != nil {
+		keys := make([]requirements.TrustedPublisherKey, len(reg.Target.RemovePublishers))
+		for i, p := range reg.Target.RemovePublishers {
+			keys[i] = requirements.TrustedPublisherKey{
+				Issuer:     p.Issuer,
+				SubPattern: p.SubPattern,
+			}
+		}
+		if err := trustedPubs.RemoveTrustedPublishers(ctx, reg.Target.ID, keys, ref.LogIndex); err != nil {
+			tracker.Fail(ref.JobID, fmt.Sprintf("remove trusted publishers failed: %v", err))
+			slog.Error("async ingest: trusted publishers remove failed", "job_id", ref.JobID, "error", err)
+			return outcomeNak
+		}
+		slog.Info("trusted publishers removed", "job_id", ref.JobID, "target_id", reg.Target.ID, "count", len(keys))
 	}
 
 	if pub != nil {
