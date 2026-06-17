@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -58,6 +59,10 @@ type GatewayConfig struct {
 	// Certifier
 	KnownRegistries []string
 	KnownEngines    []string
+
+	// Ingest Rate Limiting
+	IngestRateLimit float64
+	IngestRateBurst int
 }
 
 // GatewayFromEnv loads gateway configuration from environment variables.
@@ -87,6 +92,20 @@ func GatewayFromEnv() (*GatewayConfig, error) {
 		IngestAckWait:      envDuration("NATS_INGEST_ACK_WAIT", 30*time.Second),
 		KnownRegistries:    splitComma(os.Getenv("KNOWN_REGISTRIES")),
 		KnownEngines:       splitComma(os.Getenv("KNOWN_ENGINES")),
+		IngestRateLimit:    envFloat("INGEST_RATE_LIMIT", 10),
+		IngestRateBurst:    envInt("INGEST_RATE_BURST", 20),
+	}
+
+	// Clamp rate-limit values to reasonable upper bounds.
+	const maxRate = 10000.0
+	const maxBurst = 100000
+	if cfg.IngestRateLimit > maxRate {
+		slog.Warn("ingest rate limit clamped to max", "configured", cfg.IngestRateLimit, "max", maxRate)
+		cfg.IngestRateLimit = maxRate
+	}
+	if cfg.IngestRateBurst > maxBurst {
+		slog.Warn("ingest rate burst clamped to max", "configured", cfg.IngestRateBurst, "max", maxBurst)
+		cfg.IngestRateBurst = maxBurst
 	}
 
 	var missing []string
@@ -139,6 +158,19 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
+func envFloat(key string, fallback float64) float64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		slog.Warn("env var parse failed, using default", "key", key, "value", v, "default", fallback)
+		return fallback
+	}
+	return f
+}
+
 func envInt(key string, fallback int) int {
 	v := os.Getenv(key)
 	if v == "" {
@@ -146,6 +178,7 @@ func envInt(key string, fallback int) int {
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil {
+		slog.Warn("env var parse failed, using default", "key", key, "value", v, "default", fallback)
 		return fallback
 	}
 	return n
