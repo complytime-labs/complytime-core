@@ -7,6 +7,7 @@ import "time"
 type Options struct {
 	CheckpointTime time.Duration // Checkpoint interval (e.g., 10m)
 	CheckpointSize int           // Checkpoint batch size (e.g., 100 entries)
+	SignerKeyPath  string        // Path to persist signer key (empty = ephemeral)
 }
 
 func DefaultOptions() Options {

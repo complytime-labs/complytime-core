@@ -4,8 +4,8 @@ package tessera
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
+	"log/slog"
 	"time"
 
 	tesserapkg "github.com/transparency-dev/tessera"
@@ -24,9 +24,9 @@ type Client struct {
 }
 
 // NewClient creates a new Tessera client.
-// Note: A new ephemeral signer key is generated for each client instance.
-// Checkpoint signatures cannot be verified across process restarts.
-// This is acceptable for local-only transparency logs.
+// When opts.SignerKeyPath is set the signer key is loaded from (or generated
+// into) that file so the log maintains a stable identity across restarts.
+// An empty SignerKeyPath preserves the previous ephemeral-key behaviour.
 func NewClient(ctx context.Context, storagePath string, opts Options) (*Client, error) {
 	// Create a cancellable context for the client's background tasks
 	clientCtx, cancel := context.WithCancel(context.Background())
@@ -40,12 +40,18 @@ func NewClient(ctx context.Context, storagePath string, opts Options) (*Client, 
 		return nil, fmt.Errorf("init POSIX storage: %w", err)
 	}
 
-	// Create a signer for checkpoints
-	// For local transparency logs, we generate a test key
-	signerKey, _, err := note.GenerateKey(rand.Reader, "tessera-log")
+	// Load or generate signer key pair
+	signerKey, _, generated, err := LoadOrGenerateSignerKey(opts.SignerKeyPath)
 	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("generate signer key: %w", err)
+		return nil, fmt.Errorf("load signer key: %w", err)
+	}
+	if opts.SignerKeyPath == "" {
+		slog.Warn("tessera using ephemeral signer key — checkpoint signatures will not survive restart")
+	} else if generated {
+		slog.Info("tessera signer key generated", "path", opts.SignerKeyPath)
+	} else {
+		slog.Info("tessera signer key loaded", "path", opts.SignerKeyPath)
 	}
 
 	signer, err := note.NewSigner(signerKey)
