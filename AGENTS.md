@@ -1,362 +1,131 @@
 # AGENTS.md
 
-Agent creation guide for ComplyTime Studio. Every agent follows the JTBD (Jobs-to-be-Done) framework.
+Guide for AI coding agents working on complytime-core.
 
 ---
 
-## JTBD Framework
+## Project Overview
 
-Each agent answers four questions:
+complytime-core is a Go data platform for compliance evidence ingestion, verification, and posture analytics. It uses the [Gemara](https://gemara.openssf.org/) schema for compliance artifacts and stores evidence in a [Tessera](https://github.com/transparency-dev/tessera) transparency log.
 
-| Dimension | Question | Artifact |
-|:--|:--|:--|
-| **Identity** | Who am I? | `agent.yaml` — `name`, `description` |
-| **Instructions** | What do I need to do? | `prompt.md` — workflow steps |
-| **Knowledge** | What do I need to know? | `skills/` — reusable SKILL.md packs |
-| **Tools** | What tools do I need? | `agent.yaml` — `mcp` block |
+### Binaries
 
----
+- `cmd/gateway` — HTTP API server, evidence pipeline, certification
+- `cmd/witness` — Tessera verification daemon
 
-## Quick Start: Create a New Agent
+### Package Structure
 
-### 1. Create the agent directory
+Domain-oriented packages under `internal/`:
 
-Agent source lives in the [complytime-agents](https://github.com/complytime/complytime-agents) repo:
-
-```
-agents/<agent-name>/
-├── agent.yaml    # Canonical spec (framework-agnostic)
-└── prompt.md     # Workflow instructions
-```
-
-### 2. Write `agent.yaml`
-
-```yaml
-# SPDX-License-Identifier: Apache-2.0
-name: studio-<agent-name>
-description: >-
-  One-line description of what the agent does
-
-prompt: prompt.md
-
-skills:
- # Internal skills (from complytime-agents repo)
- - path: skills/studio-audit
- - path: skills/posture-check
- # External skills (from other repos)
- - repo: https://github.com/rhaml-23/prompt.git
- ref: main
- path: skills/research.md
-
-model:
-  provider: AnthropicVertexAI
-  name: claude-sonnet-4
-
-mcp:
- - server: studio-gemara-mcp
- tools:
- - validate_gemara_artifact
- - migrate_gemara_artifact
-
-a2a:
-  skills:
-    - id: <skill-id>
-      name: <Human-Readable Skill Name>
-      description: >-
-        What this A2A skill does. Shown in the platform dashboard.
-      tags: [tag1, tag2]
-```
-
-### 3. Write `prompt.md`
-
-Keep the prompt focused on **workflow only**. Platform identity and constraints are injected automatically from the platform prompt ConfigMap.
-
-```markdown
-You specialize in <Layer N (Name)>: <what you do>.
-
-## Workflow
-
-1. **Gather context**: Ask the user for relevant context or use available MCP tools.
-2. **Analyze**: Apply your skills to the input data.
-3. **Author**: Produce the Gemara artifact YAML.
-4. **Validate**: Call `validate_gemara_artifact`. Fix and re-validate.
-5. **Return**: Return validated artifact YAML.
-```
-
-**Rules:**
-- Do NOT repeat platform constraints (they come from the platform prompt ConfigMap)
-- Do NOT embed domain knowledge (put it in a SKILL.md instead)
-- DO define the step-by-step workflow
-- DO specify required/optional inputs
-- DO define interaction style (propose defaults vs. interrogate)
-
-### 4. Register in the Workbench
-
-Add the agent to the `AGENT_DIRECTORY` JSON in `studio-deploy/charts/complytime/values.yaml` → `workbench.agentDirectory`. The workbench reads this env var to populate `/workbench/agents` and route A2A traffic.
-
-```json
-[
-  {
-    "name": "studio-<agent-name>",
-    "description": "One-line description",
-    "url": "http://localhost:8080/",
-    "skills": [{"id": "<skill-id>", "name": "<Skill Name>"}]
-  }
-]
-```
-
-The agent must serve A2A on the URL specified. For co-located agents (running in the same container as the workbench), use `http://localhost:<port>/`.
-
-**Framework-agnostic:** The agent can use any framework (LangGraph, Google ADK, CrewAI, custom) as long as it speaks A2A.
-
-### 5. Set agent prompt
-
-Add the agent's system prompt to `studio-deploy/charts/complytime/values.yaml` under `agentPrompts.<name>`, or override via `--set` at deploy time. The prompt ConfigMap is rendered by Helm from these values.
-
----
-
-## Platform Constraints — Auth & Data
-
-Authentication and data persistence changed significantly in 2026-05.
-
-| Concern | Previous | Current |
-|:--|:--|:--|
-| Auth | In-process OIDC (gateway managed sessions) | OAuth2 Proxy sidecar — gateway trusts `X-Forwarded-*` headers |
-| Persistence | ClickHouse primary | PostgreSQL primary (ClickHouse optional via FDW) |
-| Token bypass | Static `STUDIO_API_TOKEN` in values | Auto-generated secret (`studio-cookie-secret`) |
-
-**Key references:**
-- Auth design: `openspec/changes/generic-oidc-auth/design.md`
-- Helm auth values: `studio-deploy/charts/complytime/values.yaml` → `auth.oauth2Proxy.*`
-- Architecture: `docs/design/architecture.md`
-- ADR: `docs/decisions/postgres-with-extensions.md`
-
-**Agent implications:** Agents communicate with the gateway via studio-mcp, which uses the REST API on port 8080. In production, agent traffic flows through OAuth2 Proxy like all other clients.
-
----
-
-## Creating Skills
-
-Skills are reusable knowledge packs. Any agent can reference them.
-
-### Internal skills (complytime-agents repo)
-
-```
-skills/<skill-name>/
-└── SKILL.md
-```
-
-### SKILL.md format
-
-```markdown
----
-name: <skill-name>
-description: <One-line description of the skill>
----
-
-# <Skill Title>
-
-<Domain knowledge, decision tables, classification logic, etc.>
-```
-
-**Rules:**
-- Frontmatter (`---`) with `name` and `description` is required
-- Content is injected into the agent's context when the skill is loaded
-- Keep skills focused — one concern per skill
-- Skills should contain knowledge, not workflow (workflow goes in `prompt.md`)
-
-### External skills (separate repo)
-
-Reference in `agent.yaml`:
-
-```yaml
-skills:
-  - repo: https://github.com/org/skill-repo.git
-    ref: main
-    path: skills/skill-name
-```
-
-The workbench container clones the repo at build time and mounts the skill under `/skills/<skill-name>/`.
-
----
-
-## Architecture
-
-```
-┌──────────────────────────────────────────────────────┐
-│  Browser → Nginx (studio-ui)                         │
-│              ├── /api/*        → Data Platform (Go)  │
-│              ├── /auth/*       → Data Platform       │
-│              ├── /workbench/*  → Studio Workbench    │
-│              └── /*            → static SPA          │
-├──────────────────────────────────────────────────────┤
-│  Studio Workbench (complytime-agents)                │
-│    ├── /workbench/agents       → agent directory     │
-│    ├── /workbench/a2a/{name}   → reverse-proxy A2A   │
-│    ├── /workbench/validate     → gemara-mcp          │
-│    ├── /workbench/publish      → oras-mcp            │
-│    └── /workbench/chat/history → chat state           │
-│    ↕                                                 │
-│    LangGraph agents (in-process, port 8080)          │
-├──────────────────────────────────────────────────────┤
-│  Data Platform (complytime-studio)                   │
-│    ├── Evidence, Posture, Certs, Policies, AuditLogs │
-│    ├── NATS certifier pipeline                       │
-│    └── OAuth2 Proxy + session management             │
-├──────────────────────────────────────────────────────┤
-│  MCP servers (tools)                                 │
-│    ├── studio-mcp    → platform data access          │
-│    ├── gemara-mcp    → artifact validation           │
-│    └── oras-mcp      → OCI publish/browse            │
-└──────────────────────────────────────────────────────┘
-```
-
-### Deployment topology
-
-The workbench container runs both the Starlette HTTP server (port 8090) and the LangGraph agent (port 8080) in a single pod. The workbench reverse-proxies A2A traffic to the co-located agent. MCP servers are sidecar containers or standalone services accessible over HTTP.
-
-### MCP server transport
-
-| Server | Transport | Auth Model |
-|:--|:--|:--|
-| studio-gemara-mcp | http | Static (no user auth) |
-| studio-mcp | http | Typed `studio://` resources + tools (platform data access) |
-| studio-oras-mcp | http | Gateway proxy handles auth |
-
-### On-Behalf-Of (OBO) flow
-
-```
-Browser → Nginx → Studio Workbench → Agent → MCP Server
-  │                   │                         │
-  │ cookie/bearer     │ propagates              │
-  │                   │ Authorization header    │
-```
-
-The workbench propagates `Authorization` headers from the browser through to agent → MCP calls for user-scoped operations.
-
----
-
-## Existing Agents
-
-| Agent | Framework | Container | A2A skill `id` |
-|:--|:--|:--|:--|
-| studio-assistant | LangGraph (Python) | `studio-workbench` (co-located) | `compliance-assistant` |
-
-Canonical spec: [`agents/assistant/agent.yaml`](https://github.com/complytime/complytime-agents/blob/main/agents/assistant/agent.yaml) in the complytime-agents repo.
-
-All agents run inside the Studio Workbench container. The workbench's `/workbench/a2a/{name}` endpoint reverse-proxies A2A traffic to the agent running on `localhost:8080`. The `AGENT_DIRECTORY` environment variable (JSON) declares available agents and their URLs.
-
-**studio-assistant internal skills** (in complytime-agents `skills/*/SKILL.md`):
-
-| Skill | Purpose |
+| Package | Owns |
 |:--|:--|
-| `studio-audit` | Classification criteria, coverage mapping, PostgreSQL schema reference |
-| `posture-check` | Pre-audit readiness — cadence, provenance, method, evidence fitness |
+| `evidence` | Evidence parsing, flattening, publisher authorization, types |
+| `audit` | Audit log types, draft promotion, reviewer edits |
+| `requirements` | Policy, catalog, control, target, trusted publisher types and interfaces |
+| `certify` | Trust signal types and certification pipeline |
+| `store` | HTTP handlers, route registration, PostgreSQL store implementations |
+| `bus` | NATS event bus, JetStream durable consumer |
+| `tessera` | Transparency log client, signer key management |
+| `auth` | JWT verification, JWKS discovery |
+| `config` | Typed configuration from environment variables |
+| `httputil` | HTTP middleware (CORS, security headers, rate limiting) |
+| `posture` | Posture analytics, requirement coverage |
+| `gemara` | Gemara SDK wrappers for policy resolution and catalog import |
+| `db` | Connection pool, embedded migrations |
 
-External git-mounted skills (see `agent.yaml`): `research.md`, `gemara.md` from `rhaml-23/prompt`.
+### Key Patterns
 
-> Threat modeler and policy composer have been removed. Artifact authoring is handled by engineers using local tooling (Cursor, Claude Code) + gemara-mcp. See `docs/decisions/audit-dashboard-pivot.md`.
+- **Interfaces in domain packages, implementations in `store`**: e.g., `evidence.EvidenceStore` is defined in `internal/evidence/interfaces.go`, implemented in `internal/store/store_evidence.go`
+- **Async ingest via NATS JetStream**: artifacts are Tessera-appended first, then processed asynchronously by `IngestWorker`
+- **Squirrel query builder**: all SQL uses `github.com/Masterminds/squirrel` with `sq.Dollar` placeholder format
+- **Echo v4 HTTP framework**: routes registered in `internal/store/handlers.go`, middleware in `internal/httputil/`
 
 ---
 
-## Git Commit Conventions
-
-All commits created by agents MUST:
-
-1. Use `-S -s` to GPG-sign and add a `Signed-off-by` trailer.
-2. Include an `Assisted-by: Cursor (<model used>)` trailer.
+## Build and Test
 
 ```bash
-git commit -S -s -m "$(cat <<'EOF'
-feat: description of the change
-
-Assisted-by: Cursor (claude-sonnet-4-20250514)
-EOF
-)"
+make gateway-build           # Build gateway binary
+go build ./...               # Verify compilation
+go test ./...                # Unit tests (no database required)
+go test -tags integration    # Integration tests (requires POSTGRES_TEST_URL)
+go vet ./...                 # Static analysis
+make lint                    # golangci-lint
 ```
 
 ---
 
-## Checklist
+## Conventions
 
-- [ ] `agents/<name>/agent.yaml` in complytime-agents with name, description, skills, mcp, a2a
-- [ ] `agents/<name>/prompt.md` in complytime-agents with workflow steps only
-- [ ] Skills extracted to `skills/<name>/SKILL.md` in complytime-agents if reusable
-- [ ] Agent entry added to `workbench.agentDirectory` JSON in `studio-deploy/charts/complytime/values.yaml`
-- [ ] Agent prompt added to `agentPrompts` in `studio-deploy/charts/complytime/values.yaml`
-- [ ] Agent process started in `Dockerfile.workbench` entrypoint
-- [ ] Agent serves A2A on declared URL (co-located: `localhost:<port>`)
-- [ ] MCP server URLs available via workbench container env vars
+### Code Style
+
+- Run `goimports` before committing
+- Follow existing patterns in the package you're modifying
+- No comments unless the WHY is non-obvious
+- Domain types and interfaces live in their domain package, not in `store`
+
+### Git
+
+- Sign commits: `git commit -S -s`
+- Run `gitleaks detect --config ~/.gitleaks.toml --source . -v` before every commit
+- Message format: `<type>: <subject>` (feat, fix, docs, test, refactor, chore, build, ci)
+- Never commit secrets, API keys, tokens, or private catalog content
+
+### Testing
+
+- Unit tests: same package, `_test.go` suffix, no build tags
+- Integration tests: `//go:build integration` tag, require `POSTGRES_TEST_URL`
+- E2E tests: `internal/e2e/` with test data in `internal/e2e/testdata/`
+- Use `testing` package and `httptest` for HTTP handler tests — follow patterns in `internal/httputil/*_test.go`
+
+### Database Migrations
+
+- Sequential numbered files in `internal/db/migrations/` (e.g., `034_feature_name.sql`)
+- Embedded via `//go:embed migrations/*.sql` in `internal/db/client.go`
+- Use `IF NOT EXISTS` / `IF EXISTS` for idempotency
+- Add `//nolint:gosec` with explanation for known-safe uint64-to-int64 conversions on Tessera log indices
+
+### Error Handling
+
+- Use `internal/store/errors.go` sentinel errors and `ClassifyPgError` for PostgreSQL errors
+- Ingest worker uses three outcomes: `outcomeAck` (success), `outcomeNak` (transient, retry), `outcomeTerm` (permanent, no retry)
+- Parse/validation errors are permanent (TERM); store errors are transient (NAK)
 
 ---
 
-## QE Instructions
+## Architecture Decisions
 
-When archiving a change that modifies an agent, generate test instructions covering the happy path and edge cases. This ensures changes are verifiable before merge.
+ADRs live in `docs/decisions/`. Read relevant ADRs before modifying a subsystem:
 
-### Happy Path
+| ADR | Covers |
+|:--|:--|
+| `transparency-ledger.md` | Tessera integration, signer key persistence |
+| `witness-service.md` | Witness verification, publisher trust |
+| `trust-signals-certification.md` | Trust signal layers, certification pipeline |
+| `modulith-domain-packages.md` | Package structure rationale |
+| `jetstream-ingest-consumer.md` | NATS JetStream durable consumer design |
+| `jwt-bearer-headless-auth.md` | JWT authentication model |
+| `policy-enrollment.md` | Dimensional policy matching |
 
-Test the agent's primary workflow end-to-end through the workbench.
+---
 
-| Step | Action | Expected Result |
-|:-----|:-------|:----------------|
-| 1 | Open workbench, click "+ New Job" | Agent picker displays the agent with updated description |
-| 2 | Select the agent, provide valid inputs per `prompt.md` Required Inputs | Job created, SSE stream connects, agent responds |
-| 3 | Follow the guided conversation through each phase | Agent proposes defaults, presents tables, waits for confirmation at each phase boundary |
-| 4 | Confirm/adjust at each decision point | Agent proceeds to next phase without re-asking resolved questions |
-| 5 | Verify artifact appears in editor | `detectDefinition()` identifies correct type, YAML renders in editor pane |
-| 6 | Click Validate | `validate_gemara_artifact` returns valid for the expected definition |
-| 7 | Click Download YAML | YAML file downloaded with correct filename |
-| 8 | Click Publish (if applicable) | OCI bundle pushed, reference and digest returned |
+## Security
 
-### Edge Cases
+- Publisher authorization is enforced at evidence ingest time — unauthorized publishers are rejected
+- Trusted publishers are target-scoped OIDC identities managed via TargetRegistration
+- JWT verification uses JWKS discovery with key rotation support
+- Rate limiting on `/api/ingest` (per-IP token bucket)
+- Tessera signer key stored with 0600 permissions; ephemeral mode logs a warning
+- Never log private key material; verifier (public) keys may be logged at debug level
 
-Test boundary conditions and error handling.
+---
 
-| Case | Action | Expected Result |
-|:-----|:-------|:----------------|
-| Missing required input | Start job without one or more required inputs | Agent responds with the specific guidance message defined in `prompt.md` (not a generic error) |
-| Invalid input | Provide malformed YAML or wrong artifact type | Agent identifies the issue, requests correction |
-| MCP server unavailable | Start job when a required MCP server is down | Agent reports the specific unavailability (not a hang or generic failure) |
-| Multi-turn interruption | Close browser mid-conversation, reopen | Job resumes from last status; SSE reconnects or reports disconnected |
-| Validation failure | Manually edit artifact YAML to be invalid, click Validate | Validation returns specific errors referencing the CUE definition |
-| Empty evidence (assistant) | Query a policy_id/timeline with no evidence data | Agent classifies all criteria as Gap, does not fabricate evidence |
-| Cadence gap (assistant) | Evidence exists but with missing assessment cycles | Agent produces Findings (not Observations) for each missing cycle with specific dates |
-| No MappingDocuments (assistant) | Start audit without MappingDocuments | Agent offers internal-only analysis, skips cross-framework phase |
-| Partial mapping strength (assistant) | MappingDocument has targets with low strength scores | Coverage matrix shows Partially/Weakly Covered with correct strength values |
-| Concurrent job | Attempt to start a second job while one is active | "+ New Job" button disabled with tooltip explaining why |
+## Upstream Dependencies
 
-### Helm Verification
+| Dependency | What it provides |
+|:--|:--|
+| [Gemara](https://github.com/gemaraproj/gemara) | Compliance schema (CUE definitions) |
+| [go-gemara](https://github.com/gemaraproj/go-gemara) | Go SDK for parsing Gemara artifacts |
+| [Tessera](https://github.com/transparency-dev/tessera) | Append-only transparency log |
 
-The Helm chart lives in [studio-deploy](https://github.com/complytime/studio-deploy). After any agent change, verify the Kubernetes deployment renders correctly from that repo.
-
-| Check | Command (from studio-deploy/) | Expected Result |
-|:------|:------------------------------|:----------------|
-| Chart renders | `make helm-template` | Workbench deployment contains updated `AGENT_DIRECTORY` env |
-| Values match | Compare `charts/complytime/values.yaml` workbench.agentDirectory | Description and skills match `agent.yaml` |
-| No stale refs | Search chart templates for old descriptions | Zero matches |
-
-## Convention Packs
-
-This repository uses convention packs scaffolded by
-unbound-force. Agents MUST read the applicable pack(s)
-before writing or reviewing code.
-
-- `.opencode/uf/packs/default.md`
-- `.opencode/uf/packs/default-custom.md`
-- `.opencode/uf/packs/severity.md`
-- `.opencode/uf/packs/content.md`
-- `.opencode/uf/packs/content-custom.md`
-- `.opencode/uf/packs/go.md`
-- `.opencode/uf/packs/go-custom.md`
-
-## Boundary Rules
-
-- `complytime-studio` (Go) owns data CRUD, auth, and certifier pipeline only
-- `complytime-agents` (Python) owns A2A routing, agent lifecycle, and Gemara/OCI tooling
-- `studio-ui` owns the SPA, Nginx routing, and all client-side code
-- `studio-deploy` owns deployment orchestration (Docker Compose, Helm umbrella)
-- Agents MUST NOT import `internal/store` or `internal/postgres` at runtime
-- Agents access platform data exclusively through `studio-mcp` MCP resources
-- All cross-component communication uses REST API or MCP protocol
-- Workbench endpoints live under `/workbench/*` path prefix (never `/api/*`)
+When upstream schema changes (e.g., Gemara ADRs), check whether complytime-core's parsers and types need updating. The `internal/gemara/` package wraps the SDK.
