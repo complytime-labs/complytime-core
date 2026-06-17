@@ -75,7 +75,7 @@ type TargetStore interface {
 type TrustedPublisherStore interface {
 	InsertTrustedPublishers(ctx context.Context, rows []TrustedPublisherRow) error
 	GetTrustedPublishers(ctx context.Context, targetID string) ([]TrustedPublisherRow, error)
-	DeleteTrustedPublishers(ctx context.Context, targetID string) error
+	RemoveTrustedPublishers(ctx context.Context, targetID string, keys []TrustedPublisherKey, logIndex uint64) error
 }
 
 // PolicyDimensionStore defines queries for policies with dimension matching.

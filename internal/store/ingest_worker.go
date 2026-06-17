@@ -17,6 +17,12 @@ import (
 	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
 
+// TrustedPublisherLookup is the subset of TrustedPublisherStore needed
+// for publisher authorization during evidence ingest.
+type TrustedPublisherLookup interface {
+	GetTrustedPublishers(ctx context.Context, targetID string) ([]requirements.TrustedPublisherRow, error)
+}
+
 // TesseraReader fetches raw entries from the transparency log by index.
 type TesseraReader interface {
 	Read(ctx context.Context, index uint64) ([]byte, error)
@@ -65,7 +71,7 @@ func IngestWorker(
 		if err != nil {
 			typeStr := evidence.DetectArtifactTypeString(yaml)
 			if typeStr == "TargetRegistration" {
-				applyOutcome(msg, handleTargetRegistrationJS(ctx, ref, yaml, stores.Targets, pub, tracker))
+				applyOutcome(msg, handleTargetRegistrationJS(ctx, ref, yaml, stores.Targets, stores.TrustedPublishers, pub, tracker))
 				return
 			}
 			tracker.Fail(ref.JobID, fmt.Sprintf("invalid artifact: %v", err))
@@ -86,10 +92,10 @@ func IngestWorker(
 		switch artifactType {
 		case gemara.EvaluationLogArtifact:
 			result = handleEvidenceIngestJS(ctx, ref, yaml, gemara.EvaluationLogArtifact,
-				stores.Evidence, pub, tracker)
+				stores.Evidence, stores.TrustedPublishers, pub, tracker)
 		case gemara.EnforcementLogArtifact:
 			result = handleEvidenceIngestJS(ctx, ref, yaml, gemara.EnforcementLogArtifact,
-				stores.Evidence, pub, tracker)
+				stores.Evidence, stores.TrustedPublishers, pub, tracker)
 		case gemara.PolicyArtifact:
 			result = handleArtifactStoreJS(ctx, ref, tracker, func() (string, string, error) {
 				art, err := requirements.StorePolicyFromContent(ctx, stores.Policies, stores.Controls,
@@ -154,6 +160,7 @@ func handleEvidenceIngestJS(
 	yaml []byte,
 	artifactType gemara.ArtifactType,
 	evidenceStore evidence.EvidenceStore,
+	trustedPubs TrustedPublisherLookup,
 	pub EventPublisher,
 	tracker *IngestTracker,
 ) ingestOutcome {
@@ -171,6 +178,28 @@ func handleEvidenceIngestJS(
 		tracker.Fail(ref.JobID, fmt.Sprintf("flatten failed: %v", err))
 		slog.Warn("async ingest: flatten failed", "job_id", ref.JobID, "error", err)
 		return outcomeTerm // Parse/flatten is permanent — invalid YAML won't fix on retry
+	}
+
+	// Publisher authorization: check if the submitter is trusted for this target.
+	// Open by default — if no trusted publishers are configured, allow all.
+	if trustedPubs != nil && len(rows) > 0 {
+		targetID := rows[0].TargetID
+		trusted, lookupErr := trustedPubs.GetTrustedPublishers(ctx, targetID)
+		if lookupErr != nil {
+			tracker.Fail(ref.JobID, fmt.Sprintf("publisher auth lookup failed: %v", lookupErr))
+			slog.Error("async ingest: publisher auth lookup failed",
+				"job_id", ref.JobID, "target_id", targetID, "error", lookupErr)
+			return outcomeNak // Store failure is transient
+		}
+		if len(trusted) > 0 && !evidence.IsPublisherAuthorized(ref.PublisherIdentity.Issuer, ref.PublisherIdentity.Sub, trusted) {
+			msg := fmt.Sprintf("publisher not authorized for target %q (issuer=%s, sub=%s)",
+				targetID, ref.PublisherIdentity.Issuer, ref.PublisherIdentity.Sub)
+			tracker.Fail(ref.JobID, msg)
+			slog.Warn("async ingest: publisher not authorized",
+				"job_id", ref.JobID, "target_id", targetID,
+				"issuer", ref.PublisherIdentity.Issuer, "sub", ref.PublisherIdentity.Sub)
+			return outcomeTerm // Authorization failure is permanent
+		}
 	}
 
 	records := evidence.ToEvidenceRecordsWithLogIndex(rows, &ref.LogIndex, &ref.PublisherIdentity)
@@ -235,6 +264,7 @@ func handleTargetRegistrationJS(
 	ref bus.IngestRef,
 	yaml []byte,
 	targets requirements.TargetStore,
+	trustedPubs requirements.TrustedPublisherStore,
 	pub EventPublisher,
 	tracker *IngestTracker,
 ) ingestOutcome {
@@ -242,7 +272,13 @@ func handleTargetRegistrationJS(
 	if err != nil {
 		tracker.Fail(ref.JobID, fmt.Sprintf("parse failed: %v", err))
 		slog.Warn("async ingest: TargetRegistration parse failed", "job_id", ref.JobID, "error", err)
-		return outcomeTerm // Parse failure is permanent
+		return outcomeTerm
+	}
+
+	if err := evidence.ValidateTargetRegistration(reg); err != nil {
+		tracker.Fail(ref.JobID, fmt.Sprintf("validation failed: %v", err))
+		slog.Warn("async ingest: TargetRegistration validation failed", "job_id", ref.JobID, "error", err)
+		return outcomeTerm
 	}
 
 	registeredAt, err := time.Parse(time.RFC3339, reg.Metadata.Date)
@@ -267,7 +303,51 @@ func handleTargetRegistrationJS(
 	if err := targets.InsertTarget(ctx, row); err != nil {
 		tracker.Fail(ref.JobID, fmt.Sprintf("insert failed: %v", err))
 		slog.Error("async ingest: TargetRegistration insert failed", "job_id", ref.JobID, "error", err)
-		return outcomeNak // Store failure is transient
+		return outcomeNak
+	}
+
+	// Process trusted-publishers additions
+	if len(reg.Target.TrustedPublishers) > 0 && trustedPubs != nil {
+		logIdx := int64(ref.LogIndex)
+		addedBy := ref.PublisherIdentity.Sub
+		pubRows := make([]requirements.TrustedPublisherRow, len(reg.Target.TrustedPublishers))
+		for i, p := range reg.Target.TrustedPublishers {
+			pubRows[i] = requirements.TrustedPublisherRow{
+				TargetID:        reg.Target.ID,
+				Issuer:          p.Issuer,
+				SubPattern:      p.SubPattern,
+				AddedAt:         registeredAt,
+				AddedBy:         &addedBy,
+				TesseraLogIndex: &logIdx,
+			}
+			if p.Environment != "" {
+				env := p.Environment
+				pubRows[i].Environment = &env
+			}
+		}
+		if err := trustedPubs.InsertTrustedPublishers(ctx, pubRows); err != nil {
+			tracker.Fail(ref.JobID, fmt.Sprintf("insert trusted publishers failed: %v", err))
+			slog.Error("async ingest: trusted publishers insert failed", "job_id", ref.JobID, "error", err)
+			return outcomeNak
+		}
+		slog.Info("trusted publishers added", "job_id", ref.JobID, "target_id", reg.Target.ID, "count", len(pubRows))
+	}
+
+	// Process remove-publishers removals
+	if len(reg.Target.RemovePublishers) > 0 && trustedPubs != nil {
+		keys := make([]requirements.TrustedPublisherKey, len(reg.Target.RemovePublishers))
+		for i, p := range reg.Target.RemovePublishers {
+			keys[i] = requirements.TrustedPublisherKey{
+				Issuer:     p.Issuer,
+				SubPattern: p.SubPattern,
+			}
+		}
+		if err := trustedPubs.RemoveTrustedPublishers(ctx, reg.Target.ID, keys, ref.LogIndex); err != nil {
+			tracker.Fail(ref.JobID, fmt.Sprintf("remove trusted publishers failed: %v", err))
+			slog.Error("async ingest: trusted publishers remove failed", "job_id", ref.JobID, "error", err)
+			return outcomeNak
+		}
+		slog.Info("trusted publishers removed", "job_id", ref.JobID, "target_id", reg.Target.ID, "count", len(keys))
 	}
 
 	if pub != nil {

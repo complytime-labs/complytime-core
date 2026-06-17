@@ -382,7 +382,7 @@ func TestIntegration_TrustedPublishers(t *testing.T) {
 		t.Fatalf("InsertTrustedPublishers: %v", err)
 	}
 
-	// Get
+	// Get returns only active publishers
 	got, err := st.GetTrustedPublishers(ctx, "tgt-tp-1")
 	if err != nil {
 		t.Fatalf("GetTrustedPublishers: %v", err)
@@ -409,17 +409,77 @@ func TestIntegration_TrustedPublishers(t *testing.T) {
 		t.Fatalf("upsert should update environment to 'staging', got %v", got[0].Environment)
 	}
 
-	// Delete
-	err = st.DeleteTrustedPublishers(ctx, "tgt-tp-1")
+	// Remove one publisher (soft-delete)
+	err = st.RemoveTrustedPublishers(ctx, "tgt-tp-1", []requirements.TrustedPublisherKey{
+		{Issuer: "https://token.actions.githubusercontent.com", SubPattern: "repo:org/other-repo:ref:refs/heads/*"},
+	}, 100)
 	if err != nil {
-		t.Fatalf("DeleteTrustedPublishers: %v", err)
+		t.Fatalf("RemoveTrustedPublishers: %v", err)
+	}
+
+	// Get excludes removed publisher
+	got, err = st.GetTrustedPublishers(ctx, "tgt-tp-1")
+	if err != nil {
+		t.Fatalf("GetTrustedPublishers after remove: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 active row after remove, got %d", len(got))
+	}
+	if got[0].SubPattern != "repo:org/repo-*:ref:refs/heads/main" {
+		t.Fatalf("wrong publisher remaining: %s", got[0].SubPattern)
+	}
+
+	// Removed publisher still in DB (audit trail) — query directly
+	var removedAt *time.Time
+	var removedByLogIndex *int64
+	err = st.pool.QueryRow(ctx,
+		`SELECT removed_at, removed_by_log_index FROM target_trusted_publishers
+		 WHERE target_id = $1 AND sub_pattern = $2`,
+		"tgt-tp-1", "repo:org/other-repo:ref:refs/heads/*").Scan(&removedAt, &removedByLogIndex)
+	if err != nil {
+		t.Fatalf("query removed row: %v", err)
+	}
+	if removedAt == nil {
+		t.Fatal("removed_at should be set")
+	}
+	if removedByLogIndex == nil || *removedByLogIndex != 100 {
+		t.Fatalf("removed_by_log_index should be 100, got %v", removedByLogIndex)
+	}
+
+	// Re-add removed publisher — clears soft-delete
+	readdRow := []requirements.TrustedPublisherRow{
+		{
+			TargetID:        "tgt-tp-1",
+			Issuer:          "https://token.actions.githubusercontent.com",
+			SubPattern:      "repo:org/other-repo:ref:refs/heads/*",
+			AddedAt:         time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC),
+			TesseraLogIndex: func() *int64 { v := int64(200); return &v }(),
+		},
+	}
+	err = st.InsertTrustedPublishers(ctx, readdRow)
+	if err != nil {
+		t.Fatalf("re-add InsertTrustedPublishers: %v", err)
 	}
 	got, err = st.GetTrustedPublishers(ctx, "tgt-tp-1")
 	if err != nil {
-		t.Fatalf("GetTrustedPublishers after delete: %v", err)
+		t.Fatalf("GetTrustedPublishers after re-add: %v", err)
 	}
-	if len(got) != 0 {
-		t.Fatalf("expected 0 rows after delete, got %d", len(got))
+	if len(got) != 2 {
+		t.Fatalf("expected 2 active rows after re-add, got %d", len(got))
+	}
+
+	// Remove nonexistent publisher — no error
+	err = st.RemoveTrustedPublishers(ctx, "tgt-tp-1", []requirements.TrustedPublisherKey{
+		{Issuer: "https://nonexistent.example.com", SubPattern: "nope"},
+	}, 300)
+	if err != nil {
+		t.Fatalf("remove nonexistent should not error: %v", err)
+	}
+
+	// Remove empty slice — no-op
+	err = st.RemoveTrustedPublishers(ctx, "tgt-tp-1", nil, 400)
+	if err != nil {
+		t.Fatalf("RemoveTrustedPublishers(nil): %v", err)
 	}
 
 	// Get on nonexistent target returns empty slice
