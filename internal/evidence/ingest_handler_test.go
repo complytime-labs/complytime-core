@@ -184,6 +184,7 @@ func TestValidateTargetRegistration_DuplicateWithinRemovePublishers(t *testing.T
 	}
 }
 
+
 func TestValidateTargetRegistration_BothEmpty(t *testing.T) {
 	reg := &TargetRegistrationYAML{}
 	reg.Target.ID = "test-target"
