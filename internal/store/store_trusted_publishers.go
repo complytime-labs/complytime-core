@@ -94,7 +94,7 @@ func (s *Store) RemoveTrustedPublishers(ctx context.Context, targetID string, ke
 		WHERE target_id = $1 AND issuer = $2 AND sub_pattern = $3 AND removed_at IS NULL`
 
 	for _, k := range keys {
-		if _, err := tx.Exec(ctx, q, targetID, k.Issuer, k.SubPattern, int64(logIndex)); err != nil {
+		if _, err := tx.Exec(ctx, q, targetID, k.Issuer, k.SubPattern, int64(logIndex)); err != nil { //nolint:gosec // G115: log indices won't exceed int64 range
 			return classifyErr(fmt.Errorf("remove trusted publisher: %w", err))
 		}
 	}
