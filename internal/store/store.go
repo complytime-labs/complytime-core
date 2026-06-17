@@ -13,6 +13,7 @@ import (
 	"github.com/complytime-labs/complytime-core/internal/blob"
 	"github.com/complytime-labs/complytime-core/internal/certify"
 	"github.com/complytime-labs/complytime-core/internal/evidence"
+	"github.com/complytime-labs/complytime-core/internal/httputil"
 	"github.com/complytime-labs/complytime-core/internal/posture"
 	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
@@ -77,6 +78,7 @@ type Stores struct {
 	TrustSignals        certify.TrustSignalStore
 	TrustedPublishers   requirements.TrustedPublisherStore
 	Coverage            posture.CoverageStore
+	IngestRateLimit     httputil.RateLimitOptions
 }
 
 // InsertBundleArtifact inserts a bundle artifact if the Evidence store supports it.

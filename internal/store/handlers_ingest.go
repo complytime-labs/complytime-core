@@ -20,7 +20,10 @@ import (
 )
 
 func registerIngestRoutes(g *echo.Group, s Stores) {
-	g.POST("/ingest", echo.WrapHandler(IngestAsyncHandler(s.IngestPublisher, s.IngestTracker, s.TesseraAppender, s.JWTVerifier)))
+	ingestHandler := httputil.RateLimit(s.IngestRateLimit)(
+		IngestAsyncHandler(s.IngestPublisher, s.IngestTracker, s.TesseraAppender, s.JWTVerifier),
+	)
+	g.POST("/ingest", echo.WrapHandler(ingestHandler))
 	g.GET("/ingest/jobs/:job_id", IngestJobStatusHandler(s.IngestTracker))
 }
 
