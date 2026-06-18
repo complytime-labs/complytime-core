@@ -120,6 +120,19 @@ func DetectArtifactTypeString(data []byte) string {
 	return hdr.Metadata.Type
 }
 
+// TrustedPublisherYAML represents a trusted publisher entry in the YAML.
+type TrustedPublisherYAML struct {
+	Issuer      string `yaml:"issuer"`
+	SubPattern  string `yaml:"sub_pattern"`
+	Environment string `yaml:"environment"`
+}
+
+// RemovePublisherYAML represents a publisher to remove in the YAML.
+type RemovePublisherYAML struct {
+	Issuer     string `yaml:"issuer"`
+	SubPattern string `yaml:"sub_pattern"`
+}
+
 // TargetRegistrationYAML represents the parsed TargetRegistration artifact.
 type TargetRegistrationYAML struct {
 	Metadata struct {
@@ -128,9 +141,11 @@ type TargetRegistrationYAML struct {
 		Date string `yaml:"date"`
 	} `yaml:"metadata"`
 	Target struct {
-		ID   string `yaml:"id"`
-		Name string `yaml:"name"`
-		Type string `yaml:"type"`
+		ID                string                 `yaml:"id"`
+		Name              string                 `yaml:"name"`
+		Type              string                 `yaml:"type"`
+		TrustedPublishers []TrustedPublisherYAML `yaml:"trusted-publishers"`
+		RemovePublishers  []RemovePublisherYAML  `yaml:"remove-publishers"`
 	} `yaml:"target"`
 	Dimensions struct {
 		Technologies []string `yaml:"technologies"`
@@ -151,6 +166,36 @@ func ParseTargetRegistration(data []byte) (*TargetRegistrationYAML, error) {
 		return nil, fmt.Errorf("missing target.id")
 	}
 	return &reg, nil
+}
+
+// ValidateTargetRegistration checks trusted-publishers and remove-publishers entries.
+func ValidateTargetRegistration(reg *TargetRegistrationYAML) error {
+	seen := make(map[string]bool)
+
+	for i, p := range reg.Target.TrustedPublishers {
+		if p.Issuer == "" {
+			return fmt.Errorf("trusted-publishers[%d]: issuer is required", i)
+		}
+		if p.SubPattern == "" {
+			return fmt.Errorf("trusted-publishers[%d]: sub_pattern is required", i)
+		}
+		seen[p.Issuer+"\x00"+p.SubPattern] = true
+	}
+
+	for i, p := range reg.Target.RemovePublishers {
+		if p.Issuer == "" {
+			return fmt.Errorf("remove-publishers[%d]: issuer is required", i)
+		}
+		if p.SubPattern == "" {
+			return fmt.Errorf("remove-publishers[%d]: sub_pattern is required", i)
+		}
+		key := p.Issuer + "\x00" + p.SubPattern
+		if seen[key] {
+			return fmt.Errorf("remove-publishers[%d]: (%s, %s) conflicts with trusted-publishers", i, p.Issuer, p.SubPattern)
+		}
+	}
+
+	return nil
 }
 
 // FlattenEvaluation parses and flattens an EvaluationLog artifact.

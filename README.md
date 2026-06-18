@@ -1,162 +1,125 @@
 # ComplyTime Core
 
-> **Note:** This project is built with AI assistance. Code, documentation, and design specs are authored collaboratively with LLM tools.
+Compliance evidence pipeline with cryptographic guarantees. Submit assessment results, get verifiable posture.
 
-Data platform for automated compliance evidence ingestion, verification, and posture analytics. Built around the [OpenSSF Gemara](https://gemara.openssf.org/) project.
+> **Status:** Early development — the core pipeline works end-to-end but APIs and schema are not yet stable.
+>
+> **Built with AI:** Code, documentation, architecture decisions, and design specs are authored collaboratively with LLM tools (Claude Code, Cursor). PRs are labeled `llm-assisted`.
 
-Core ingests evidence from scanning tools, stores it in an immutable [Tessera](https://github.com/transparency-dev/tessera) transparency log, certifies it for quality, and computes compliance posture across policies and targets. AI agents in the companion [Studio](https://github.com/complytime-labs/complytime-studio) workbench draft audit-ready artifacts from the stored evidence.
+## Why
 
-## What It Does
+Proving your systems are compliant means collecting evidence from scanners, CI pipelines, and manual reviews — then assembling it into something an auditor can verify. Today that evidence is scattered across tools, unverifiable after the fact, and manually stitched together at audit time.
 
-| Capability | What you get |
-|:--|:--|
-| **Evidence Ingestion** | Ingest Gemara artifacts via REST API with JWT authentication and async NATS processing |
-| **Transparency Log** | Every submission is appended to a Tessera log — tamper-evident, immutable, cryptographically verifiable |
-| **Evidence Certification** | Automated validation pipeline checks schema, provenance, and executor integrity |
-| **Witness Verification** | Independent witness service verifies certification, publisher trust, and reference integrity |
-| **Policy Enrollment** | Targets register with dimensional metadata; publishers discover applicable policies via dimension matching |
-| **Posture Analytics** | See which requirements are covered, which have gaps, and where evidence is stale or missing |
-| **Audit Preparation** | AI agents draft [Gemara AuditLog](https://gemara.openssf.org/) artifacts; humans review and promote to official records |
+ComplyTime Core is the backend that fixes this:
 
-## ComplyTime Ecosystem
+- **Every piece of evidence is Tessera-anchored** — appended to a tamper-evident transparency log before anything else happens. You can prove what was submitted, when, and that it hasn't changed.
+- **Publisher identity is cryptographically verified** — JWT-authenticated OIDC identities tied to targets. A CI pipeline can only submit evidence for infrastructure it's authorized to assess.
+- **Posture is queryable, not assembled** — compliance gaps, coverage, and staleness are computed from stored evidence in real time. No spreadsheets.
+- **Audit artifacts are machine-generated, human-approved** — AI agents draft audit logs from evidence; humans review and promote them to official records.
 
-| Repository | Role | Language |
-|:--|:--|:--|
-| **complytime-core** (this repo) | Data platform — evidence storage, verification, posture, certification | Go |
-| [complyctl](https://github.com/complytime/complyctl) | CLI — pulls policies from OCI, scans targets via provider plugins, produces evidence | Go |
-| [complypack](https://github.com/complytime/complytime/issues/8) | Policy authoring — validate, test, package assessment logic as signed OCI artifacts | Go |
-| [complytime-studio](https://github.com/complytime-labs/complytime-studio) | Audit workbench — AI agents, A2A routing, Gemara tools | Python |
-| [studio-ui](https://github.com/complytime/studio-ui) | Analyst dashboard SPA + Nginx reverse-proxy | TypeScript |
-| [studio-deploy](https://github.com/complytime/studio-deploy) | Helm chart + Docker Compose for local/cluster deployment | YAML |
-| [CrossCodex](https://github.com/complytime-labs/crosscodex) | Compliance crosswalking — LLM-verified framework requirement mapping | Go |
+Built around the [OpenSSF Gemara](https://gemara.openssf.org/) compliance schema. All artifacts in, all artifacts out are Gemara YAML.
 
-**Shared contracts:** All tools produce and consume [Gemara](https://gemara.openssf.org/) YAML artifacts. Policies are distributed as signed OCI artifacts via container registries. No tool requires any other to function.
-
-## Architecture
+## How It Works
 
 ```
-complyctl (scan targets)                    OCI Registry (policy bundles)
-    │ evidence                                    │ import
-    ▼                                             ▼
-POST /api/ingest (JWT)                    POST /api/import (OCI pull)
-    │                                             │
-    ├─→ Tessera (append-only log, get log_index)  │
-    ├─→ NATS core.ingest (async)                  │
-    │       ↓                                     │
-    │   IngestWorker                              │
-    │       ├─→ PostgreSQL (queryable cache)       │
-    │       ├─→ core.evidence.<policy_id>          │
-    │       │       ↓                              │
-    │       │   CertificationHandler               │
-    │       │       ↓                              │
-    │       │   evidence.certified = true/false    │
-    │       ├─→ core.policy.new (broadcast)        │
-    │       └─→ core.target.registered             │
-    │                                              │
-    └─→ 202 Accepted {job_id, log_index}           │
-                                                   │
-Witness (polls Tessera)                            │
-    ├─→ Verify certification passed                │
-    ├─→ Verify publisher trusted                   │
-    ├─→ Verify reference integrity                 │
-    ├─→ Advisory: check target registered          │
-    └─→ Countersign checkpoint                     │
-                                                   │
-GET /api/policies/discover?target_id=X&timestamp=Y │
-    └─→ Dimension matching + evaluation timeline   │
-                                                   │
-Studio agents ─→ GET /api/* (via MCP) ─→ draft audit logs
-Studio UI ─→ posture dashboard, evidence explorer
+Scanner / CI pipeline                    
+    │ Gemara YAML (EvaluationLog, EnforcementLog)
+    ▼                                    
+POST /api/ingest (JWT)                   
+    │                                    
+    ├── Verify publisher is trusted for this target
+    ├── Append to Tessera transparency log
+    ├── Queue for async processing (NATS JetStream)
+    │       ↓
+    │   Flatten → PostgreSQL → Certify → Trust signals
+    │
+    └── 202 Accepted {job_id, log_index}
+                                         
+GET /api/evidence?policy_id=X            → What evidence exists
+GET /api/requirements                    → What's covered vs missing
+GET /api/policies/discover?target_id=X   → Which policies apply to this target
+GET /api/evidence/:id/verification       → Trust signals for this evidence
 ```
 
-### Binaries
-
-| Binary | Command | Purpose |
-|:--|:--|:--|
-| **gateway** | `go build ./cmd/gateway` | HTTP API, evidence pipeline, certification, enrollment |
-| **witness** | `go build ./cmd/witness` | Tessera verification daemon, checkpoint countersigning |
-
-### Key Packages
-
-| Package | Responsibility |
-|:--|:--|
-| `internal/store` | Business logic, HTTP handlers, domain interfaces |
-| `internal/events` | NATS event bus — JetStream durable consumer for `core.ingest`, core pub/sub for other subjects |
-| `internal/tessera` | Transparency log client (Tessera — successor to Trillian) |
-| `internal/certifier` | Evidence validation pipeline (schema, provenance, executor) |
-| `internal/auth` | JWT verification with JWKS discovery, OAuth2 Proxy trust |
-| `internal/postgres` | Connection pool, embedded migrations, schema management |
+The gateway writes everything to Tessera first. PostgreSQL is a queryable cache — if you lose it, the transparency log is the source of truth. A separate witness service polls Tessera and countersigns checkpoints.
 
 ## Quick Start
 
-### Prerequisites
-
-| Tool | Purpose |
-|:--|:--|
-| `go` (>= 1.25) | Build gateway and witness |
-| `docker` or `podman` | PostgreSQL + NATS containers |
-
-### Run gateway locally
-
 ```bash
-# Start dependencies
-podman run -d --name pg -e POSTGRES_USER=complytime -e POSTGRES_PASSWORD=complytime -e POSTGRES_DB=complytime -p 5432:5432 docker.io/library/postgres:16
+# Start PostgreSQL and NATS
+podman run -d --name pg -e POSTGRES_USER=complytime -e POSTGRES_PASSWORD=complytime \
+  -e POSTGRES_DB=complytime -p 5432:5432 docker.io/library/postgres:16
 podman run -d --name nats -p 4222:4222 docker.io/library/nats:latest -js -sd /data
 
-# Build and run
+# Build and run the gateway
 export POSTGRES_URL="postgres://complytime:complytime@localhost:5432/complytime?sslmode=disable"
 export NATS_URL="nats://localhost:4222"
 make gateway-build
 ./bin/studio-gateway
 ```
 
+```bash
+# Submit an EvaluationLog
+curl -X POST http://localhost:8080/api/ingest \
+  -H "Authorization: Bearer $JWT_TOKEN" \
+  -H "Content-Type: application/x-yaml" \
+  --data-binary @evaluation-log.yaml
+
+# Query evidence
+curl http://localhost:8080/api/evidence?policy_id=my-policy
+
+# Check posture
+curl http://localhost:8080/api/requirements
+```
+
 ### Run tests
 
 ```bash
-make test                    # Unit tests
-make lint                    # Linter
-make test-integration        # Integration tests (requires POSTGRES_TEST_URL)
-./scripts/e2e-enrollment-test.sh  # E2E enrollment flow (starts containers automatically)
+make test                                  # Unit tests
+make test-integration                      # Integration (needs POSTGRES_TEST_URL)
+./scripts/e2e-enrollment-test.sh           # E2E (starts containers automatically)
 ```
 
-### Deploy (Kubernetes)
+### Deploy
 
-See [studio-deploy](https://github.com/complytime/studio-deploy) for Helm chart and Docker Compose orchestration.
+See [studio-deploy](https://github.com/complytime/studio-deploy) for Helm chart and Docker Compose.
 
-## API Endpoints
+### Something not working?
 
-| Method | Path | Purpose |
+- `make lint` — run linters locally
+- Check `POSTGRES_URL` and `NATS_URL` are set and reachable
+- Gateway logs to stdout with `slog` — look for `async ingest` messages
+
+## Configuration
+
+| Variable | Default | Purpose |
 |:--|:--|:--|
-| `POST` | `/api/ingest` | Submit Gemara YAML with JWT auth (async, returns log_index) |
-| `GET` | `/api/ingest/jobs/:job_id` | Poll async ingest job status |
-| `POST` | `/api/import` | Import OCI policy bundle (routes through Tessera) |
-| `GET` | `/api/policies` | List all policies |
-| `GET` | `/api/policies/:id` | Get policy with mappings |
-| `GET` | `/api/policies/discover` | Discover applicable policies by target dimensions + timestamp |
-| `GET` | `/api/targets` | List registered targets |
-| `GET` | `/api/evidence` | Query evidence with filters |
-| `GET` | `/api/posture` | Aggregated compliance gap analysis |
-| `GET` | `/api/audit-logs` | List audit logs |
-| `GET` | `/api/requirements` | Requirement coverage matrix |
+| `POSTGRES_URL` | (required) | PostgreSQL connection string |
+| `NATS_URL` | (required) | NATS server URL |
+| `TESSERA_SIGNER_KEY_PATH` | (empty) | Persist Tessera signer key. Without this, the log identity changes on restart. |
+| `INGEST_RATE_LIMIT` | `10` | Requests/second per IP on `/api/ingest` |
+| `INGEST_RATE_BURST` | `20` | Burst allowance for rate limiting |
 
-## Development
+## ComplyTime Ecosystem
 
-| Target | Description |
+| Repository | What it does |
 |:--|:--|
-| `make gateway-build` | Compile gateway to `bin/studio-gateway` |
-| `make gateway-image` | Build gateway container image |
-| `make test` | Run Go tests |
-| `make test-integration` | Run integration tests (requires `POSTGRES_TEST_URL`) |
-| `make lint` | Run golangci-lint |
-| `make lint-openapi` | Check for API spec drift |
+| **complytime-core** (this repo) | Evidence pipeline — ingest, verify, store, query |
+| [complyctl](https://github.com/complytime/complyctl) | CLI — scan targets, produce evidence, pull policies from OCI |
+| [complytime-studio](https://github.com/complytime-labs/complytime-studio) | Audit workbench — AI agents draft audit artifacts |
+| [studio-ui](https://github.com/complytime/studio-ui) | Analyst dashboard |
+| [studio-deploy](https://github.com/complytime/studio-deploy) | Helm chart + Docker Compose |
+| [CrossCodex](https://github.com/complytime-labs/crosscodex) | Framework crosswalking — map requirements across standards |
 
-## Documentation
+All tools produce and consume [Gemara](https://gemara.openssf.org/) YAML artifacts. No tool requires any other to function.
 
-| Document | Purpose |
-|:--|:--|
-| [Architecture](docs/architecture.md) | Component boundaries, routing, communication |
-| [Service Level Requirements](docs/requirements/service-level-requirements.md) | SLRs, ownership, gap analysis |
-| [Decisions](docs/decisions/) | Architecture Decision Records |
+## Learn More
+
+- [Architecture](docs/architecture.md) — component boundaries and communication
+- [Architecture Decision Records](docs/decisions/) — why things are the way they are
+- [AGENTS.md](AGENTS.md) — guide for AI coding agents working on this codebase
+- [CONTRIBUTING.md](CONTRIBUTING.md) — how to contribute
+- [Service Level Requirements](docs/requirements/service-level-requirements.md) — SLRs and gap analysis
 
 ## License
 

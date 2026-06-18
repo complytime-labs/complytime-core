@@ -173,6 +173,10 @@ func main() {
 		PolicyDimensions:    st,
 		TrustSignals:        st,
 		Coverage:            st,
+		IngestRateLimit: httputil.RateLimitOptions{
+			Rate:  cfg.IngestRateLimit,
+			Burst: cfg.IngestRateBurst,
+		},
 	}
 	slog.Info("store API registered", "routes", []string{
 		"/api/policies",

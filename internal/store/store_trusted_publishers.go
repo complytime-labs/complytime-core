@@ -28,7 +28,9 @@ func (s *Store) InsertTrustedPublishers(ctx context.Context, rows []requirements
 		DO UPDATE SET environment = EXCLUDED.environment,
 		              added_at = EXCLUDED.added_at,
 		              added_by = EXCLUDED.added_by,
-		              tessera_log_index = EXCLUDED.tessera_log_index`
+		              tessera_log_index = EXCLUDED.tessera_log_index,
+		              removed_at = NULL,
+		              removed_by_log_index = NULL`
 
 	for _, r := range rows {
 		addedAt := r.AddedAt
@@ -53,7 +55,7 @@ func (s *Store) GetTrustedPublishers(ctx context.Context, targetID string) ([]re
 	const q = `SELECT target_id, issuer, sub_pattern, environment,
 		added_at, added_by, tessera_log_index
 		FROM target_trusted_publishers
-		WHERE target_id = $1
+		WHERE target_id = $1 AND removed_at IS NULL
 		ORDER BY added_at`
 
 	rows, err := s.pool.Query(ctx, q, targetID)
@@ -76,10 +78,29 @@ func (s *Store) GetTrustedPublishers(ctx context.Context, targetID string) ([]re
 	return out, rows.Err()
 }
 
-func (s *Store) DeleteTrustedPublishers(ctx context.Context, targetID string) error {
-	const q = `DELETE FROM target_trusted_publishers WHERE target_id = $1`
-	if _, err := s.pool.Exec(ctx, q, targetID); err != nil {
-		return classifyErr(fmt.Errorf("delete trusted publishers: %w", err))
+func (s *Store) RemoveTrustedPublishers(ctx context.Context, targetID string, keys []requirements.TrustedPublisherKey, logIndex uint64) error {
+	if len(keys) == 0 {
+		return nil
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin remove publishers tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	const q = `UPDATE target_trusted_publishers
+		SET removed_at = now(), removed_by_log_index = $4
+		WHERE target_id = $1 AND issuer = $2 AND sub_pattern = $3 AND removed_at IS NULL`
+
+	for _, k := range keys {
+		if _, err := tx.Exec(ctx, q, targetID, k.Issuer, k.SubPattern, int64(logIndex)); err != nil { //nolint:gosec // tessera log indices are sequential from 0
+			return classifyErr(fmt.Errorf("remove trusted publisher: %w", err))
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return classifyErr(fmt.Errorf("commit remove publishers: %w", err))
 	}
 	return nil
 }

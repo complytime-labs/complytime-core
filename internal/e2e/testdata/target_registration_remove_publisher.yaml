@@ -1,8 +1,8 @@
 metadata:
   type: TargetRegistration
-  id: prod-cluster-reg-v1
+  id: prod-cluster-reg-v2
   version: 1.0.0
-  date: "2026-05-26T10:00:00Z"
+  date: "2026-06-13T10:00:00Z"
   author:
     name: platform-team
 
@@ -11,10 +11,7 @@ target:
   name: Production Kubernetes Cluster
   type: kubernetes-cluster
 
-  trusted-publishers:
-    - issuer: https://token.actions.githubusercontent.com
-      sub_pattern: "repo:acme/compliance-scanner:*"
-      environment: production
+  remove-publishers:
     - issuer: https://accounts.google.com
       sub_pattern: "scanner@acme-prod.iam.gserviceaccount.com"
 
