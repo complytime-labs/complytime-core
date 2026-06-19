@@ -8,7 +8,7 @@ KIND_CLUSTER ?= complytime-studio
 
 .PHONY: test lint clean \
 	gateway-build gateway-build-fips gateway-image \
-	witness-build witness-build-fips witness-image \
+	monitor-build monitor-build-fips monitor-image \
 
 	compose-up seed \
 	cluster-up cluster-down \
@@ -40,14 +40,14 @@ gateway-build-fips:
 gateway-image:
 	docker build --no-cache -f Dockerfile.gateway -t $(GATEWAY_IMAGE):$(GATEWAY_TAG) .
 
-witness-build:
-	go build -o bin/witness ./cmd/witness/
+monitor-build:
+	go build -o bin/monitor ./cmd/monitor/
 
-witness-build-fips:
-	GOFIPS140=latest go build -o bin/witness ./cmd/witness/
+monitor-build-fips:
+	GOFIPS140=latest go build -o bin/monitor ./cmd/monitor/
 
-witness-image:
-	docker build --no-cache -f Dockerfile.witness -t studio-witness:local .
+monitor-image:
+	docker build --no-cache -f Dockerfile.monitor -t studio-monitor:local .
 
 compose-up:
 	@echo "Docker Compose moved to studio-deploy. Run: cd ../studio-deploy && make up"

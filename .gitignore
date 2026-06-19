@@ -39,6 +39,9 @@ __pycache__/
 # env file
 .env
 
+# Generated witness key material
+deploy/compose/witness-config/
+
 # Editor/IDE
 .cursor/
 .idea/

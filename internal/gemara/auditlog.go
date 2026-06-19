@@ -49,7 +49,7 @@ func ParseAuditLog(content string) (*AuditLogSummary, error) {
 	var earliest time.Time
 	for _, r := range log.Results {
 		for _, ev := range r.Evidence {
-			if t, err := time.Parse(time.RFC3339, string(ev.Collected)); err == nil {
+			if t, err := time.Parse(time.RFC3339, string(ev.CollectedAt)); err == nil {
 				if earliest.IsZero() || t.Before(earliest) {
 					earliest = t
 				}

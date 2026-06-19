@@ -356,7 +356,7 @@ func (s *Store) QueryEvidenceByLogIndex(ctx context.Context, logIndex uint64) (*
 	return &row, nil
 }
 
-// IsIndexWitnessed checks if a Tessera log index has been verified and countersigned by the witness.
+// IsIndexWitnessed checks if a Tessera log index has been verified and cosigned by the content monitor.
 func (s *Store) IsIndexWitnessed(ctx context.Context, index uint64) bool {
 	const q = `SELECT EXISTS(SELECT 1 FROM witnessed_indices WHERE log_index = $1)`
 
@@ -368,7 +368,7 @@ func (s *Store) IsIndexWitnessed(ctx context.Context, index uint64) bool {
 	return exists
 }
 
-// MarkIndexWitnessed records that a Tessera log index has been verified and countersigned.
+// MarkIndexWitnessed records that a Tessera log index has been verified and cosigned.
 func (s *Store) MarkIndexWitnessed(ctx context.Context, index uint64, witnessName, checkpointHash string) error {
 	const q = `INSERT INTO witnessed_indices (log_index, witness_name, checkpoint_hash)
 	           VALUES ($1, $2, $3)

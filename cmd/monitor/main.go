@@ -178,7 +178,7 @@ func verifyNewEntries(ctx context.Context, verifier *Verifier, storeClient *stor
 			break
 		}
 
-		// Read current checkpoint from Tessera log for countersigning
+		// Read current checkpoint from Tessera log for cosigning
 		cpRaw, cpErr := verifier.tessera.ReadCheckpoint(verifyCtx)
 		var checkpointHash string
 		if cpErr != nil {

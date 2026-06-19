@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+
+FROM golang:1.26@sha256:68cb6d68bed024785b69195b89af7ac7a444f27791435f98647edff595aa0479 AS builder
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+
+ARG GOFIPS140=
+RUN GOFIPS140=${GOFIPS140} CGO_ENABLED=0 go build -o /studio-monitor ./cmd/monitor/
+
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:d093aa3e30dbadd3efe1310db061a14da60299baff8450a17fe0ccc514a16639
+
+USER 65532
+
+COPY --from=builder /studio-monitor /studio-monitor
+
+ENTRYPOINT ["/studio-monitor"]
