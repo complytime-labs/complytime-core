@@ -52,5 +52,5 @@ The enrollment system enables coverage gap detection: complytime-core knows what
 ## Related
 
 - [Transparency Ledger](transparency-ledger.md) — TargetRegistrations flow through Tessera
-- [Witness Service](witness-service.md) — advisory validation for unregistered targets
+- [Content Verification Service](content-verification-service.md) — advisory validation for unregistered targets
 - [Unified Ingest Pipeline](unified-ingest-pipeline.md) — all artifacts route through same pipeline

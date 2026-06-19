@@ -125,7 +125,11 @@ func main() {
 
 	// Initialize Tessera client for transparency log
 	tesseraOpts := tessera.DefaultOptions()
+	tesseraOpts.CheckpointTime = cfg.TesseraCheckpointInterval
 	tesseraOpts.SignerKeyPath = cfg.TesseraSignerKeyPath
+	tesseraOpts.WitnessPolicyPath = cfg.TesseraWitnessPolicyPath
+	tesseraOpts.WitnessTimeout = cfg.TesseraWitnessTimeout
+	tesseraOpts.WitnessFailOpen = cfg.TesseraWitnessFailOpen
 	tesseraClient, err := tessera.NewClient(ctx, cfg.TesseraPath, tesseraOpts)
 	if err != nil {
 		slog.Error("tessera client init failed", "error", err)
@@ -253,6 +257,9 @@ func main() {
 		"postgres": pgClient,
 	}
 	e.Use(echo.WrapMiddleware(pgstore.DegradedMiddleware(subsystems)))
+
+	tessera.RegisterTilesAPI(e, cfg.TesseraPath)
+	tessera.RegisterWitnessedStatus(e, cfg.TesseraPath)
 
 	authHandler.Register(e)
 	e.Use(authHandler.Middleware())

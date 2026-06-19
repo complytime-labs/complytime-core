@@ -290,7 +290,7 @@ func (v *Verifier) verifyTargetScoping(ctx context.Context, auditLog []byte, evi
 }
 
 func (v *Verifier) isIndexWitnessed(ctx context.Context, index uint64) bool {
-	// Query witness state: has this index been countersigned?
+	// Query witness state: has this index been cosigned?
 	return v.db.IsIndexWitnessed(ctx, index)
 }
 

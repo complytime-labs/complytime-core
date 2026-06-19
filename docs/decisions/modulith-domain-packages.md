@@ -56,7 +56,7 @@ The modulith is designed so these can become independent binaries without proto 
 | **Gateway** | `cmd/gateway` | Already separate | HTTP |
 | **Ingest Worker** | `store/ingest_worker.go` | Need to scale YAML parsing independently | NATS JetStream (already wired) |
 | **Certifier** | `certify/handler.go` | Need to scale certification independently | NATS evidence events (already wired) |
-| **Witness** | `cmd/witness` | Already separate | PostgreSQL + Tessera |
+| **Content Monitor** | `cmd/monitor` | Already separate | PostgreSQL + Tessera |
 
 Splitting requires: new `cmd/` binary, import the same domain packages, connect to the same NATS stream. No proto or API contract changes needed because the message types live in domain packages shared by all binaries.
 

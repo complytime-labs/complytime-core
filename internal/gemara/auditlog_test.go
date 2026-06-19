@@ -41,7 +41,7 @@ results:
         - reference-id: bp-catalog
     evidence:
       - type: EvaluationLog
-        collected: "2026-04-07T10:00:00Z"
+        collected-at: "2026-04-07T10:00:00Z"
         location:
           reference-id: bp-catalog
         description: evaluation result

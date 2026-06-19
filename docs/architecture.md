@@ -2,16 +2,16 @@
 
 # ComplyTime Core Architecture
 
-The data platform API for the ComplyTime ecosystem. Stores and serves compliance evidence, policies, catalogs, and audit artifacts. All evidence is appended to a Tessera transparency log for immutability. An independent witness service verifies entries. Other services consume the API via REST or MCP.
+The data platform API for the ComplyTime ecosystem. Stores and serves compliance evidence, policies, catalogs, and audit artifacts. All evidence is appended to a Tessera transparency log for immutability. An independent content monitor verifies entries. Other services consume the API via REST or MCP.
 
 ## System Overview
 
-ComplyTime spans multiple repositories. This repo owns the gateway, witness, and data layer.
+ComplyTime spans multiple repositories. This repo owns the gateway, content monitor, and data layer.
 
 | Boundary | Role | Tech | Repository |
 |:--|:--|:--|:--|
 | **Data Platform** | Headless API: evidence ingestion, Tessera log, certifier pipeline, policy enrollment, auth | Go (Echo), PostgreSQL, NATS, Tessera | [complytime-core](https://github.com/complytime-labs/complytime-core) |
-| **Witness** | Independent verification daemon: certification, publisher trust, reference integrity | Go (standalone binary) | [complytime-core](https://github.com/complytime-labs/complytime-core) |
+| **Content Monitor** | Independent verification daemon: certification, publisher trust, reference integrity | Go (standalone binary) | [complytime-core](https://github.com/complytime-labs/complytime-core) |
 | **Studio Workbench** | Agent support: A2A routing, chat, Gemara validation, OCI ops | Python (Starlette), LangGraph | [complytime-studio](https://github.com/complytime-labs/complytime-studio) |
 | **Studio UI** | Analyst dashboard: posture, evidence, audit views | Preact SPA, Nginx | [studio-ui](https://github.com/complytime-labs/studio-ui) |
 | **Studio Deploy** | Helm chart for Kind/Kubernetes deployment | Helm | [studio-deploy](https://github.com/complytime-labs/studio-deploy) |
@@ -45,8 +45,8 @@ flowchart TB
   NATS[("NATS")]
   Blob[("S3-compatible blob — optional")]
 
-  subgraph Witness["Witness — cmd/witness"]
-    WS["Poll Tessera → verify → countersign"]
+  subgraph Monitor["Content Monitor — cmd/monitor"]
+    WS["Poll Tessera → verify → cosign"]
   end
 
   subgraph Workbench["complytime-studio"]
@@ -84,9 +84,9 @@ Echo serves `/api/*`, `/auth/*`, and `/healthz` on a single port (default 8080).
 
 **Hard requirements:** `POSTGRES_URL` and `NATS_URL` must be set and reachable. Failure exits the process.
 
-### Witness (`cmd/witness`)
+### Content Monitor (`cmd/monitor`)
 
-Independent verification daemon that polls Tessera and validates evidence quality.
+Independent content verification daemon that polls Tessera and validates evidence quality.
 
 | Concern | Implementation |
 |:--|:--|

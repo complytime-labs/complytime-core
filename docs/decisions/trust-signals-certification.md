@@ -158,7 +158,7 @@ Each verification layer is queryable. Agents build on previous verification work
 ## Related Decisions
 
 - [ADR 0036: Transparency Ledger (Tessera)](transparency-ledger.md) - Immutable evidence storage
-- [ADR 0037: Witness Service](witness-service.md) - External verification (now client-side)
+- [ADR 0037: Content Verification Service](content-verification-service.md) - External verification (now client-side)
 - [Epic #71: Trusted Publishing](https://github.com/complytime-labs/complytime-core/issues/71) - Publisher authorization
 - [Epic #72: Certification Pipeline](https://github.com/complytime-labs/complytime-core/issues/72) - Trust signals implementation
 

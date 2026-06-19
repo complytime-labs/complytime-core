@@ -41,7 +41,7 @@ GET /api/policies/discover?target_id=X   → Which policies apply to this target
 GET /api/evidence/:id/verification       → Trust signals for this evidence
 ```
 
-The gateway writes everything to Tessera first. PostgreSQL is a queryable cache — if you lose it, the transparency log is the source of truth. A separate witness service polls Tessera and countersigns checkpoints.
+The gateway writes everything to Tessera first. PostgreSQL is a queryable cache — if you lose it, the transparency log is the source of truth. Independent witnesses cosign checkpoints for anti-equivocation verification. A separate content monitor (`cmd/monitor`) polls Tessera and verifies entry quality.
 
 ## Quick Start
 

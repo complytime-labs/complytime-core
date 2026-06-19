@@ -2,6 +2,8 @@
 #
 # Standalone complytime-core stack — evidence data platform only.
 # No workbench, no UI, no programs.
+#
+# Run scripts/setup-witness.sh first to generate witness keys.
 
 services:
   gateway:
@@ -15,11 +17,54 @@ services:
       POSTGRES_URL: postgres://core:complytime-dev@postgres:5432/core?sslmode=disable
       NATS_URL: nats://nats:4222
       CORS_ORIGINS: ""
+      JWT_ISSUERS: "http://testjwks:9090"
+      JWT_AUDIENCE: "complytime-core"
+      TESSERA_CHECKPOINT_INTERVAL: "5s"
+      TESSERA_PATH: /data/tessera
+      TESSERA_SIGNER_KEY_PATH: /data/signer/.signer.key
+      TESSERA_WITNESS_POLICY_PATH: /etc/witness/policy
+      TESSERA_WITNESS_FAIL_OPEN: "true"
+    volumes:
+      - tesseradata:/data/tessera
+      - ./witness-config/log-signer:/data/signer:ro
+      - ./witness-config/witness-policy:/etc/witness/policy:ro
     depends_on:
       postgres:
         condition: service_healthy
       nats:
         condition: service_started
+      witness:
+        condition: service_started
+      testjwks:
+        condition: service_started
+
+  witness:
+    build:
+      context: ../../
+      dockerfile: Dockerfile.witness
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        /omniwitness \
+          -private_key="$$(cat /etc/witness/signer.key)" \
+          -db_file=/data/witness.db \
+          -additional_logs=/etc/witness/additional-logs.yaml \
+          -logtostderr
+    ports:
+      - "8100:8080"
+    volumes:
+      - ./witness-config/witness-signer.key:/etc/witness/signer.key:ro
+      - ./witness-config/additional-logs.yaml:/etc/witness/additional-logs.yaml:ro
+      - witnessdata:/data
+
+  testjwks:
+    build:
+      context: ../../
+      dockerfile: Dockerfile.testjwks
+    ports:
+      - "9090:9090"
+    environment:
+      TESTJWKS_ISSUER: "http://testjwks:9090"
 
   postgres:
     image: postgres:17-alpine
@@ -49,3 +94,5 @@ services:
 volumes:
   pgdata:
   natsdata:
+  tesseradata:
+  witnessdata:

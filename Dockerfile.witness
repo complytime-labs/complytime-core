@@ -1,19 +1,23 @@
 # SPDX-License-Identifier: Apache-2.0
+#
+# Builds the omniwitness from transparency-dev/witness@main.
+# The published image does not support --additional_logs for private logs.
 
 FROM golang:1.26@sha256:68cb6d68bed024785b69195b89af7ac7a444f27791435f98647edff595aa0479 AS builder
 
-WORKDIR /app
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
+RUN go install github.com/transparency-dev/witness/cmd/omniwitness@9332986a94a40afa58fa84922be2697d2780c883 # main as of 2026-06-19, pinned until --additional_logs is released
 
-ARG GOFIPS140=
-RUN GOFIPS140=${GOFIPS140} CGO_ENABLED=0 go build -o /studio-witness ./cmd/witness/
+FROM debian:bookworm-slim@sha256:35ae959f6e83ffb465e7614d27b4fddd28288caa551fbca2798367567cce80d3
 
-FROM gcr.io/distroless/static-debian12:nonroot@sha256:d093aa3e30dbadd3efe1310db061a14da60299baff8450a17fe0ccc514a16639
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -r -u 65532 -s /usr/sbin/nologin witness
+
+COPY --from=builder /go/bin/omniwitness /omniwitness
 
 USER 65532
 
-COPY --from=builder /studio-witness /studio-witness
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+  CMD curl -f http://localhost:8080/ || exit 1
 
-ENTRYPOINT ["/studio-witness"]
+ENTRYPOINT ["/omniwitness"]

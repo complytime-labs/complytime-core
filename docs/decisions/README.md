@@ -32,10 +32,13 @@ Other repos maintain their own ADRs:
 | 0034 | [Unified Ingest Pipeline](unified-ingest-pipeline.md) | Accepted | 2026-05-16 |
 | 0035 | [Native FIPS 140-3 Build Support](fips-140-native.md) | Accepted | 2026-05-27 |
 | 0036 | [Transparency Ledger (Tessera)](transparency-ledger.md) | Accepted | 2026-05-22 |
-| 0037 | [Witness Service](witness-service.md) | Accepted | 2026-05-23 |
+| 0037 | [Content Verification Service](content-verification-service.md) | Accepted | 2026-05-23 |
 | 0038 | [Policy Enrollment and Discovery](policy-enrollment.md) | Accepted | 2026-05-26 |
 | 0039 | [OCI Import Through Tessera](import-through-tessera.md) | Accepted | 2026-05-26 |
 | 0040 | [Trust Signals Replace Binary Certified Flag](trust-signals-certification.md) | Accepted | 2026-06-01 |
+| 0041 | [Anti-Equivocation Witnessing](anti-equivocation-witnessing.md) | Accepted | 2026-06-18 |
+| 0042 | [Content Verification Service](content-verification-service.md) | Accepted | 2026-05-23 |
+| 0043 | [Public API Boundary](public-api-boundary.md) | Accepted | 2026-06-19 |
 
 ## Active Workarounds
 

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	tesserapkg "github.com/transparency-dev/tessera"
@@ -21,6 +22,7 @@ type Client struct {
 	shutdown    func(context.Context) error
 	appenderCtx context.Context
 	cancel      context.CancelFunc
+	verifierKey string
 }
 
 // NewClient creates a new Tessera client.
@@ -41,7 +43,7 @@ func NewClient(ctx context.Context, storagePath string, opts Options) (*Client, 
 	}
 
 	// Load or generate signer key pair
-	signerKey, _, generated, err := LoadOrGenerateSignerKey(opts.SignerKeyPath)
+	signerKey, verifierKey, generated, err := LoadOrGenerateSignerKey(opts.SignerKeyPath)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("load signer key: %w", err)
@@ -66,6 +68,30 @@ func NewClient(ctx context.Context, storagePath string, opts Options) (*Client, 
 		WithCheckpointInterval(opts.CheckpointTime).
 		WithCheckpointSigner(signer)
 
+	// Wire witnesses if a policy file is configured
+	if opts.WitnessPolicyPath != "" {
+		policyBytes, err := os.ReadFile(opts.WitnessPolicyPath)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("read witness policy: %w", err)
+		}
+		witnessGroup, err := tesserapkg.NewWitnessGroupFromPolicy(policyBytes)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("parse witness policy: %w", err)
+		}
+		witnessOpts := &tesserapkg.WitnessOptions{
+			Timeout:  opts.WitnessTimeout,
+			FailOpen: opts.WitnessFailOpen,
+		}
+		appendOpts = appendOpts.WithWitnesses(witnessGroup, witnessOpts)
+		slog.Info("tessera witnesses configured",
+			"policy", opts.WitnessPolicyPath,
+			"fail_open", opts.WitnessFailOpen,
+			"timeout", opts.WitnessTimeout,
+		)
+	}
+
 	// Get appender and reader from the driver
 	appender, shutdown, reader, err := tesserapkg.NewAppender(clientCtx, driver, appendOpts)
 	if err != nil {
@@ -79,7 +105,14 @@ func NewClient(ctx context.Context, storagePath string, opts Options) (*Client, 
 		shutdown:    shutdown,
 		appenderCtx: clientCtx,
 		cancel:      cancel,
+		verifierKey: verifierKey,
 	}, nil
+}
+
+// VerifierKey returns the log's public verification key. Witnesses and
+// clients need this to verify checkpoint signatures.
+func (c *Client) VerifierKey() string {
+	return c.verifierKey
 }
 
 func (c *Client) Add(ctx context.Context, entry []byte) (uint64, error) {
