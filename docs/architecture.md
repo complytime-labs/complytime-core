@@ -1,243 +1,216 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# ComplyTime Core Architecture
+# ComplyTime Ingest Architecture
 
-The data platform API for the ComplyTime ecosystem. Stores and serves compliance evidence, policies, catalogs, and audit artifacts. All evidence is appended to a Tessera transparency log for immutability. An independent content monitor verifies entries. Other services consume the API via REST or MCP.
+Compliance evidence ingestion and transparency service. Accepts Gemara artifacts via JWT-authenticated API, appends to a Tessera transparency log, publishes CloudEvents to NATS. No PostgreSQL. All query and analysis capabilities are in downstream services (CrossCodex).
 
 ## System Overview
 
-ComplyTime spans multiple repositories. This repo owns the gateway, content monitor, and data layer.
-
 | Boundary | Role | Tech | Repository |
 |:--|:--|:--|:--|
-| **Data Platform** | Headless API: evidence ingestion, Tessera log, certifier pipeline, policy enrollment, auth | Go (Echo), PostgreSQL, NATS, Tessera | [complytime-core](https://github.com/complytime-labs/complytime-core) |
-| **Content Monitor** | Independent verification daemon: certification, publisher trust, reference integrity | Go (standalone binary) | [complytime-core](https://github.com/complytime-labs/complytime-core) |
-| **Studio Workbench** | Agent support: A2A routing, chat, Gemara validation, OCI ops | Python (Starlette), LangGraph | [complytime-studio](https://github.com/complytime-labs/complytime-studio) |
-| **Studio UI** | Analyst dashboard: posture, evidence, audit views | Preact SPA, Nginx | [studio-ui](https://github.com/complytime-labs/studio-ui) |
-| **Studio Deploy** | Helm chart for Kind/Kubernetes deployment | Helm | [studio-deploy](https://github.com/complytime-labs/studio-deploy) |
+| **Ingest Service** | Evidence ingestion, Tessera log, publisher trust, tlog-tiles API | Go (Echo), Tessera (embedded), NATS JetStream + KV | [complytime-core](https://github.com/complytime-labs/complytime-core) |
+| **Content Monitor** | Independent verification: schema, publisher trust, reference integrity | Go (standalone binary), Tessera (read) | [complytime-core](https://github.com/complytime-labs/complytime-core) |
+| **CrossCodex** | Query and analysis: evidence queries, coverage, policy management, graph | TBD | [crosscodex](https://github.com/complytime-labs/crosscodex) |
 
-**Upstream tools** (produce artifacts consumed by core):
+**Upstream tools** (produce artifacts consumed by ingest):
 
 | Tool | Role | Repository |
 |:--|:--|:--|
 | **complyctl** | CLI: pulls policies from OCI, scans targets, produces Gemara EvaluationLogs | [complyctl](https://github.com/complytime/complyctl) |
 | **complypack** | Policy authoring: validate, test, package assessment logic as signed OCI artifacts | [complytime/issues/8](https://github.com/complytime/complytime/issues/8) |
-| **CrossCodex** | Compliance crosswalking: LLM-verified framework requirement mapping | [crosscodex](https://github.com/complytime-labs/crosscodex) |
 
 ```mermaid
 flowchart TB
   subgraph Clients
-    Browser["Browser"]
     complyctl["complyctl"]
     CI["CI/CD Pipelines"]
   end
 
-  subgraph Nginx["studio-ui — Nginx"]
-    Routes["/api /auth → gateway · /workbench → workbench · /* → SPA"]
+  subgraph Ingest["Ingest Service — cmd/gateway — :8080"]
+    Echo["Echo — auth, /api/ingest, tlog-tiles"]
   end
 
-  subgraph Gateway["Gateway — :8080 — Echo"]
-    Echo["Echo — auth, /api/*, /auth/*, /healthz"]
-  end
-
-  Tessera[("Tessera (transparency log)")]
-  PG[("PostgreSQL")]
-  NATS[("NATS")]
-  Blob[("S3-compatible blob — optional")]
+  Tessera[("Tessera (POSIX storage)")]
+  NATS[("NATS JetStream + KV")]
+  Witness["Witness (omniwitness)"]
 
   subgraph Monitor["Content Monitor — cmd/monitor"]
-    WS["Poll Tessera → verify → cosign"]
+    WS["Poll Tessera → verify → publish attestation"]
   end
 
-  subgraph Workbench["complytime-studio"]
-    WB["Starlette — A2A, agents, chat, validate, OCI"]
+  subgraph Downstream["Downstream Subscribers"]
+    CrossCodex["CrossCodex"]
+    Other["Other services"]
   end
 
-  Browser --> Nginx
   complyctl -->|"JWT"| Echo
   CI -->|"JWT"| Echo
-  Nginx --> Echo
-  Nginx --> WB
   Echo --> Tessera
-  Echo --> PG
   Echo --> NATS
-  Echo -->|"BLOB_*"| Blob
-  NATS -->|"certification pipeline"| Echo
+  Tessera --> Witness
   WS --> Tessera
-  WS --> PG
+  NATS --> Downstream
 ```
 
 ## Binaries
 
-### Gateway (`cmd/gateway`)
+### Ingest Service (`cmd/gateway`)
 
-Echo serves `/api/*`, `/auth/*`, and `/healthz` on a single port (default 8080).
+Accepts Gemara artifacts, appends to Tessera, publishes NATS events. Serves the tlog-tiles read API for offline verification.
 
 | Concern | Implementation |
 |:--|:--|
 | HTTP | Echo — single listener, middleware stack |
-| Data | `internal/store` + `internal/postgres` — single pool, `EnsureSchema` at startup |
-| Events | `internal/events` — NATS; debounced certification pipeline on evidence subjects |
-| Transparency | `internal/tessera` — Tessera append-only log; every ingest gets a `log_index` |
-| Blobs | `internal/blob` — MinIO-compatible when `BLOB_*` set |
-| Auth | `internal/auth` — OAuth2 Proxy `X-Forwarded-*` headers; JWT bearer for headless clients |
+| Transparency | Tessera — embedded Go library, POSIX storage, cosigned checkpoints |
+| Publisher trust | NATS KV bucket `publisher-trust` — fail-closed authorization |
+| Target registry | NATS KV bucket `targets-registry` |
+| Events | NATS JetStream — async ingest worker, evidence/policy/target events |
+| Auth | JWT bearer (OIDC JWKS) + OAuth2 Proxy `X-Forwarded-*` headers |
+| tlog-tiles | `/checkpoint`, `/tile/*`, `/log/witnessed/:index` — public, no auth |
 
-**Hard requirements:** `POSTGRES_URL` and `NATS_URL` must be set and reachable. Failure exits the process.
+**Hard requirements:** `NATS_URL` must be set and reachable.
 
 ### Content Monitor (`cmd/monitor`)
 
-Independent content verification daemon that polls Tessera and validates evidence quality.
+Independent verification daemon that polls Tessera and validates evidence quality.
 
 | Concern | Implementation |
 |:--|:--|
-| Verification | Checks certification, publisher trust, reference integrity, target registration (advisory) |
+| Verification | Schema validation, publisher trust, reference integrity, target registration (advisory) |
 | Config | YAML file with trusted publisher patterns and poll interval |
 | State | JSON file persisting last verified index across restarts |
 
-**Hard requirements:** `POSTGRES_URL` and `TESSERA_PATH` must be set.
+**Hard requirements:** `TESSERA_PATH` must be set.
 
 ## Authentication
 
 | Mode | Condition |
 |:--|:--|
-| **OAuth2 Proxy** | Sidecar handles OIDC, session cookies. Gateway reads `X-Forwarded-Email/User/Groups`. |
+| **OAuth2 Proxy** | Sidecar handles OIDC, session cookies. Ingest reads `X-Forwarded-Email/User/Groups`. |
 | **JWT Bearer** | `POST /api/ingest` accepts OIDC JWT tokens verified via JWKS discovery. For CI/CD pipelines and scanning tools. |
 | **No proxy** | `/api/*` returns 401 without `X-Forwarded-Email`. |
 
-## NATS Subjects
-
-| Subject | Use |
-|:--|:--|
-| `core.evidence.<policy_id>` | After ingest — debounced certification pipeline |
-| `core.ingest` | Unified async ingest worker |
-| `core.policy.new` | Broadcast when new Policy artifact ingested |
-| `core.target.registered` | Broadcast when new TargetRegistration ingested |
-| `core.draft.<policy_id>` | Draft creation (no active subscribers) |
+No role-based write protection. Authorization is per-target publisher allowlist in NATS KV.
 
 ## Data Flow
 
 ```mermaid
 sequenceDiagram
   participant C as Client
-  participant G as Gateway
+  participant I as Ingest Service
   participant T as Tessera
-  participant N as NATS
-  participant PG as PostgreSQL
+  participant KV as NATS KV
+  participant N as NATS JetStream
   participant W as Witness
+  participant M as Monitor
 
-  C->>G: POST /api/ingest (YAML + JWT)
-  G->>G: Verify JWT
-  G->>T: Append to log → log_index
-  G->>N: publish core.ingest
-  G->>C: 202 Accepted {job_id, log_index}
-  N->>G: worker picks up job
-  G->>PG: classify + insert artifact (with log_index)
-  G->>N: publish core.evidence.policy_id
-  N->>G: certification pipeline (debounced)
-  G->>PG: update certifications
-  W->>T: poll for new entries
-  W->>PG: verify certification + publisher trust
-  W->>PG: mark witnessed
+  C->>I: POST /api/ingest (YAML + JWT)
+  I->>I: Verify JWT
+  I->>KV: Check publisher trust (fail-closed)
+  I->>T: Append to log → log_index
+  T->>W: Witness cosigns checkpoint
+  I->>N: publish core.ingest
+  I->>C: 202 Accepted {job_id, log_index}
+  N->>I: worker detects artifact type
+  I->>N: publish core.evidence / core.policy / core.target
+  I->>KV: update publisher trust (TargetRegistration)
+  M->>T: poll for new entries
+  M->>M: verify schema, publisher, references
+  M->>N: publish verification attestation
 ```
 
 ## Key Routes
 
-| Method(s) | Path | Notes |
+| Method | Path | Notes |
 |:--|:--|:--|
-| GET | `/healthz` | Postgres ping |
+| GET | `/healthz` | NATS connectivity check |
+| GET | `/checkpoint` | Cosigned checkpoint (public) |
+| GET | `/tile/*` | Merkle tree tiles + entry bundles (public) |
+| GET | `/log/witnessed/:index` | Witnessed status by log index (public) |
 | GET | `/api/config` | Non-secret config (public) |
-| POST | `/api/ingest` | Unified Gemara ingest (async, 202, JWT auth) |
+| POST | `/api/ingest` | Gemara artifact ingest (async, 202, JWT auth) |
 | GET | `/api/ingest/jobs/{job_id}` | Poll ingest job status |
 | POST | `/api/import` | OCI bundle import (routes through Tessera) |
-| GET | `/api/policies`, `/api/policies/{id}` | Policy CRUD |
-| GET | `/api/policies/discover` | Dimension-based policy discovery |
-| GET | `/api/targets` | List registered targets |
-| GET | `/api/catalogs` | List catalogs |
-| GET | `/api/evidence` | Query evidence |
-| GET | `/api/requirements` | Requirements matrix |
-| GET | `/api/posture` | Posture aggregates |
-| GET, POST | `/api/audit-logs` | Audit log CRUD |
-| GET, POST | `/api/draft-audit-logs` | Draft audit logs |
-| POST | `/api/audit-logs/promote` | Promote draft to official |
+| GET | `/api/system-info` | System status |
 | GET | `/auth/me` | Current user identity |
 
-Full route registration: `internal/store/handlers.go`, `internal/auth/user_handlers.go`, `cmd/gateway/main.go`.
+## NATS Subjects
+
+| Subject | Use |
+|:--|:--|
+| `core.ingest` | Async ingest worker (JetStream durable consumer) |
+| `core.evidence.<policy_id>` | Evidence ingested for a policy |
+| `core.policy.new` | New Policy artifact ingested |
+| `core.target.registered` | New TargetRegistration ingested |
+
+## NATS KV Buckets
+
+| Bucket | Key | Value | Purpose |
+|:--|:--|:--|:--|
+| `publisher-trust` | `targets.<target_id>` | JSON array of publisher allowlist entries | Authorization at ingest boundary |
+| `targets-registry` | `<target_id>` | JSON target registration | Target metadata |
+
+Both are materialized views of TargetRegistration entries in Tessera. Rebuildable from the log on bucket loss.
 
 ## Configuration
 
 | Variable | Required | Purpose |
 |:--|:--|:--|
-| `POSTGRES_URL` | Yes | Application database |
-| `NATS_URL` | Yes | Event bus |
+| `NATS_URL` | Yes | Event bus and KV store |
 | `TESSERA_PATH` | No | Transparency log directory (default: `/data/tessera`) |
-| `JWT_ISSUERS` | No | Comma-separated allowed JWT issuers for `/api/ingest` |
-| `PORT` | No | 8080 default |
-| `BLOB_*` | No | Object storage |
+| `TESSERA_SIGNER_KEY_PATH` | No | Persistent signer key |
+| `TESSERA_CHECKPOINT_INTERVAL` | No | Checkpoint publish interval (default: 10m) |
+| `TESSERA_WITNESS_POLICY_PATH` | No | Sigsum witness policy file |
+| `TESSERA_WITNESS_TIMEOUT` | No | Max wait for cosignatures (default: 5s) |
+| `TESSERA_WITNESS_FAIL_OPEN` | No | Fail-closed by default (default: false) |
+| `JWT_ISSUERS` | No | Comma-separated allowed JWT issuers |
+| `JWT_AUDIENCE` | No | Expected JWT audience claim |
+| `PORT` | No | Listen port (default: 8080) |
 | `CORS_ORIGINS` | No | Comma-separated allowed origins |
 
-## PostgreSQL
+## Removed Query Endpoints (moved to CrossCodex)
 
-Single application database for all platform data: policies, evidence, catalogs, controls, mappings, certifications, posture, users, audit logs, targets, witnessed indices, bundle artifacts. Tessera is the source of truth for evidence; PostgreSQL is the queryable cache (rebuildable from the log).
+The following endpoints were removed in ADR 0044. CrossCodex or other downstream subscribers should implement these as NATS subscribers with their own read models:
 
-## Trust Signals
-
-Phase 1 of the stratified trust layers architecture introduces **queryable trust signals**.
-
-### Schema
-
-Each verification check writes one row to `trust_signals`:
-
-| Column | Type | Description |
-|--------|------|-------------|
-| evidence_id | TEXT | Evidence row identifier |
-| layer | TEXT | Verification layer: `quality` (Phase 1), `identity`/`attestation` (future) |
-| check_name | TEXT | Check identifier: `schema`, `provenance`, `executor`, `freshness`, `relevance` |
-| result | TEXT | `pass`, `fail`, `skip`, `error` |
-| reason | TEXT | Human-readable explanation |
-| checked_at | TIMESTAMPTZ | When check ran |
-
-### Querying Trust Signals
-
-**Find evidence where freshness failed:**
-```sql
-SELECT evidence_id, target_id, collected_at
-FROM evidence e
-JOIN trust_signals ts ON ts.evidence_id = e.evidence_id
-WHERE ts.check_name = 'freshness'
-AND ts.result = 'fail';
-```
-
-**Trust signal distribution:**
-```sql
-SELECT check_name, result, COUNT(*)
-FROM trust_signals
-WHERE checked_at > NOW() - INTERVAL '7 days'
-GROUP BY check_name, result
-ORDER BY check_name, result;
-```
-
-### Backward Compatibility
-
-Phase 1 is fully backward compatible:
-- `evidence.certified` still exists (computed from trust signals aggregate)
-- `certifications` table still populated (legacy)
-- Existing queries work unchanged
+| Endpoint | Purpose | NATS subject to subscribe |
+|:--|:--|:--|
+| `GET /api/evidence` | Query evidence by target, policy, date | `core.evidence.>` |
+| `GET /api/policies`, `GET /api/policies/{id}` | Policy CRUD | `core.policy.new` |
+| `GET /api/policies/discover` | Dimension-based policy discovery | `core.policy.new` |
+| `GET /api/targets` | List registered targets | `core.target.registered` |
+| `GET /api/catalogs` | List catalogs | `core.ingest` (filter by type) |
+| `GET /api/requirements` | Requirements matrix | Derived from policies + evidence |
+| `GET /api/posture` | Posture aggregates | Derived from evidence + trust signals |
+| `GET /api/audit-logs`, `POST /api/audit-logs` | Audit log CRUD | `core.ingest` (filter AuditLog) |
+| `GET /api/draft-audit-logs` | Draft audit logs | `core.ingest` (filter by type) |
+| `POST /api/audit-logs/promote` | Promote draft to official | Was Postgres-only |
+| `GET /api/mappings` | Framework mappings | `core.ingest` (filter MappingDocument) |
+| `GET /api/threats`, `GET /api/risks` | Threat/risk catalogs | `core.ingest` (filter by type) |
+| `GET /api/inventory` | Evidence inventory | Derived from evidence |
+| `GET /api/users/*` | User management | Removed (no role-based access) |
+| `GET /api/role-changes/*` | Role change history | Removed (no role-based access) |
+| `GET /api/certifications` | Certification results | Monitor publishes to NATS |
 
 ## Testing
 
-Integration tests in `internal/store/` and `internal/postgres/` require a live PostgreSQL instance. Set `POSTGRES_TEST_URL` to enable them. E2E tests in `internal/e2e/` also require PostgreSQL. The E2E enrollment test script (`scripts/e2e-enrollment-test.sh`) starts its own containers.
-
 ```bash
-make test                          # Unit tests
-make test-integration              # Requires POSTGRES_TEST_URL
-./scripts/e2e-enrollment-test.sh   # Self-contained E2E (starts containers)
+# Unit tests
+go test -tags dev ./...
+
+# Smoke test (requires docker compose stack)
+./scripts/setup-witness.sh
+cd deploy/compose && docker compose up --build -d
+cd ../.. && ./scripts/smoke-test.sh
+
+# Integration tests (Ginkgo, in-process Tessera)
+go test -tags integration ./internal/e2e/ -run "Transparency"
 ```
 
 ## Related Docs
 
 | Doc | Topic |
 |:--|:--|
-| [ADRs](decisions/) | Architecture decisions for the data platform |
+| [ADRs](decisions/) | Architecture decisions |
+| [ADR 0044: Remove PostgreSQL](decisions/remove-postgresql.md) | Why and how Postgres was removed |
 | [API spec](api/openapi.yaml) | OpenAPI 3.1 definition |
-| [Evidence semconv](design/evidence-semconv-alignment.md) | OTel semantic convention alignment |
 | [SLRs](requirements/service-level-requirements.md) | Service level requirements |
