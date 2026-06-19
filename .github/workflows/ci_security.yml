@@ -33,4 +33,4 @@ jobs:
       contents: read
       id-token: write
       security-events: write
-    uses: complytime/org-infra/.github/workflows/reusable_security.yml@15476efc3c2837fa9564943a1f8714cd71ddc288 # v0.3.0
+    uses: complytime/org-infra/.github/workflows/reusable_security.yml@bbd7194995388f96dd28c0c0792d406c8a249140 # v0.4.0
