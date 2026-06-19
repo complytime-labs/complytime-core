@@ -212,5 +212,5 @@ go test -tags integration ./internal/e2e/ -run "Transparency"
 |:--|:--|
 | [ADRs](decisions/) | Architecture decisions |
 | [ADR 0044: Remove PostgreSQL](decisions/remove-postgresql.md) | Why and how Postgres was removed |
+| [ADR 0045: Testing Strategy](decisions/testing-strategy.md) | Five test layers |
 | [API spec](api/openapi.yaml) | OpenAPI 3.1 definition |
-| [SLRs](requirements/service-level-requirements.md) | Service level requirements |
