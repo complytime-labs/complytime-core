@@ -75,11 +75,21 @@ cd ../.. && ./scripts/smoke-test.sh
 
 ### Testing
 
-- Unit tests: same package, `_test.go` suffix, no build tags
-- Integration tests: `//go:build integration` tag, use embedded NATS test server
-- E2E tests: `internal/e2e/` with test data in `internal/e2e/testdata/`
+Five layers — see [ADR 0045: Testing Strategy](docs/decisions/testing-strategy.md) for full details.
+
+| Layer | What it answers | Location |
+|:--|:--|:--|
+| **Unit** | Does this function work? | `*_test.go` in package |
+| **Contract** | Will downstream subscribers break? | `internal/bus/*_test.go` |
+| **BDD E2E** | Does the full workflow work? | `internal/e2e/` (Ginkgo) |
+| **Security evaluation** | Do the security properties hold? | `internal/e2e/` (Gemara + SARIF) |
+| **Smoke** | Does the deployed stack work? | `scripts/smoke-test.sh` |
+
+**Rules:**
 - TDD: write tests before implementation
-- Threat model: update `internal/e2e/testdata/transparency-threats.yaml` and `transparency-controls.yaml` when claiming security properties
+- Security claims require threat/control catalog entries + security evaluation test before implementation
+- Every NATS event has a contract test
+- Fail-closed behavior tested explicitly
 
 ### Error Handling
 
