@@ -22,20 +22,19 @@ type TesseraReader interface {
 	Read(ctx context.Context, index uint64) ([]byte, error)
 }
 
-// ingestOutcome classifies the result of processing an ingest message.
 type ingestOutcome int
 
 const (
-	outcomeAck  ingestOutcome = iota // Success — remove from stream
-	outcomeNak                       // Transient failure — retry after delay
-	outcomeTerm                      // Permanent failure — no more retries
+	outcomeAck  ingestOutcome = iota
+	outcomeNak
+	outcomeTerm
 )
 
 const nakDelay = 5 * time.Second
 
 // IngestWorker returns an IngestMsgHandler for the JetStream durable consumer.
-// It fetches YAML from Tessera by log_index, processes the artifact, and
-// acks/naks/terms the JetStream message based on the outcome.
+// It fetches YAML from Tessera by log_index, detects the artifact type,
+// processes target registrations (NATS KV), and publishes events.
 func IngestWorker(
 	ctx context.Context,
 	stores Stores,
@@ -74,66 +73,16 @@ func IngestWorker(
 			return
 		}
 
-		is := requirements.ImportStores{
-			Catalogs: stores.Catalogs,
-			Controls: stores.Controls,
-			Threats:  stores.Threats,
-			Risks:    stores.Risks,
-			Guidance: stores.Guidance,
-		}
-
-		var result ingestOutcome
 		switch artifactType {
-		case gemara.EvaluationLogArtifact:
-			result = handleEvidenceIngestJS(ctx, ref, yaml, gemara.EvaluationLogArtifact,
-				stores.Evidence, pub, tracker)
-		case gemara.EnforcementLogArtifact:
-			result = handleEvidenceIngestJS(ctx, ref, yaml, gemara.EnforcementLogArtifact,
-				stores.Evidence, pub, tracker)
-		case gemara.PolicyArtifact:
-			result = handleArtifactStoreJS(ctx, ref, tracker, func() (string, string, error) {
-				art, err := requirements.StorePolicyFromContent(ctx, stores.Policies, stores.Controls,
-					string(yaml), requirements.PolicyIngestOption{
-						LogIndex: ref.LogIndex,
-						BundleID: ref.BundleID,
-					})
-				if err == nil && pub != nil {
-					pub.PublishPolicyNew(ref.LogIndex, art.ID)
-				}
-				return art.ID, art.Type, err
-			}, stores.InsertBundleArtifact)
-		case gemara.ControlCatalogArtifact:
-			result = handleArtifactStoreJS(ctx, ref, tracker, func() (string, string, error) {
-				art, err := requirements.StoreCatalogFromContent(ctx, is, "ControlCatalog", string(yaml))
-				return art.ID, art.Type, err
-			}, stores.InsertBundleArtifact)
-		case gemara.ThreatCatalogArtifact:
-			result = handleArtifactStoreJS(ctx, ref, tracker, func() (string, string, error) {
-				art, err := requirements.StoreCatalogFromContent(ctx, is, "ThreatCatalog", string(yaml))
-				return art.ID, art.Type, err
-			}, stores.InsertBundleArtifact)
-		case gemara.RiskCatalogArtifact:
-			result = handleArtifactStoreJS(ctx, ref, tracker, func() (string, string, error) {
-				art, err := requirements.StoreCatalogFromContent(ctx, is, "RiskCatalog", string(yaml))
-				return art.ID, art.Type, err
-			}, stores.InsertBundleArtifact)
-		case gemara.GuidanceCatalogArtifact:
-			result = handleArtifactStoreJS(ctx, ref, tracker, func() (string, string, error) {
-				art, err := requirements.StoreCatalogFromContent(ctx, is, "GuidanceCatalog", string(yaml))
-				return art.ID, art.Type, err
-			}, stores.InsertBundleArtifact)
-		case gemara.MappingDocumentArtifact:
-			result = handleArtifactStoreJS(ctx, ref, tracker, func() (string, string, error) {
-				art, err := requirements.StoreMappingFromContent(ctx, stores.Mappings, string(yaml))
-				return art.ID, art.Type, err
-			}, stores.InsertBundleArtifact)
+		case gemara.EvaluationLogArtifact, gemara.EnforcementLogArtifact:
+			applyOutcome(msg, handleEvidenceIngestJS(ref, yaml, artifactType, pub, tracker))
+		case gemara.PolicyArtifact, gemara.ControlCatalogArtifact, gemara.ThreatCatalogArtifact,
+			gemara.RiskCatalogArtifact, gemara.GuidanceCatalogArtifact, gemara.MappingDocumentArtifact:
+			applyOutcome(msg, handleArtifactEventJS(ref, artifactType, pub, tracker))
 		default:
 			tracker.Fail(ref.JobID, fmt.Sprintf("unsupported artifact type: %s", artifactType))
 			_ = msg.Term()
-			return
 		}
-
-		applyOutcome(msg, result)
 	}
 }
 
@@ -149,83 +98,43 @@ func applyOutcome(msg jetstream.Msg, outcome ingestOutcome) {
 }
 
 func handleEvidenceIngestJS(
-	ctx context.Context,
 	ref bus.IngestRef,
 	yaml []byte,
 	artifactType gemara.ArtifactType,
-	evidenceStore evidence.EvidenceStore,
 	pub EventPublisher,
 	tracker *IngestTracker,
 ) ingestOutcome {
-	var rows []evidence.EvidenceRow
-	var policyID string
-	var err error
+	policyID := evidence.DetectPolicyID(yaml)
 
-	switch artifactType {
-	case gemara.EvaluationLogArtifact:
-		rows, policyID, err = evidence.FlattenEvaluation(ctx, yaml)
-	case gemara.EnforcementLogArtifact:
-		rows, policyID, err = evidence.FlattenEnforcement(ctx, yaml)
-	}
-	if err != nil {
-		tracker.Fail(ref.JobID, fmt.Sprintf("flatten failed: %v", err))
-		slog.Warn("async ingest: flatten failed", "job_id", ref.JobID, "error", err)
-		return outcomeTerm // Parse/flatten is permanent — invalid YAML won't fix on retry
+	if pub != nil && policyID != "" {
+		pub.PublishEvidence(policyID, 1)
 	}
 
-	records := evidence.ToEvidenceRecordsWithLogIndex(rows, &ref.LogIndex, &ref.PublisherIdentity)
-	count, err := evidenceStore.InsertEvidence(ctx, records)
-	if err != nil {
-		tracker.Fail(ref.JobID, fmt.Sprintf("insert failed: %v", err))
-		slog.Error("async ingest: insert failed", "job_id", ref.JobID, "error", err)
-		return outcomeNak // Store failure is transient (PG timeout, connection reset)
-	}
-
-	if pub != nil && count > 0 && policyID != "" {
-		pub.PublishEvidence(policyID, count)
-	}
-
-	tracker.Complete(ref.JobID, count, policyID)
+	tracker.Complete(ref.JobID, 1, policyID)
 	slog.Info("async ingest completed",
 		"job_id", ref.JobID,
 		"type", artifactType,
-		"inserted", count,
 		"policy_id", policyID,
 	)
 	return outcomeAck
 }
 
-func handleArtifactStoreJS(
-	ctx context.Context,
+func handleArtifactEventJS(
 	ref bus.IngestRef,
+	artifactType gemara.ArtifactType,
+	pub EventPublisher,
 	tracker *IngestTracker,
-	storeFn func() (string, string, error),
-	bundleStore func(context.Context, requirements.BundleArtifactRow) error,
 ) ingestOutcome {
-	id, artType, err := storeFn()
-	if err != nil {
-		tracker.Fail(ref.JobID, fmt.Sprintf("store failed: %v", err))
-		slog.Warn("async ingest: store failed", "job_id", ref.JobID, "error", err)
-		return outcomeNak // Store failure is transient
+	artType := artifactType.String()
+
+	if artifactType == gemara.PolicyArtifact && pub != nil {
+		pub.PublishPolicyNew(ref.LogIndex, ref.JobID)
 	}
 
-	if ref.BundleID != "" && bundleStore != nil {
-		if err := bundleStore(ctx, requirements.BundleArtifactRow{
-			BundleID:        ref.BundleID,
-			TesseraLogIndex: ref.LogIndex,
-			ArtifactType:    artType,
-			ArtifactID:      id,
-			OCIReference:    ref.OCIReference,
-		}); err != nil {
-			slog.Warn("bundle artifact tracking failed", "bundle_id", ref.BundleID, "error", err)
-		}
-	}
-
-	tracker.CompleteArtifact(ref.JobID, id, artType)
+	tracker.CompleteArtifact(ref.JobID, ref.JobID, artType)
 	slog.Info("async ingest completed",
 		"job_id", ref.JobID,
 		"type", artType,
-		"artifact_id", id,
 	)
 	return outcomeAck
 }
@@ -277,9 +186,8 @@ func handleTargetRegistrationJS(
 		return outcomeNak
 	}
 
-	// Process trusted-publishers additions
 	if len(reg.Target.TrustedPublishers) > 0 && trustedPubs != nil {
-		logIdx := int64(ref.LogIndex) //nolint:gosec // tessera log indices are sequential from 0
+		logIdx := int64(ref.LogIndex) //nolint:gosec
 		addedBy := ref.PublisherIdentity.Sub
 		pubRows := make([]requirements.TrustedPublisherRow, len(reg.Target.TrustedPublishers))
 		for i, p := range reg.Target.TrustedPublishers {
@@ -304,7 +212,6 @@ func handleTargetRegistrationJS(
 		slog.Info("trusted publishers added", "job_id", ref.JobID, "target_id", reg.Target.ID, "count", len(pubRows))
 	}
 
-	// Process remove-publishers removals
 	if len(reg.Target.RemovePublishers) > 0 && trustedPubs != nil {
 		keys := make([]requirements.TrustedPublisherKey, len(reg.Target.RemovePublishers))
 		for i, p := range reg.Target.RemovePublishers {

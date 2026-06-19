@@ -6,7 +6,6 @@ import (
 	"context"
 
 	"github.com/complytime-labs/complytime-core/internal/auth"
-	"github.com/complytime-labs/complytime-core/internal/evidence"
 	"github.com/complytime-labs/complytime-core/internal/httputil"
 	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
@@ -19,7 +18,6 @@ type TesseraAppender interface {
 }
 
 // EventPublisher emits NATS events for evidence, policies, and targets.
-// Implemented by *bus.Bus; nil-safe (callers check before use).
 type EventPublisher interface {
 	PublishEvidence(policyID string, count int)
 	PublishDraftAuditLog(draftID, policyID, summary string)
@@ -34,19 +32,8 @@ type JWTVerifier interface {
 
 // ── Stores composition ──────────────────────────────────────────────────────
 
-// Stores groups domain store interfaces needed by ingest and import handlers.
-// Postgres-backed query stores have been removed (Phase 2); these fields are
-// retained because the async ingest worker and OCI import still write through
-// them until Phase 4 migrates persistence to Tessera-only.
+// Stores groups the dependencies needed by ingest and import handlers.
 type Stores struct {
-	Policies          requirements.PolicyStore
-	Mappings          requirements.MappingStore
-	Evidence          evidence.EvidenceStore
-	Controls          requirements.ControlStore
-	Guidance          requirements.GuidanceStore
-	Threats           requirements.ThreatStore
-	Risks             requirements.RiskStore
-	Catalogs          requirements.CatalogStore
 	Targets           requirements.TargetStore
 	TrustedPublishers requirements.TrustedPublisherStore
 	EventPublisher    EventPublisher
@@ -56,15 +43,4 @@ type Stores struct {
 	TesseraAppender   TesseraAppender
 	JWTVerifier       JWTVerifier
 	IngestRateLimit   httputil.RateLimitOptions
-}
-
-// InsertBundleArtifact inserts a bundle artifact if the Evidence store supports it.
-func (s Stores) InsertBundleArtifact(ctx context.Context, b requirements.BundleArtifactRow) error {
-	type bundleInserter interface {
-		InsertBundleArtifact(ctx context.Context, b requirements.BundleArtifactRow) error
-	}
-	if bi, ok := s.Evidence.(bundleInserter); ok {
-		return bi.InsertBundleArtifact(ctx, b)
-	}
-	return nil
 }

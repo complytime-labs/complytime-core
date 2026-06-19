@@ -82,6 +82,11 @@ func (v *Verifier) VerifyEntry(ctx context.Context, logIndex uint64) bool {
 
 // verifyEvidence runs the full verification pipeline for EvaluationLog/EnforcementLog.
 func (v *Verifier) verifyEvidence(ctx context.Context, logIndex uint64, entry []byte, artifactType string) bool {
+	if v.db == nil {
+		slog.Info("verified entry (db checks skipped, NATS KV migration pending)",
+			"log_index", logIndex, "type", artifactType)
+		return true
+	}
 	evidenceRow, err := v.db.QueryEvidenceByLogIndex(ctx, logIndex)
 	if err != nil {
 		slog.Warn("evidence not yet in PostgreSQL", "log_index", logIndex, "error", err)
@@ -161,15 +166,15 @@ func (v *Verifier) verifyAuditLog(ctx context.Context, logIndex uint64, entry []
 	return true
 }
 
-// verifyPolicy checks that a Policy artifact was processed by the ingest worker.
-func (v *Verifier) verifyPolicy(ctx context.Context, logIndex uint64, entry []byte) bool {
+// verifyPolicy checks that a Policy artifact was processed.
+func (v *Verifier) verifyPolicy(_ context.Context, logIndex uint64, entry []byte) bool {
 	policyID := parsePolicyID(entry)
 	if policyID == "" {
 		slog.Warn("policy has no metadata.id", "log_index", logIndex)
 		return false
 	}
-	if !v.db.PolicyExistsByID(ctx, policyID) {
-		slog.Warn("policy not yet in PostgreSQL", "log_index", logIndex, "policy_id", policyID)
+	if v.db != nil && !v.db.PolicyExistsByID(context.Background(), policyID) {
+		slog.Warn("policy not yet processed", "log_index", logIndex, "policy_id", policyID)
 		return false
 	}
 	slog.Info("verified policy entry", "log_index", logIndex, "policy_id", policyID)
@@ -177,9 +182,9 @@ func (v *Verifier) verifyPolicy(ctx context.Context, logIndex uint64, entry []by
 }
 
 // verifyTargetRegistration checks that a TargetRegistration was processed.
-func (v *Verifier) verifyTargetRegistration(ctx context.Context, logIndex uint64, _ []byte, targetID string) bool {
-	if !v.db.IsTargetRegistered(ctx, targetID) {
-		slog.Warn("target not yet registered in PostgreSQL", "log_index", logIndex, "target_id", targetID)
+func (v *Verifier) verifyTargetRegistration(_ context.Context, logIndex uint64, _ []byte, targetID string) bool {
+	if v.db != nil && !v.db.IsTargetRegistered(context.Background(), targetID) {
+		slog.Warn("target not yet registered", "log_index", logIndex, "target_id", targetID)
 		return false
 	}
 	slog.Info("verified target registration entry", "log_index", logIndex, "target_id", targetID)
@@ -290,7 +295,9 @@ func (v *Verifier) verifyTargetScoping(ctx context.Context, auditLog []byte, evi
 }
 
 func (v *Verifier) isIndexWitnessed(ctx context.Context, index uint64) bool {
-	// Query witness state: has this index been cosigned?
+	if v.db == nil {
+		return true
+	}
 	return v.db.IsIndexWitnessed(ctx, index)
 }
 

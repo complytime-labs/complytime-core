@@ -75,7 +75,7 @@ func ociImport(c echo.Context, s Stores, ref string) error {
 	allFiles := append(bundle.Files, bundle.Imports...)
 
 	if s.TesseraAppender == nil || s.IngestPublisher == nil {
-		return ociImportLegacy(c, s, allFiles, bundle.Etag)
+		return jsonError(c, http.StatusServiceUnavailable, "tessera and NATS are required for import")
 	}
 
 	identity := bus.PublisherIdentity{
@@ -130,30 +130,3 @@ func ociImport(c echo.Context, s Stores, ref string) error {
 	})
 }
 
-func ociImportLegacy(c echo.Context, s Stores, files []gemarabundle.File, etag string) error {
-	var resp ociImportResponse
-	resp.Digest = etag
-
-	ctx := c.Request().Context()
-	is := requirements.ImportStores{
-		Catalogs: s.Catalogs,
-		Controls: s.Controls,
-		Threats:  s.Threats,
-		Risks:    s.Risks,
-		Guidance: s.Guidance,
-	}
-	for _, f := range files {
-		art, err := requirements.StoreArtifactFile(ctx, s.Policies, s.Controls, s.Mappings, is, f)
-		if err != nil {
-			slog.Warn("import artifact failed", "name", f.Name, "error", err)
-			continue
-		}
-		resp.Imported = append(resp.Imported, art)
-	}
-
-	if len(resp.Imported) == 0 {
-		return jsonError(c, http.StatusBadRequest, "bundle contained no importable artifacts")
-	}
-
-	return c.JSON(http.StatusCreated, resp)
-}

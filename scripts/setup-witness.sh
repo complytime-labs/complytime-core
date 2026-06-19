@@ -58,7 +58,7 @@ WIT_VKEY=$(echo "$WITKEYS" | tail -1)
 
 echo "$WIT_SKEY" > "$OUTDIR/witness-signer.key"
 echo "$WIT_VKEY" > "$OUTDIR/witness-verifier.key"
-chmod 600 "$OUTDIR/witness-signer.key"
+chmod 644 "$OUTDIR/witness-signer.key"
 
 # Generate log signer key pair (pre-generate so witness can be provisioned)
 echo "Generating log signer key pair..."

@@ -58,6 +58,11 @@ type Bus struct {
 	js   jetstream.JetStream
 }
 
+// Conn returns the underlying NATS connection for health checks.
+func (b *Bus) Conn() *nats.Conn {
+	return b.conn
+}
+
 // JetStream returns the underlying JetStream client for KV operations.
 func (b *Bus) JetStream() jetstream.JetStream {
 	return b.js

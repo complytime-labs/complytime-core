@@ -243,3 +243,17 @@ func derivePolicyID(refs []gemara.MappingReference) string {
 	}
 	return ""
 }
+
+// DetectPolicyID extracts the policy ID from a Gemara evidence artifact
+// without full flattening. Returns empty string if not detectable.
+func DetectPolicyID(data []byte) string {
+	var meta struct {
+		Metadata struct {
+			MappingReferences []gemara.MappingReference `yaml:"mapping-references"`
+		} `yaml:"metadata"`
+	}
+	if err := yaml.Unmarshal(data, &meta); err != nil {
+		return ""
+	}
+	return derivePolicyID(meta.Metadata.MappingReferences)
+}
