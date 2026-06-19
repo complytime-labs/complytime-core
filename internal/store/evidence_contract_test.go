@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +21,28 @@ import (
 	"github.com/complytime-labs/complytime-core/internal/bus"
 	"github.com/complytime-labs/complytime-core/internal/evidence"
 )
+
+type fakeEvidenceStore struct {
+	inserted []evidence.EvidenceRecord
+	query    []evidence.EvidenceRecord
+}
+
+func (f *fakeEvidenceStore) InsertEvidence(ctx context.Context, records []evidence.EvidenceRecord) (int, error) {
+	f.inserted = append([]evidence.EvidenceRecord{}, records...)
+	return len(records), nil
+}
+
+func (f *fakeEvidenceStore) QueryEvidence(ctx context.Context, filt evidence.EvidenceFilter) ([]evidence.EvidenceRecord, error) {
+	out := make([]evidence.EvidenceRecord, len(f.query))
+	copy(out, f.query)
+	return out, nil
+}
+
+type failingEvidenceStore struct{ fakeEvidenceStore }
+
+func (f *failingEvidenceStore) InsertEvidence(_ context.Context, _ []evidence.EvidenceRecord) (int, error) {
+	return 0, errors.New("db connection lost")
+}
 
 const minimalEvalLog = `metadata:
   type: EvaluationLog
