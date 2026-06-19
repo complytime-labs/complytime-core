@@ -1,0 +1,191 @@
+title: Transparency Log Threat Catalog
+metadata:
+  id: complytime-ingest-tlog-threats
+  type: ThreatCatalog
+  gemara-version: "1.3.0"
+  description: >-
+    STRIDE-based threat catalog for ComplyTime Ingest's transparency log.
+    Identifies threats to the append-only evidence ledger and its verification
+    properties. Assessment of these threats is performed by corresponding
+    controls in complytime-ingest-tlog-controls.
+  author:
+    id: complytime-team
+    name: ComplyTime Team
+    type: Human
+  mapping-references:
+    - id: tlog-capabilities
+      title: Transparency Log Capabilities
+      version: "1.0.0"
+      description: Core capabilities of the Tessera-backed transparency log
+groups:
+  - id: spoofing
+    title: Spoofing
+    description: Threats involving impersonation of identities or components
+  - id: tampering
+    title: Tampering
+    description: Threats involving unauthorized modification of log data or state
+  - id: repudiation
+    title: Repudiation
+    description: Threats where actions or states cannot be independently verified
+  - id: information-disclosure
+    title: Information Disclosure
+    description: Threats involving exposure of sensitive operational details
+  - id: denial-of-service
+    title: Denial of Service
+    description: Threats that degrade or prevent log availability
+  - id: elevation-of-privilege
+    title: Elevation of Privilege
+    description: Threats involving unauthorized expansion of trust or authority
+threats:
+  - id: T-TAMP-01
+    title: Log equivocation
+    description: >-
+      The log operator presents different views of the log to different clients,
+      forking the append-only history. Without independent witness cosignatures,
+      clients have no way to detect that the log has been split.
+    group: tampering
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Checkpoint publication
+  - id: T-REP-01
+    title: Unverifiable log inclusion
+    description: >-
+      A client that submitted evidence and received a log_index cannot
+      independently verify that their entry is included in the log's Merkle
+      tree. The log serves no checkpoint, tiles, or inclusion proofs over HTTP.
+    group: repudiation
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Entry storage and retrieval
+  - id: T-REP-02
+    title: Checkpoint signer key loss on restart
+    description: >-
+      The checkpoint signer key is generated fresh on every process start.
+      After a restart, all prior checkpoint signatures become unverifiable
+      because the public key has changed, enabling denial of prior log state.
+    group: repudiation
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Checkpoint signing
+  - id: T-REP-03
+    title: Unverifiable witnessed status
+    description: >-
+      A client holding a log_index cannot determine whether their entry has
+      been covered by a witnessed (cosigned) checkpoint. No endpoint reports
+      whether a given index falls within a cosigned checkpoint's tree size.
+    group: repudiation
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Witness verification status
+  - id: T-ELEV-01
+    title: Monitor conflated with witness
+    description: >-
+      The content monitor (cmd/monitor) verifies Gemara schema, trust signals,
+      and publisher trust, but does not verify log consistency or cosign
+      checkpoints. Conflating it with an anti-equivocation witness creates
+      false confidence that fork detection is in place when it is not.
+    group: elevation-of-privilege
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Content verification
+  - id: T-TAMP-02
+    title: Monitor fails to detect invalid evidence
+    description: >-
+      The content monitor (cmd/monitor) fails to reject evidence that does not
+      conform to the Gemara schema, has an untrusted publisher, or references
+      nonexistent policies. Downstream consumers trust the monitor's verification
+      and process invalid evidence.
+    group: tampering
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Content verification
+  - id: T-SPOOF-01
+    title: Publisher trust check bypassed
+    description: >-
+      A submission bypasses the publisher trust check by presenting a valid JWT
+      from an issuer/subject pair not in the trusted publishers list but not
+      rejected by the monitor. The evidence appears trustworthy but comes from
+      an unauthorized source.
+    group: spoofing
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Publisher identity verification
+  - id: T-DOS-01
+    title: Evidence flooding via ingest endpoint
+    description: >-
+      An attacker submits a high volume of evidence to the ingest endpoint,
+      exhausting Tessera storage, NATS queue capacity, and PostgreSQL resources.
+      Without authentication and rate limiting, the log grows unboundedly with
+      garbage entries that cannot be removed from the append-only store.
+    group: denial-of-service
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Evidence ingestion
+  - id: T-DOS-02
+    title: Public endpoint flooding
+    description: >-
+      An attacker sends a high volume of requests to the unauthenticated tlog
+      read endpoints (/checkpoint, /tile/*, /log/witnessed/:index), exhausting
+      gateway resources. These endpoints have no application-level rate limiting.
+      Mitigation is infrastructure-level: reverse proxy rate limiting, CDN
+      caching for immutable tiles, or network-layer DDoS protection.
+    group: denial-of-service
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Checkpoint publication
+  - id: T-INFO-02
+    title: Log metadata disclosure via public checkpoint
+    description: >-
+      An unauthenticated client can learn the log's tree size, checkpoint
+      publication frequency, and growth rate by polling the public /checkpoint
+      endpoint. This is inherent to transparency logs and accepted because
+      the checkpoint is a public commitment to log state.
+    group: information-disclosure
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Checkpoint publication
+  - id: T-INFO-03
+    title: Entry content disclosure via public tiles
+    description: >-
+      An unauthenticated client can read evidence content from entry bundles
+      served at the public /tile/* endpoint. Transparency log entries are
+      readable by design. If evidence confidentiality is required, entries
+      must be encrypted before appending.
+    group: information-disclosure
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Entry storage and retrieval
+  - id: T-INFO-01
+    title: JWKS discovery requires network egress
+    description: >-
+      The JWT verifier fetches issuer JWKS via HTTP discovery. In an air-gapped
+      deployment, this external dependency prevents authentication from
+      functioning without an in-enclave OIDC IdP or static JWKS provisioning.
+    group: information-disclosure
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Publisher identity verification
