@@ -128,9 +128,9 @@ threats:
     title: Evidence flooding via ingest endpoint
     description: >-
       An attacker submits a high volume of evidence to the ingest endpoint,
-      exhausting Tessera storage, NATS queue capacity, and PostgreSQL resources.
-      Without authentication and rate limiting, the log grows unboundedly with
-      garbage entries that cannot be removed from the append-only store.
+      exhausting Tessera storage and NATS queue capacity. Without authentication
+      and rate limiting, the log grows unboundedly with garbage entries that
+      cannot be removed from the append-only store.
     group: denial-of-service
     capabilities:
       - reference-id: tlog-capabilities
@@ -142,7 +142,7 @@ threats:
     description: >-
       An attacker sends a high volume of requests to the unauthenticated tlog
       read endpoints (/checkpoint, /tile/*, /log/witnessed/:index), exhausting
-      gateway resources. These endpoints have no application-level rate limiting.
+      ingest service resources. These endpoints have no application-level rate limiting.
       Mitigation is infrastructure-level: reverse proxy rate limiting, CDN
       caching for immutable tiles, or network-layer DDoS protection.
     group: denial-of-service
@@ -177,6 +177,58 @@ threats:
         entries:
           - reference-id: tlog-capabilities
             remarks: Entry storage and retrieval
+  - id: T-TAMP-03
+    title: Publisher trust state loss
+    description: >-
+      The NATS KV bucket containing publisher allowlists is lost or corrupted.
+      Without rebuild from Tessera, publisher authorization checks fail and
+      all ingestion is rejected (fail-closed). Recovery requires replaying
+      TargetRegistration entries from the transparency log.
+    group: tampering
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Publisher identity verification
+  - id: T-ELEV-02
+    title: No role-based write protection
+    description: >-
+      Any authenticated user can submit to the ingest endpoint. Authorization
+      depends on per-target publisher allowlists in NATS KV, not API-level
+      roles. If an allowlist is empty or misconfigured, unauthorized
+      submissions are accepted for that target.
+    group: elevation-of-privilege
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Evidence ingestion
+  - id: T-REP-04
+    title: Certification results not locally persisted
+    description: >-
+      Trust signals (schema, provenance, executor checks) are published as
+      NATS events but not stored by the ingest service. If no downstream
+      subscriber persists them, certification state is lost and cannot be
+      audited after the fact.
+    group: repudiation
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Content verification
+  - id: T-DOS-03
+    title: NATS KV unavailability blocks ingestion
+    description: >-
+      Publisher trust lookup is fail-closed. If NATS KV is unavailable, all
+      ingestion is rejected until KV recovers. This is an accepted tradeoff:
+      integrity over availability, since Tessera is append-only and bad
+      evidence cannot be removed.
+    group: denial-of-service
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Evidence ingestion
   - id: T-INFO-01
     title: JWKS discovery requires network egress
     description: >-
