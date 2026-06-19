@@ -10,7 +10,7 @@ complytime-core is a Go service for compliance evidence ingestion and transparen
 
 ### Binaries
 
-- `cmd/gateway` — Ingest service: HTTP API, Tessera append, NATS publish, tlog-tiles API
+- `cmd/ingest` — Ingest service: HTTP API, Tessera append, NATS publish, tlog-tiles API
 - `cmd/monitor` — Content verification daemon: polls Tessera, validates entries
 - `cmd/testjwks` — Test JWKS server for local development (not production)
 
@@ -35,14 +35,14 @@ complytime-core is a Go service for compliance evidence ingestion and transparen
 - **Async ingest via NATS JetStream**: artifacts are Tessera-appended first, then processed asynchronously by `IngestWorker`
 - **NATS KV for state**: publisher trust and target registry stored in NATS KV buckets, rebuildable from Tessera
 - **Echo v4 HTTP framework**: routes registered in `internal/store/handlers.go`, middleware in `internal/httputil/`
-- **Tessera embedded as Go library**: the gateway IS the log personality, not a separate Tessera daemon
+- **Tessera embedded as Go library**: the ingest service IS the log personality, not a separate Tessera daemon
 
 ---
 
 ## Build and Test
 
 ```bash
-go build ./cmd/gateway/          # Build ingest service
+go build ./cmd/ingest/          # Build ingest service
 go build ./cmd/monitor/          # Build content monitor
 go test -tags dev ./...          # Unit tests (no external deps)
 go test -tags integration ./internal/e2e/ -run "Transparency"  # Integration tests

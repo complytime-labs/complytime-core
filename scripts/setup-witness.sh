@@ -82,7 +82,7 @@ POLICYEOF
 cat > "$OUTDIR/additional-logs.yaml" << LOGSEOF
 Logs:
   - Origin: tessera-log
-    URL: http://gateway:8080
+    URL: http://ingest:8080
     PublicKey: ${LOG_VKEY}
     Feeder: tiles
 LOGSEOF

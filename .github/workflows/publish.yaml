@@ -31,7 +31,7 @@ jobs:
       - uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
         id: meta
         with:
-          images: ${{ env.REGISTRY }}/${{ env.ORG }}/studio-gateway
+          images: ${{ env.REGISTRY }}/${{ env.ORG }}/complytime-ingest
           tags: |
             type=sha,prefix=
             type=ref,event=branch
@@ -41,7 +41,7 @@ jobs:
       - uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: .
-          file: Dockerfile.gateway
+          file: Dockerfile.ingest
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

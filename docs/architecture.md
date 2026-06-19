@@ -26,7 +26,7 @@ flowchart TB
     CI["CI/CD Pipelines"]
   end
 
-  subgraph Ingest["Ingest Service — cmd/gateway — :8080"]
+  subgraph Ingest["Ingest Service — cmd/ingest — :8080"]
     Echo["Echo — auth, /api/ingest, tlog-tiles"]
   end
 
@@ -54,7 +54,7 @@ flowchart TB
 
 ## Binaries
 
-### Ingest Service (`cmd/gateway`)
+### Ingest Service (`cmd/ingest`)
 
 Accepts Gemara artifacts, appends to Tessera, publishes NATS events. Serves the tlog-tiles read API for offline verification.
 

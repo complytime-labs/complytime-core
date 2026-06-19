@@ -27,8 +27,8 @@ jobs:
         run: go vet -tags dev ./...
       - name: Test
         run: go test -tags dev -v -race -cover ./...
-      - name: Build gateway
-        run: go build -o /dev/null ./cmd/gateway/
+      - name: Build ingest
+        run: go build -o /dev/null ./cmd/ingest/
       - name: Build monitor
         run: go build -o /dev/null ./cmd/monitor/
       - name: Transparency log verification

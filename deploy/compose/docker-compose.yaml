@@ -6,10 +6,10 @@
 # Run scripts/setup-witness.sh first to generate witness keys.
 
 services:
-  gateway:
+  ingest:
     build:
       context: ../../
-      dockerfile: Dockerfile.gateway
+      dockerfile: Dockerfile.ingest
     ports:
       - "8080:8080"
     environment:

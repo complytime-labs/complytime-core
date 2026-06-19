@@ -54,8 +54,8 @@ podman run -d --name nats -p 4222:4222 docker.io/library/nats:latest -js -sd /da
 # Build and run the gateway
 export POSTGRES_URL="postgres://complytime:complytime@localhost:5432/complytime?sslmode=disable"
 export NATS_URL="nats://localhost:4222"
-make gateway-build
-./bin/studio-gateway
+make ingest-build
+./bin/complytime-ingest
 ```
 
 ```bash

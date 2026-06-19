@@ -31,7 +31,7 @@ PostgreSQL is the primary application database. ClickHouse is optional for scale
 
 ## Superseded
 
-The A2A proxy, agent directory, chat state, and MCP proxy concerns were extracted into the **Studio Workbench** (Python, Starlette) in the [complytime-studio](https://github.com/complytime-labs/complytime-studio) repo. The gateway (`cmd/gateway`) is now a pure data platform — `internal/agents/`, `internal/proxy/`, `internal/publish/`, and `internal/registry/` were deleted. See [Data Platform + Workbench Split](data-platform-workbench-split.md).
+The A2A proxy, agent directory, chat state, and MCP proxy concerns were extracted into the **Studio Workbench** (Python, Starlette) in the [complytime-studio](https://github.com/complytime-labs/complytime-studio) repo. The gateway (`cmd/ingest`) is now a pure data platform — `internal/agents/`, `internal/proxy/`, `internal/publish/`, and `internal/registry/` were deleted. See [Data Platform + Workbench Split](data-platform-workbench-split.md).
 
 ## Rejected Alternatives
 

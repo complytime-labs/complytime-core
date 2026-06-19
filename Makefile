@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 NAMESPACE ?= kagent
-GATEWAY_IMAGE ?= studio-gateway
-GATEWAY_TAG ?= local
+INGEST_IMAGE ?= complytime-ingest
+INGEST_TAG ?= local
 CONTAINER_RUNTIME ?= $(shell command -v podman >/dev/null 2>&1 && echo podman || echo docker)
 KIND_CLUSTER ?= complytime-studio
 
 .PHONY: test lint clean \
-	gateway-build gateway-build-fips gateway-image \
+	ingest-build ingest-build-fips ingest-image \
 	monitor-build monitor-build-fips monitor-image \
 
 	compose-up seed \
@@ -31,14 +31,14 @@ lint-openapi:
 clean:
 	rm -rf bin/
 
-gateway-build:
-	go build -o bin/studio-gateway ./cmd/gateway/
+ingest-build:
+	go build -o bin/complytime-ingest ./cmd/ingest/
 
-gateway-build-fips:
-	GOFIPS140=latest go build -o bin/studio-gateway ./cmd/gateway/
+ingest-build-fips:
+	GOFIPS140=latest go build -o bin/complytime-ingest ./cmd/ingest/
 
-gateway-image:
-	docker build --no-cache -f Dockerfile.gateway -t $(GATEWAY_IMAGE):$(GATEWAY_TAG) .
+ingest-image:
+	docker build --no-cache -f Dockerfile.ingest -t $(INGEST_IMAGE):$(INGEST_TAG) .
 
 monitor-build:
 	go build -o bin/monitor ./cmd/monitor/

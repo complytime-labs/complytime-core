@@ -8,14 +8,14 @@ RUN go mod download
 COPY . .
 
 ARG GOFIPS140=
-RUN GOFIPS140=${GOFIPS140} CGO_ENABLED=0 go build -o /studio-gateway ./cmd/gateway/
+RUN GOFIPS140=${GOFIPS140} CGO_ENABLED=0 go build -o /complytime-ingest ./cmd/ingest/
 
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:d093aa3e30dbadd3efe1310db061a14da60299baff8450a17fe0ccc514a16639
 
 USER 65532
 
-COPY --from=builder /studio-gateway /studio-gateway
+COPY --from=builder /complytime-ingest /complytime-ingest
 
 EXPOSE 8080
 
-ENTRYPOINT ["/studio-gateway"]
+ENTRYPOINT ["/complytime-ingest"]
