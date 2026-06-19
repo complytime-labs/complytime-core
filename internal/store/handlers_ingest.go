@@ -14,14 +14,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
+	"github.com/complytime-labs/complytime-core/internal/auth"
 	"github.com/complytime-labs/complytime-core/internal/bus"
 	"github.com/complytime-labs/complytime-core/internal/consts"
+	"github.com/complytime-labs/complytime-core/internal/evidence"
 	"github.com/complytime-labs/complytime-core/internal/httputil"
+	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
 
 func registerIngestRoutes(g *echo.Group, s Stores) {
 	ingestHandler := httputil.RateLimit(s.IngestRateLimit)(
-		IngestAsyncHandler(s.IngestPublisher, s.IngestTracker, s.TesseraAppender, s.JWTVerifier),
+		IngestAsyncHandler(s.IngestPublisher, s.IngestTracker, s.TesseraAppender, s.JWTVerifier, s.TrustedPublishers),
 	)
 	g.POST("/ingest", echo.WrapHandler(ingestHandler))
 	g.GET("/ingest/jobs/:job_id", IngestJobStatusHandler(s.IngestTracker))
@@ -36,7 +39,7 @@ type IngestPublisher interface {
 // YAML with a Bearer JWT token, verifies the JWT, appends to Tessera,
 // assigns a job ID, publishes an IngestRef to JetStream, and returns
 // 202 Accepted with the job ID and log_index for polling.
-func IngestAsyncHandler(pub IngestPublisher, tracker *IngestTracker, appender TesseraAppender, verifier JWTVerifier) http.HandlerFunc {
+func IngestAsyncHandler(pub IngestPublisher, tracker *IngestTracker, appender TesseraAppender, verifier JWTVerifier, trustedPubs requirements.TrustedPublisherStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
@@ -65,6 +68,14 @@ func IngestAsyncHandler(pub IngestPublisher, tracker *IngestTracker, appender Te
 		if len(body) == 0 {
 			httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{
 				"errors": []string{"request body is empty — expected Gemara YAML"},
+			})
+			return
+		}
+
+		if err := checkPublisherTrust(ctx, body, claims, trustedPubs); err != nil {
+			slog.Warn("publisher trust check failed", "issuer", claims.Iss, "sub", claims.Sub, "error", err)
+			httputil.WriteJSON(w, http.StatusForbidden, map[string]any{
+				"errors": []string{err.Error()},
 			})
 			return
 		}
@@ -145,6 +156,58 @@ func extractBearerToken(r *http.Request) string {
 		return ""
 	}
 	return parts[1]
+}
+
+// checkPublisherTrust verifies that the JWT caller is authorized to submit
+// artifacts for the target in the YAML. TargetRegistrations are exempt (any
+// authenticated user can register a target). Artifacts without a target ID
+// (e.g., policies) are also exempt.
+func checkPublisherTrust(ctx context.Context, body []byte, claims *auth.JWTClaims, store requirements.TrustedPublisherStore) error {
+	if store == nil {
+		return nil
+	}
+
+	typeStr := evidence.DetectArtifactTypeString(body)
+	if typeStr == "TargetRegistration" || typeStr == "Policy" {
+		return nil
+	}
+
+	targetID := evidence.DetectTargetID(body)
+	if targetID == "" {
+		return nil
+	}
+
+	pubs, err := store.GetTrustedPublishers(ctx, targetID)
+	if err != nil {
+		return fmt.Errorf("publisher trust check unavailable — try again later")
+	}
+
+	if len(pubs) == 0 {
+		return fmt.Errorf("no trusted publishers configured for target %s", targetID)
+	}
+
+	for _, p := range pubs {
+		if matchPublisher(claims.Iss, claims.Sub, p.Issuer, p.SubPattern) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("publisher not authorized for target %s", targetID)
+}
+
+// matchPublisher checks if a JWT issuer/subject matches a trusted publisher
+// entry. Supports exact match and glob-style prefix matching (trailing *).
+func matchPublisher(issuer, sub, trustedIssuer, trustedPattern string) bool {
+	if issuer != trustedIssuer {
+		return false
+	}
+	if trustedPattern == sub {
+		return true
+	}
+	if strings.HasSuffix(trustedPattern, "*") {
+		return strings.HasPrefix(sub, trustedPattern[:len(trustedPattern)-1])
+	}
+	return false
 }
 
 // inferPublisherType infers the publisher type from the JWT subject claim.

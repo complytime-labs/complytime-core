@@ -225,6 +225,34 @@ controls:
           caller to bound submission volume.
         applicability: [all]
         state: Draft
+  - id: CTRL-CI-05
+    title: Ingest Boundary Publisher Authorization
+    objective: >-
+      The ingest service checks the JWT caller's issuer and subject against
+      the per-target publisher allowlist in NATS KV before appending to
+      Tessera. Unauthorized publishers are rejected. Targets with no
+      configured publishers deny all submissions (deny by default).
+    group: content-integrity
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-SPOOF-01 (publisher trust bypass)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-CI-05.1
+        text: >-
+          The ingest service MUST reject evidence submissions from publishers
+          whose JWT issuer/subject do not match any entry in the target's
+          trusted publisher allowlist.
+        applicability: [all]
+        state: Active
+      - id: CTRL-CI-05.2
+        text: >-
+          The ingest service MUST reject evidence submissions for targets
+          with no trusted publishers configured (deny by default).
+        applicability: [all]
+        state: Active
   - id: CTRL-CI-03
     title: Publisher Trust Fail-Closed on KV Unavailability
     objective: >-
