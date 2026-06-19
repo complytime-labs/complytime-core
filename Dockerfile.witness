@@ -5,12 +5,19 @@
 
 FROM golang:1.26@sha256:68cb6d68bed024785b69195b89af7ac7a444f27791435f98647edff595aa0479 AS builder
 
-RUN go install github.com/transparency-dev/witness/cmd/omniwitness@main
+RUN go install github.com/transparency-dev/witness/cmd/omniwitness@9332986a94a40afa58fa84922be2697d2780c883 # main as of 2026-06-19, pinned until --additional_logs is released
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:35ae959f6e83ffb465e7614d27b4fddd28288caa551fbca2798367567cce80d3
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -r -u 65532 -s /usr/sbin/nologin witness
 
 COPY --from=builder /go/bin/omniwitness /omniwitness
+
+USER 65532
+
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+  CMD curl -f http://localhost:8080/ || exit 1
 
 ENTRYPOINT ["/omniwitness"]

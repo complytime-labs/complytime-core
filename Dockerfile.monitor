@@ -16,4 +16,5 @@ USER 65532
 
 COPY --from=builder /studio-monitor /studio-monitor
 
+# trivy:ignore:DS-0026 -- distroless has no shell or curl for HEALTHCHECK
 ENTRYPOINT ["/studio-monitor"]

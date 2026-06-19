@@ -15,4 +15,5 @@ USER 65532
 
 COPY --from=builder /testjwks /testjwks
 
+# trivy:ignore:DS-0026 -- distroless has no shell or curl for HEALTHCHECK
 ENTRYPOINT ["/testjwks"]
