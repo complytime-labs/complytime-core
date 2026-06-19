@@ -52,7 +52,7 @@ Witness service (independent daemon):
 
 **POSIX storage for cloud-agnostic deployment.** Tessera uses a directory on disk, mountable as a Kubernetes PersistentVolume. No cloud-specific storage driver required.
 
-**Ephemeral signer keys per client instance.** Checkpoint signatures cannot be verified across process restarts. Acceptable for internal transparency logs where the witness provides independent verification.
+**Persistent signer key (opt-in).** When `TESSERA_SIGNER_KEY_PATH` is set, the signer key is loaded from (or generated into) that file so the log maintains a stable identity across restarts and checkpoint signatures remain verifiable. When unset, an ephemeral key is generated per instance (the previous default).
 
 **Witness validation is advisory for target registration.** The witness logs warnings for unregistered targets but does not reject evidence. This allows gradual adoption of the enrollment system.
 

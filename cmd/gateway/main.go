@@ -124,7 +124,9 @@ func main() {
 	ingestTracker := store.NewIngestTracker()
 
 	// Initialize Tessera client for transparency log
-	tesseraClient, err := tessera.NewClient(ctx, cfg.TesseraPath, tessera.DefaultOptions())
+	tesseraOpts := tessera.DefaultOptions()
+	tesseraOpts.SignerKeyPath = cfg.TesseraSignerKeyPath
+	tesseraClient, err := tessera.NewClient(ctx, cfg.TesseraPath, tesseraOpts)
 	if err != nil {
 		slog.Error("tessera client init failed", "error", err)
 		os.Exit(1)

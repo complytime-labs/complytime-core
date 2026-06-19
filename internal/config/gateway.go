@@ -22,7 +22,8 @@ type GatewayConfig struct {
 	ListenHost string
 
 	// Tessera
-	TesseraPath string
+	TesseraPath          string
+	TesseraSignerKeyPath string
 
 	// JWT / Publisher Identity
 	JWTIssuers  []string
@@ -69,31 +70,32 @@ type GatewayConfig struct {
 // Returns an error listing all missing required variables.
 func GatewayFromEnv() (*GatewayConfig, error) {
 	cfg := &GatewayConfig{
-		PostgresURL:        os.Getenv("POSTGRES_URL"),
-		NatsURL:            os.Getenv("NATS_URL"),
-		Port:               envOr("PORT", "8080"),
-		ListenHost:         envOr("LISTEN_HOST", "0.0.0.0"),
-		TesseraPath:        envOr("TESSERA_PATH", "/data/tessera"),
-		JWTIssuers:         splitComma(os.Getenv("JWT_ISSUERS")),
-		JWTAudience:        os.Getenv("JWT_AUDIENCE"),
-		CORSOrigins:        splitComma(os.Getenv("CORS_ORIGINS")),
-		OAuth2ProxyEnabled: os.Getenv("OAUTH2_PROXY_ENABLED") != "false",
-		WorkbenchURL:       envOr("WORKBENCH_URL", "http://studio-workbench:8090"),
-		BlobEndpoint:       os.Getenv("BLOB_ENDPOINT"),
-		BlobBucket:         os.Getenv("BLOB_BUCKET"),
-		BlobAccessKey:      os.Getenv("BLOB_ACCESS_KEY"),
-		BlobSecretKey:      os.Getenv("BLOB_SECRET_KEY"),
-		BlobUseSSL:         os.Getenv("BLOB_USE_SSL") == "true",
-		StudioVersion:      envOr("STUDIO_VERSION", "dev"),
-		GitHubOrg:          os.Getenv("GITHUB_ORG"),
-		GitHubRepo:         envOr("GITHUB_REPO", "complytime-studio"),
-		RegistryInsecure:   os.Getenv("REGISTRY_INSECURE") == "true",
-		IngestMaxDeliver:   envInt("NATS_INGEST_MAX_DELIVER", 5),
-		IngestAckWait:      envDuration("NATS_INGEST_ACK_WAIT", 30*time.Second),
-		KnownRegistries:    splitComma(os.Getenv("KNOWN_REGISTRIES")),
-		KnownEngines:       splitComma(os.Getenv("KNOWN_ENGINES")),
-		IngestRateLimit:    envFloat("INGEST_RATE_LIMIT", 10),
-		IngestRateBurst:    envInt("INGEST_RATE_BURST", 20),
+		PostgresURL:          os.Getenv("POSTGRES_URL"),
+		NatsURL:              os.Getenv("NATS_URL"),
+		Port:                 envOr("PORT", "8080"),
+		ListenHost:           envOr("LISTEN_HOST", "0.0.0.0"),
+		TesseraPath:          envOr("TESSERA_PATH", "/data/tessera"),
+		TesseraSignerKeyPath: os.Getenv("TESSERA_SIGNER_KEY_PATH"),
+		JWTIssuers:           splitComma(os.Getenv("JWT_ISSUERS")),
+		JWTAudience:          os.Getenv("JWT_AUDIENCE"),
+		CORSOrigins:          splitComma(os.Getenv("CORS_ORIGINS")),
+		OAuth2ProxyEnabled:   os.Getenv("OAUTH2_PROXY_ENABLED") != "false",
+		WorkbenchURL:         envOr("WORKBENCH_URL", "http://studio-workbench:8090"),
+		BlobEndpoint:         os.Getenv("BLOB_ENDPOINT"),
+		BlobBucket:           os.Getenv("BLOB_BUCKET"),
+		BlobAccessKey:        os.Getenv("BLOB_ACCESS_KEY"),
+		BlobSecretKey:        os.Getenv("BLOB_SECRET_KEY"),
+		BlobUseSSL:           os.Getenv("BLOB_USE_SSL") == "true",
+		StudioVersion:        envOr("STUDIO_VERSION", "dev"),
+		GitHubOrg:            os.Getenv("GITHUB_ORG"),
+		GitHubRepo:           envOr("GITHUB_REPO", "complytime-studio"),
+		RegistryInsecure:     os.Getenv("REGISTRY_INSECURE") == "true",
+		IngestMaxDeliver:     envInt("NATS_INGEST_MAX_DELIVER", 5),
+		IngestAckWait:        envDuration("NATS_INGEST_ACK_WAIT", 30*time.Second),
+		KnownRegistries:      splitComma(os.Getenv("KNOWN_REGISTRIES")),
+		KnownEngines:         splitComma(os.Getenv("KNOWN_ENGINES")),
+		IngestRateLimit:      envFloat("INGEST_RATE_LIMIT", 10),
+		IngestRateBurst:      envInt("INGEST_RATE_BURST", 20),
 	}
 
 	// Clamp rate-limit values to reasonable upper bounds.

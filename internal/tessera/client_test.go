@@ -40,6 +40,35 @@ func TestClient_Add_SequentialIndices(t *testing.T) {
 	assert.Equal(t, uint64(2), idx3)
 }
 
+func TestClient_PersistentSignerKey(t *testing.T) {
+	ctx := context.Background()
+	storageDir := t.TempDir()
+	keyPath := storageDir + "/signer.key"
+
+	opts := tessera.Options{
+		CheckpointTime: 100 * time.Millisecond,
+		CheckpointSize: 100,
+		SignerKeyPath:  keyPath,
+	}
+
+	// Create first client — this generates and persists the key
+	client1, err := tessera.NewClient(ctx, storageDir+"/log", opts)
+	require.NoError(t, err)
+	require.NoError(t, client1.Close())
+
+	// Create second client — should reuse the same key
+	client2, err := tessera.NewClient(ctx, storageDir+"/log", opts)
+	require.NoError(t, err)
+	require.NoError(t, client2.Close())
+
+	// The key file should still exist and be valid
+	skey, vkey, generated, err := tessera.LoadOrGenerateSignerKey(keyPath)
+	require.NoError(t, err)
+	assert.False(t, generated, "existing key should be loaded, not generated")
+	assert.Contains(t, skey, "PRIVATE+KEY+")
+	assert.NotEmpty(t, vkey)
+}
+
 func TestClient_Read_ReturnsStoredEntry(t *testing.T) {
 	ctx := context.Background()
 	tmpDir := t.TempDir()
