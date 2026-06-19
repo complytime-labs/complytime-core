@@ -58,6 +58,11 @@ type Bus struct {
 	js   jetstream.JetStream
 }
 
+// JetStream returns the underlying JetStream client for KV operations.
+func (b *Bus) JetStream() jetstream.JetStream {
+	return b.js
+}
+
 // Connect creates a new Bus connected to the given NATS URL.
 // Returns (nil, nil) if natsURL is empty (NATS disabled).
 func Connect(natsURL string) (*Bus, error) {
