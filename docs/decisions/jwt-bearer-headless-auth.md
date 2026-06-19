@@ -173,7 +173,7 @@ This is a separate concern from the headless auth path described above:
 
 The gateway-side JWT verification was added per the transparency ledger ADR to provide cryptographic publisher provenance. It coexists with OAuth2 Proxy — in production, OAuth2 Proxy authenticates the caller (establishing who can call the API), and the gateway's `JWTVerifier` attests publisher identity (establishing who is claiming responsibility for the artifact).
 
-See: [Transparency Ledger ADR](transparency-ledger.md), [Witness Service ADR](witness-service.md)
+See: [Transparency Ledger ADR](transparency-ledger.md), [Content Verification Service ADR](content-verification-service.md)
 
 ## References
 

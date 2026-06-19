@@ -11,7 +11,7 @@ complytime-core is a Go data platform for compliance evidence ingestion, verific
 ### Binaries
 
 - `cmd/gateway` — HTTP API server, evidence pipeline, certification
-- `cmd/witness` — Tessera verification daemon
+- `cmd/monitor` — Tessera content verification daemon
 
 ### Package Structure
 
@@ -100,7 +100,8 @@ ADRs live in `docs/decisions/`. Read relevant ADRs before modifying a subsystem:
 | ADR | Covers |
 |:--|:--|
 | `transparency-ledger.md` | Tessera integration, signer key persistence |
-| `witness-service.md` | Witness verification, publisher trust |
+| `content-verification-service.md` | Content verification, publisher trust |
+| `anti-equivocation-witnessing.md` | Witness cosignatures, tlog-witness protocol |
 | `trust-signals-certification.md` | Trust signal layers, certification pipeline |
 | `modulith-domain-packages.md` | Package structure rationale |
 | `jetstream-ingest-consumer.md` | NATS JetStream durable consumer design |

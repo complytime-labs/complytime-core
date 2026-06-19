@@ -19,7 +19,7 @@ Requirements for the compliance data platform and agent workbench, derived from 
 | Requirement | Owner | Gap Status | References |
 |:--|:--|:--|:--|
 | Evidence collection pipeline — high-volume transport of evidence from edge nodes/clusters to central storage via OpenTelemetry | Data Platform | Partial | ADRs accepted: collector is operator-managed infrastructure, evidence flows through collector exporters directly to storage. `POST /api/ingest` exists as fallback | [otel-native-ingestion](../decisions/otel-native-ingestion.md), [otel-collector-out-of-chart](../decisions/otel-collector-out-of-chart.md) |
-| Attestation locker — centralized verifiable record of compliance evidence with timestamped storage | Data Platform | Exists | Tessera transparency log provides append-only, tamper-evident storage with cryptographic ordering. Independent witness service verifies entries. PostgreSQL caches queryable data with `log_index` linking to Tessera entries | [transparency-ledger](../decisions/transparency-ledger.md), [witness-service](../decisions/witness-service.md) |
+| Attestation locker — centralized verifiable record of compliance evidence with timestamped storage | Data Platform | Exists | Tessera transparency log provides append-only, tamper-evident storage with cryptographic ordering. Independent content monitor verifies entries. PostgreSQL caches queryable data with `log_index` linking to Tessera entries | [transparency-ledger](../decisions/transparency-ledger.md), [content-verification-service](../decisions/content-verification-service.md) |
 | Standardized output — programmatic generation of artifacts in Gemara and OSCAL formats on demand | Data Platform | Partial | Gemara output exists (validate, publish). OSCAL generation not implemented | -- |
 
 ## 3. Connectivity and Availability
@@ -33,7 +33,7 @@ Requirements for the compliance data platform and agent workbench, derived from 
 
 | Requirement | Owner | Gap Status | References |
 |:--|:--|:--|:--|
-| Evidence integrity — stored evidence is immutable and timestamped, providing chain of custody for auditors | Data Platform | Exists | Tessera transparency log (Trillian successor) provides immutable, append-only storage with witness-countersigned checkpoints. JWT-verified publisher identity tracked for provenance | [transparency-ledger](../decisions/transparency-ledger.md), [witness-service](../decisions/witness-service.md) |
+| Evidence integrity — stored evidence is immutable and timestamped, providing chain of custody for auditors | Data Platform | Exists | Tessera transparency log (Trillian successor) provides immutable, append-only storage with witness-cosigned checkpoints. JWT-verified publisher identity tracked for provenance | [transparency-ledger](../decisions/transparency-ledger.md), [content-verification-service](../decisions/content-verification-service.md) |
 | Content ingestion — pull updated compliance content (rules, checks, catalogs) from OCI-compliant registries to scan against latest regulatory definitions | Data Platform | Exists | Unified ingest pipeline: seed jobs submit artifacts via `POST /api/ingest`; no periodic background refresh documented | -- |
 
 ---
