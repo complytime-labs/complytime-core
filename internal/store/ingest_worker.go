@@ -25,7 +25,7 @@ type TesseraReader interface {
 type ingestOutcome int
 
 const (
-	outcomeAck  ingestOutcome = iota
+	outcomeAck ingestOutcome = iota
 	outcomeNak
 	outcomeTerm
 )

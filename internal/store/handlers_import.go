@@ -49,11 +49,6 @@ func importArtifactHandler(s Stores) echo.HandlerFunc {
 
 // ── OCI reference import ────────────────────────────────────────────────────
 
-type ociImportResponse struct {
-	Imported []requirements.OciImportedArtifact `json:"imported"`
-	Digest   string                             `json:"digest,omitempty"`
-}
-
 func ociImport(c echo.Context, s Stores, ref string) error {
 	if s.Registry == nil {
 		return jsonError(c, http.StatusServiceUnavailable, "registry not configured")
@@ -129,4 +124,3 @@ func ociImport(c echo.Context, s Stores, ref string) error {
 		"artifacts": len(imported),
 	})
 }
-

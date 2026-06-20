@@ -56,8 +56,6 @@ pass "Got JWT (${#TOKEN} chars)"
 
 step 3 "Register target with trusted publisher"
 
-TARGET_ID=$(grep 'id:' "$EVIDENCE_FILE" | grep -v '#' | head -1 | awk '{print $2}' || echo "tgt-test-001")
-# Extract target.id from the evidence file
 EVIDENCE_TARGET=$(python3 -c "
 import yaml, sys
 with open('$EVIDENCE_FILE') as f:

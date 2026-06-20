@@ -229,18 +229,18 @@ type fakeJSMsg struct {
 	termed bool
 }
 
-func (m *fakeJSMsg) Ack() error                                    { m.acked = true; return nil }
-func (m *fakeJSMsg) Nak() error                                    { m.naked = true; return nil }
-func (m *fakeJSMsg) NakWithDelay(_ time.Duration) error            { m.naked = true; return nil }
-func (m *fakeJSMsg) Term() error                                   { m.termed = true; return nil }
-func (m *fakeJSMsg) TermWithReason(_ string) error                 { m.termed = true; return nil }
-func (m *fakeJSMsg) InProgress() error                             { return nil }
-func (m *fakeJSMsg) Metadata() (*jetstream.MsgMetadata, error)     { return nil, nil }
-func (m *fakeJSMsg) Headers() nats.Header                          { return nil }
-func (m *fakeJSMsg) Data() []byte                                  { return nil }
-func (m *fakeJSMsg) Subject() string                               { return "" }
-func (m *fakeJSMsg) Reply() string                                 { return "" }
-func (m *fakeJSMsg) DoubleAck(_ context.Context) error             { return nil }
+func (m *fakeJSMsg) Ack() error                                { m.acked = true; return nil }
+func (m *fakeJSMsg) Nak() error                                { m.naked = true; return nil }
+func (m *fakeJSMsg) NakWithDelay(_ time.Duration) error        { m.naked = true; return nil }
+func (m *fakeJSMsg) Term() error                               { m.termed = true; return nil }
+func (m *fakeJSMsg) TermWithReason(_ string) error             { m.termed = true; return nil }
+func (m *fakeJSMsg) InProgress() error                         { return nil }
+func (m *fakeJSMsg) Metadata() (*jetstream.MsgMetadata, error) { return nil, nil }
+func (m *fakeJSMsg) Headers() nats.Header                      { return nil }
+func (m *fakeJSMsg) Data() []byte                              { return nil }
+func (m *fakeJSMsg) Subject() string                           { return "" }
+func (m *fakeJSMsg) Reply() string                             { return "" }
+func (m *fakeJSMsg) DoubleAck(_ context.Context) error         { return nil }
 
 // Satisfy the full interface — these aren't used in tests.
 var _ jetstream.Msg = (*fakeJSMsg)(nil)
