@@ -48,9 +48,17 @@ Two binaries, same repo. No PostgreSQL in either.
 
 **Before:** OAuth2 Proxy authenticates → gateway checks user role (reader/writer/admin) in PostgreSQL → writer/admin can POST to `/api/ingest`.
 
-**After:** JWT authenticates the caller → ingest service looks up per-target publisher allowlist in NATS KV → submission accepted only if the JWT's `iss`/`sub` match an entry in the target's allowlist.
+**After:** JWT authenticates the caller → ingest service checks artifact-level authorization based on the artifact category:
 
-This is finer-grained: a `writer` role authorized everything, while the publisher allowlist authorizes per-target. A publisher trusted for target A cannot submit evidence for target B.
+| Artifact category | Artifacts | Authorization | Allowlist |
+|:--|:--|:--|:--|
+| **Governance** | Policy, ControlCatalog, ThreatCatalog, RiskCatalog, GuidanceCatalog, MappingDocument | Governance publisher allowlist | Separate NATS KV bucket (not yet implemented) |
+| **Evidence** | EvaluationLog, EnforcementLog, AuditLog | Per-target publisher allowlist | NATS KV `publisher-trust` bucket, deny by default |
+| **Target registration** | TargetRegistration | First-registrant or existing target publisher | Self-registration with ownership (not yet implemented) |
+
+This is finer-grained than the old role-based model: a `writer` role authorized everything, while the new model authorizes by artifact category and target. A publisher trusted for target A cannot submit evidence for target B. A pipeline that produces evidence cannot modify governance artifacts.
+
+**Currently implemented:** Evidence publisher trust check (deny by default). Governance and target registration authorization are tracked as follow-on work.
 
 ## Fail-Closed Authorization
 
