@@ -11,7 +11,7 @@ mkdir -p "$OUTDIR"
 
 if [[ -f "$OUTDIR/witness-signer.key" ]]; then
     echo "Witness keys already exist in $OUTDIR — skipping generation."
-    echo "Delete $OUTDIR to regenerate."
+    echo "Delete $OUTDIR and run 'docker compose down -v' to regenerate."
     exit 0
 fi
 
