@@ -2,7 +2,7 @@
 
 Compliance evidence pipeline with cryptographic guarantees. Submit assessment results, get verifiable posture.
 
-> **Status:** Early development — the core pipeline works end-to-end but APIs and schema are not yet stable.
+> **Status:** Active redesign — this repo is being restructured from a monolithic pipeline to a focused ingestion and trust boundary service ([#128](https://github.com/complytime-labs/complytime-core/issues/128)). APIs, schema, and project scope are changing. Expect volatility.
 >
 > **Built with AI:** Code, documentation, architecture decisions, and design specs are authored collaboratively with LLM tools (Claude Code, Cursor). PRs are labeled `llm-assisted`.
 
