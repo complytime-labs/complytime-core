@@ -42,7 +42,7 @@ The gateway used Go stdlib `net/http` with hand-rolled middleware for OIDC valid
 | `internal/store` | Native Echo — `Register(g *echo.Group, ...)`, includes posture + evidence handlers |
 | `internal/postgres` | Data layer — no HTTP handlers (provides `Client` used by store) |
 | `internal/auth` | Native Echo — `Middleware()`, `RegisterUserAPI(g)`, `RegisterChatHistory(g, cs)` |
-| `cmd/gateway` | Native Echo — healthz, system-info, gemara proxy |
+| `cmd/ingest` | Native Echo — healthz, system-info, gemara proxy |
 | `internal/registry` | Wrapped via `echo.WrapHandler(mux)` — stdlib handlers |
 | `internal/publish` | Wrapped via `echo.WrapHandler(mux)` — stdlib handlers |
 | `internal/agents` | Wrapped via `echo.WrapHandler(mux)` — stdlib handlers |

@@ -16,22 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       security-events: write
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: complytime_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U test"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-    env:
-      POSTGRES_TEST_URL: postgres://test:test@localhost:5432/complytime_test?sslmode=disable
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -43,8 +27,8 @@ jobs:
         run: go vet -tags dev ./...
       - name: Test
         run: go test -tags dev -v -race -cover ./...
-      - name: Build gateway
-        run: go build -o /dev/null ./cmd/gateway/
+      - name: Build ingest
+        run: go build -o /dev/null ./cmd/ingest/
       - name: Build monitor
         run: go build -o /dev/null ./cmd/monitor/
       - name: Transparency log verification

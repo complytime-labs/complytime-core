@@ -1,6 +1,6 @@
 # ADR-0001: PostgreSQL as Primary Persistence Layer
 
-**Status:** Accepted
+**Status:** Superseded by [Remove PostgreSQL](remove-postgresql.md)
 **Date:** 2026-05-01
 **Supersedes:** dual-store-data-layer (native ClickHouse client + PostgreSQL)
 

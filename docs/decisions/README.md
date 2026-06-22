@@ -39,6 +39,8 @@ Other repos maintain their own ADRs:
 | 0041 | [Anti-Equivocation Witnessing](anti-equivocation-witnessing.md) | Accepted | 2026-06-18 |
 | 0042 | [Content Verification Service](content-verification-service.md) | Accepted | 2026-05-23 |
 | 0043 | [Public API Boundary](public-api-boundary.md) | Accepted | 2026-06-19 |
+| 0044 | [Remove PostgreSQL — ComplyTime Ingest](remove-postgresql.md) | Accepted | 2026-06-19 |
+| 0045 | [Testing Strategy](testing-strategy.md) | Accepted | 2026-06-19 |
 
 ## Active Workarounds
 

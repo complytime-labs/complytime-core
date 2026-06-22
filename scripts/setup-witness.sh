@@ -11,7 +11,7 @@ mkdir -p "$OUTDIR"
 
 if [[ -f "$OUTDIR/witness-signer.key" ]]; then
     echo "Witness keys already exist in $OUTDIR — skipping generation."
-    echo "Delete $OUTDIR to regenerate."
+    echo "Delete $OUTDIR and run 'docker compose down -v' to regenerate."
     exit 0
 fi
 
@@ -58,7 +58,7 @@ WIT_VKEY=$(echo "$WITKEYS" | tail -1)
 
 echo "$WIT_SKEY" > "$OUTDIR/witness-signer.key"
 echo "$WIT_VKEY" > "$OUTDIR/witness-verifier.key"
-chmod 600 "$OUTDIR/witness-signer.key"
+chmod 644 "$OUTDIR/witness-signer.key"
 
 # Generate log signer key pair (pre-generate so witness can be provisioned)
 echo "Generating log signer key pair..."
@@ -82,7 +82,7 @@ POLICYEOF
 cat > "$OUTDIR/additional-logs.yaml" << LOGSEOF
 Logs:
   - Origin: tessera-log
-    URL: http://gateway:8080
+    URL: http://ingest:8080
     PublicKey: ${LOG_VKEY}
     Feeder: tiles
 LOGSEOF

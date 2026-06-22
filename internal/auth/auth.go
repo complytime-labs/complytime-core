@@ -4,11 +4,9 @@ package auth
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
 	"strings"
 
-	"github.com/complytime-labs/complytime-core/internal/consts"
 	"github.com/complytime-labs/complytime-core/internal/httputil"
 	"github.com/labstack/echo/v4"
 )
@@ -29,7 +27,6 @@ type UserInfo struct {
 	Name      string `json:"name"`
 	AvatarURL string `json:"avatar_url"`
 	Email     string `json:"email"`
-	Role      string `json:"role"`
 }
 
 type contextKey string
@@ -42,22 +39,14 @@ func SessionFrom(ctx context.Context) (*Session, bool) {
 	return s, ok
 }
 
-// Handler provides auth middleware and user management endpoints. Identity
-// is established by OAuth2 Proxy via X-Forwarded-* headers. The handler
-// trusts these headers, upserts users on first-seen, and enforces RBAC.
-type Handler struct {
-	users UserStore
-}
+// Handler provides auth middleware and identity endpoints. Identity
+// is established by OAuth2 Proxy via X-Forwarded-* headers.
+type Handler struct{}
 
 // NewHandler creates an auth handler. OAuth2 Proxy handles OIDC externally;
-// the handler only reads proxy-injected headers and manages the user store.
+// the handler only reads proxy-injected headers.
 func NewHandler() *Handler {
 	return &Handler{}
-}
-
-// SetUserStore configures the persistent user/role store.
-func (h *Handler) SetUserStore(us UserStore) {
-	h.users = us
 }
 
 // Register mounts auth endpoints. Login, callback, and logout are handled by
@@ -113,51 +102,11 @@ func (h *Handler) Middleware() echo.MiddlewareFunc {
 				Groups: splitGroups(r.Header.Get("X-Forwarded-Groups")),
 			}
 
-			if h.users != nil {
-				h.ensureUser(r.Context(), sess)
-			}
-
 			ctx := context.WithValue(r.Context(), sessionKey, sess)
 			ctx = httputil.WithIdentity(ctx, email)
 			c.SetRequest(r.WithContext(ctx))
 			authRequestTotal.Add("authenticated", 1)
 			return next(c)
-		}
-	}
-}
-
-func writerAdminOnlyPath(path string) bool {
-	return strings.HasPrefix(path, "/api/users") ||
-		strings.HasPrefix(path, "/api/role-changes")
-}
-
-// RequireWrite returns middleware that rejects mutating requests without
-// sufficient role.
-func RequireWrite(users UserStore) echo.MiddlewareFunc {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			sess, ok := SessionFrom(c.Request().Context())
-			if !ok {
-				return c.JSON(http.StatusForbidden, map[string]string{"error": "admin role required"})
-			}
-			if users == nil {
-				return c.JSON(http.StatusForbidden, map[string]string{"error": "admin role required"})
-			}
-			u, err := users.GetUser(c.Request().Context(), sess.Email)
-			if err != nil {
-				return c.JSON(http.StatusForbidden, map[string]string{"error": "admin role required"})
-			}
-			switch u.Role {
-			case consts.RoleAdmin:
-				return next(c)
-			case consts.RoleWriter:
-				if writerAdminOnlyPath(c.Request().URL.Path) {
-					return c.JSON(http.StatusForbidden, map[string]string{"error": "admin role required"})
-				}
-				return next(c)
-			default:
-				return c.JSON(http.StatusForbidden, map[string]string{"error": "admin role required"})
-			}
 		}
 	}
 }
@@ -189,58 +138,12 @@ func (h *Handler) handleMeEcho(c echo.Context) error {
 		name = emailLocalPart(email)
 	}
 	info := UserInfo{
-		Login: r.Header.Get("X-Forwarded-User"),
-		Name:  name,
-		Email: email,
-		Role:  consts.RoleReviewer,
-	}
-	if h.users != nil {
-		if u, err := h.users.GetUser(r.Context(), email); err == nil {
-			info.Role = u.Role
-			info.Name = u.Name
-			info.AvatarURL = u.AvatarURL
-		}
+		Login:     r.Header.Get("X-Forwarded-User"),
+		Name:      name,
+		Email:     email,
+		AvatarURL: r.Header.Get("X-Forwarded-Avatar-URL"),
 	}
 	return c.JSON(http.StatusOK, info)
-}
-
-// ensureUser upserts the user on first-seen and seeds the admin role if the
-// user's groups contain "admin" and no admin exists yet.
-func (h *Handler) ensureUser(ctx context.Context, sess *Session) {
-	sub := sess.Login
-	if sub == "" {
-		sub = sess.Email
-	}
-	err := h.users.UpsertUser(ctx, sub, "oauth2-proxy", sess.Email, sess.Name, sess.AvatarURL)
-	if err != nil {
-		slog.Warn("user upsert failed", "email", sess.Email, "error", err)
-		return
-	}
-
-	if !containsAdmin(sess.Groups) {
-		return
-	}
-	oldRole, err := h.users.BootstrapAdmin(ctx, sess.Email)
-	if err != nil {
-		return
-	}
-	_ = h.users.InsertRoleChange(ctx, RoleChange{
-		ChangedBy:   "oauth2-proxy-group-seed",
-		TargetEmail: sess.Email,
-		OldRole:     oldRole,
-		NewRole:     consts.RoleAdmin,
-	})
-	slog.Info("admin role seeded from proxy groups", "email", sess.Email)
-	authUserUpsertTotal.Add(1)
-}
-
-func containsAdmin(groups []string) bool {
-	for _, g := range groups {
-		if g == "admin" || g == "admins" || g == consts.RoleAdmin {
-			return true
-		}
-	}
-	return false
 }
 
 func emailLocalPart(email string) string {
@@ -262,28 +165,4 @@ func splitGroups(raw string) []string {
 		}
 	}
 	return out
-}
-
-// RejectUnlessWriterOrAdmin sends 403 and returns true if the caller must not
-// access writer-scoped read APIs (e.g. policy recommendations).
-func RejectUnlessWriterOrAdmin(c echo.Context, users UserStore) bool {
-	sess, ok := SessionFrom(c.Request().Context())
-	if !ok {
-		_ = c.JSON(http.StatusForbidden, map[string]string{"error": "writer or admin role required"})
-		return true
-	}
-	if users == nil {
-		_ = c.JSON(http.StatusForbidden, map[string]string{"error": "writer or admin role required"})
-		return true
-	}
-	u, err := users.GetUser(c.Request().Context(), sess.Email)
-	if err != nil {
-		_ = c.JSON(http.StatusForbidden, map[string]string{"error": "writer or admin role required"})
-		return true
-	}
-	if u.Role != consts.RoleAdmin && u.Role != consts.RoleWriter {
-		_ = c.JSON(http.StatusForbidden, map[string]string{"error": "writer or admin role required"})
-		return true
-	}
-	return false
 }

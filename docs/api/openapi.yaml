@@ -1,127 +1,123 @@
 # SPDX-License-Identifier: Apache-2.0
-openapi: 3.1.0
+openapi: "3.1.0"
 info:
-  title: ComplyTime Platform API
-  version: 0.1.0
-  description: >
-    REST surface served by `cmd/gateway`. Many `/api/*` routes register only when PostgreSQL
-    is configured; `/api/config` is always available. After Google OAuth, the encrypted
-    `studio_session` cookie authenticates `/api/*` requests (unless disabled). Optional
-    `Authorization: Bearer <STUDIO_API_TOKEN>` bypasses the cookie for scripting.
-    Security schemes below model bearer token and OAuth; cookie sessions are established via `/auth/*`.
+  title: ComplyTime Ingest API
+  version: "1.0.0"
+  description: |
+    Compliance evidence ingestion and transparency log API.
+    Accepts Gemara artifacts, appends to Tessera, publishes events to NATS.
+    Query endpoints have moved to CrossCodex.
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
 
 servers:
   - url: http://localhost:8080
-    description: Local gateway default (PORT=8080)
-
-security:
-  - bearerAuth: []
-  - oauth2: [openid, email, profile]
-
-tags:
-  - name: Health
-  - name: Auth
-  - name: Policies
-  - name: Mappings
-  - name: Evidence
-  - name: Certifications
-  - name: AuditLogs
-  - name: DraftAuditLogs
-  - name: Catalogs
-  - name: Requirements
-  - name: ThreatsRisks
-  - name: Users
-  - name: Config
+    description: Local development
 
 paths:
-  /healthz:
-    get:
-      tags: [Health]
-      operationId: healthz
-      security: []
-      summary: Liveness probe
-      description: Returns plain text `ok`. When PostgreSQL is configured, verifies connectivity first (503 on failure).
+  /api/ingest:
+    post:
+      operationId: ingestArtifact
+      summary: Submit a Gemara artifact for ingestion
+      description: |
+        Accepts a raw Gemara YAML artifact, appends it to the Tessera
+        transparency log, and publishes a NATS event for async processing.
+        Requires JWT authentication. Publisher authorization is checked
+        against the per-target allowlist in NATS KV (fail-closed).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/x-yaml:
+            schema:
+              type: string
+              description: Raw Gemara YAML artifact
       responses:
-        '200':
-          description: OK
-          content:
-            text/plain:
-              schema:
-                type: string
-                example: ok
-        '503':
-          description: PostgreSQL unreachable when datastore is enabled
-          content:
-            text/plain:
-              schema:
-                type: string
-
-  # /auth/login, /auth/callback, /auth/logout are handled by OAuth2 Proxy
-  # externally and are NOT registered in the gateway's Echo router.
-
-  /auth/logged-out:
-    get:
-      tags: [Auth]
-      operationId: authLoggedOut
-      security: []
-      summary: Post-logout landing page
-      description: Static HTML page shown after OAuth2 Proxy clears the session cookie.
-      responses:
-        '200':
-          description: HTML page with sign-in link
-          content:
-            text/html:
-              schema:
-                type: string
-
-  /auth/me:
-    get:
-      tags: [Auth]
-      operationId: authMe
-      security: []
-      summary: Current session user
-      description: Requires valid `studio_session` cookie (not API bearer token).
-      responses:
-        '200':
-          description: User profile and RBAC role
+        "202":
+          description: Accepted for async processing
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserInfo'
-        '401':
-          description: Not authenticated
+                $ref: "#/components/schemas/IngestResponse"
+        "401":
+          description: Authentication required
+        "403":
+          description: JWT verification failed or publisher not authorized
+        "429":
+          description: Rate limit exceeded
+        "503":
+          description: NATS KV unavailable (fail-closed)
+
+  /api/ingest/jobs/{job_id}:
+    get:
+      operationId: getIngestJobStatus
+      summary: Poll ingest job status
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Job status
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/IngestJobStatus"
+        "404":
+          description: Job not found or expired
 
-  # /auth/logout is handled by OAuth2 Proxy externally.
+  /api/import:
+    post:
+      operationId: importBundle
+      summary: Import an OCI bundle
+      description: |
+        Accepts a JSON body with an OCI reference, unpacks the bundle,
+        and routes each artifact through the ingest pipeline.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reference]
+              properties:
+                reference:
+                  type: string
+                  description: OCI artifact reference
+      responses:
+        "202":
+          description: Bundle accepted for processing
+        "400":
+          description: Invalid request
+        "502":
+          description: Registry pull failed
 
   /api/config:
     get:
-      tags: [Config]
       operationId: getConfig
-      summary: Public UI configuration map
-      security: []
+      summary: Application configuration (public)
       responses:
-        '200':
-          description: Key-value strings (e.g. github_org, model_provider)
+        "200":
+          description: Non-secret configuration values
           content:
             application/json:
               schema:
                 type: object
-                additionalProperties:
-                  type: string
 
   /api/system-info:
     get:
-      tags: [Config]
       operationId: getSystemInfo
-      summary: Runtime system information
-      description: Returns version, database status, and auth provider.
+      summary: System status
       responses:
-        '200':
-          description: System info map
+        "200":
+          description: System information
           content:
             application/json:
               schema:
@@ -129,789 +125,18 @@ paths:
                 properties:
                   version:
                     type: string
-                  database:
+                  storage:
                     type: string
-                  auth_provider:
-                    type: string
-
-  /api/policies:
-    get:
-      tags: [Policies]
-      operationId: listPolicies
-      summary: List imported policies
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Policy'
-        '500':
-          description: Internal error
-
-  /api/policies/{id}:
-    get:
-      tags: [Policies]
-      operationId: getPolicy
-      summary: Policy detail with mappings
-      parameters:
-        - $ref: '#/components/parameters/PolicyId'
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PolicyDetailResponse'
-        '400':
-          description: Missing id
-        '404':
-          description: Policy not found
-
-  /api/policies/{id}/coverage:
-    get:
-      tags: [Policies]
-      operationId: getPolicyCoverage
-      summary: Gap analysis — requirements with and without evidence
-      description: >-
-        Returns which assessment requirements in a policy have evidence
-        (covered), which don't (gaps), which have stale evidence, and
-        which evidence is unaligned to any requirement. Staleness is
-        driven by assessment plan frequencies from the policy's adherence
-        section; max_age is a fallback for requirements without a plan.
-      parameters:
-        - $ref: '#/components/parameters/PolicyId'
-        - name: target_id
-          in: query
-          description: Filter evidence to a specific target
-          schema:
-            type: string
-        - name: since
-          in: query
-          description: Only count evidence collected after this date (RFC3339 or YYYY-MM-DD)
-          schema:
-            type: string
-        - name: max_age
-          in: query
-          description: >-
-            Fallback staleness threshold for requirements without an
-            adherence assessment plan (Go duration, e.g. 720h)
-          schema:
-            type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CoverageResult'
-        '404':
-          description: No requirements found for this policy
-
-  /api/import:
-    post:
-      tags: [Import]
-      operationId: importArtifact
-      summary: Unified artifact import (policy, mapping, guidance, evaluation)
-      description: >-
-        Auto-detects artifact type from content. Accepts raw YAML body
-        (Content-Type: application/x-yaml) or JSON envelope with content field.
-      requestBody:
-        required: true
-        content:
-          application/x-yaml:
-            schema:
-              type: string
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ImportRequest'
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ImportStatusResponse'
-        '400':
-          description: Invalid content or unrecognized artifact type
-
-  /api/catalogs:
-    get:
-      tags: [Catalogs]
-      operationId: listCatalogs
-      summary: List all ingested catalogs
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/CatalogEntry'
-
-  /api/inventory:
-    get:
-      tags: [Inventory]
-      operationId: listInventory
-      summary: List evidence inventory by target
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  type: object
-
-  /api/evidence:
-    get:
-      tags: [Evidence]
-      operationId: queryEvidence
-      summary: Query evidence rows
-      parameters:
-        - name: policy_id
-          in: query
-          schema:
-            type: string
-        - name: control_id
-          in: query
-          schema:
-            type: string
-        - name: target_name
-          in: query
-          schema:
-            type: string
-        - name: target_type
-          in: query
-          schema:
-            type: string
-        - name: target_env
-          in: query
-          schema:
-            type: string
-        - name: engine_version
-          in: query
-          schema:
-            type: string
-        - name: owner
-          in: query
-          schema:
-            type: string
-        - name: start
-          in: query
-          description: RFC3339 or YYYY-MM-DD
-          schema:
-            type: string
-        - name: end
-          in: query
-          schema:
-            type: string
-        - name: limit
-          in: query
-          schema:
-            type: integer
-        - name: offset
-          in: query
-          schema:
-            type: integer
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/EvidenceRecord'
-        '500':
-          description: Query failed
-
-  /api/evidence/{id}/verification:
-    get:
-      tags: [Evidence]
-      operationId: getEvidenceVerification
-      summary: Get trust signal verification for an evidence record
-      description: >-
-        Returns all trust signals for an evidence record with an overall
-        verified boolean. Verified is true when no signal has result
-        'fail' or 'error'.
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  evidence_id:
-                    type: string
-                  verified:
-                    type: boolean
-                  signals:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/TrustSignal'
-        '404':
-          description: No verification results for this evidence
-
-  /api/ingest:
-    post:
-      tags: [Ingest]
-      operationId: ingestArtifact
-      summary: Async ingest any Gemara artifact
-      description: >-
-        Accepts raw Gemara YAML (any artifact type — EvaluationLog,
-        EnforcementLog, Policy, ControlCatalog, ThreatCatalog,
-        RiskCatalog, GuidanceCatalog, MappingDocument). Returns 202
-        with a job_id. Poll GET /api/ingest/jobs/{job_id} for status.
-        See ADR #0034.
-      requestBody:
-        required: true
-        content:
-          application/x-yaml:
-            schema:
-              type: string
-          application/json:
-            schema:
-              type: string
-      responses:
-        '202':
-          description: Accepted — ingest queued
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  job_id:
-                    type: string
-                  status:
-                    type: string
-                    example: pending
-        '400':
-          description: Empty body
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorsListResponse'
-
-  /api/ingest/jobs/{job_id}:
-    get:
-      tags: [Ingest]
-      operationId: getIngestJobStatus
-      summary: Poll async ingest job status
-      parameters:
-        - name: job_id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Job status
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/IngestJobStatus'
-        '404':
-          description: Job not found (expired or never existed)
-
-  /api/certifications:
-    get:
-      tags: [Certifications]
-      operationId: queryCertifications
-      summary: Certification verdicts for an evidence row
-      parameters:
-        - name: evidence_id
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/CertificationRow'
-        '400':
-          description: Missing evidence_id
-
-  /api/audit-logs:
-    get:
-      tags: [AuditLogs]
-      operationId: listAuditLogs
-      summary: List audit logs for a policy
-      parameters:
-        - name: policy_id
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: start
-          in: query
-          description: Date YYYY-MM-DD
-          schema:
-            type: string
-        - name: end
-          in: query
-          schema:
-            type: string
-        - name: limit
-          in: query
-          schema:
-            type: integer
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/AuditLog'
-        '400':
-          description: Missing policy_id
-    post:
-      tags: [AuditLogs]
-      operationId: createAuditLog
-      summary: Store finalized audit log YAML
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateAuditLogRequest'
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                  audit_id:
-                    type: string
-        '400':
-          description: Invalid YAML or JSON
-
-  /api/audit-logs/{id}:
-    get:
-      tags: [AuditLogs]
-      operationId: getAuditLog
-      parameters:
-        - $ref: '#/components/parameters/AuditId'
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuditLog'
-        '404':
-          description: Not found
-
-  /api/audit-logs/promote:
-    post:
-      tags: [DraftAuditLogs]
-      operationId: promoteDraftAuditLog
-      summary: Promote draft audit log to official audit_logs (admin)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [draft_id]
-              properties:
-                draft_id:
-                  type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                  draft_id:
-                    type: string
-        '400':
-          description: Invalid body
-        '409':
-          description: Already promoted
-        '403':
-          description: Admin required
-
-  /api/draft-audit-logs:
-    get:
-      tags: [DraftAuditLogs]
-      operationId: listDraftAuditLogs
-      parameters:
-        - name: status
-          in: query
-          schema:
-            type: string
-        - name: limit
-          in: query
-          schema:
-            type: integer
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/DraftAuditLog'
-    post:
-      tags: [DraftAuditLogs]
-      operationId: createDraftAuditLog
-      summary: Create a draft audit log
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [policy_id, content, summary]
-              properties:
-                policy_id:
-                  type: string
-                content:
-                  type: string
-                summary:
-                  type: string
-                agent_reasoning:
-                  type: string
-                model:
-                  type: string
-                prompt_version:
-                  type: string
-      responses:
-        '201':
-          description: Draft created
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                  draft_id:
+                  nats:
                     type: string
 
-  /api/draft-audit-logs/{id}:
+  /auth/me:
     get:
-      tags: [DraftAuditLogs]
-      operationId: getDraftAuditLog
-      parameters:
-        - $ref: '#/components/parameters/DraftId'
+      operationId: getCurrentUser
+      summary: Current user identity
       responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DraftAuditLog'
-        '404':
-          description: Draft not found
-    patch:
-      tags: [DraftAuditLogs]
-      operationId: patchDraftAuditLogEdits
-      summary: Persist reviewer edits JSON map
-      parameters:
-        - $ref: '#/components/parameters/DraftId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [reviewer_edits]
-              properties:
-                reviewer_edits:
-                  type: object
-                  additionalProperties:
-                    $ref: '#/components/schemas/DraftReviewerEditEntry'
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: saved
-        '404':
-          description: Draft not found
-        '409':
-          description: Draft already promoted
-
-  /api/catalogs/import:
-    post:
-      tags: [Catalogs]
-      operationId: importCatalog
-      summary: Import ControlCatalog, ThreatCatalog, or RiskCatalog YAML
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CatalogImportRequest'
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                  catalog_id:
-                    type: string
-                  catalog_type:
-                    type: string
-        '400':
-          description: Undetectable type or missing content
-
-  /api/requirements:
-    get:
-      tags: [Requirements]
-      operationId: listRequirementMatrix
-      parameters:
-        - name: policy_id
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: audit_start
-          in: query
-          schema:
-            type: string
-        - name: audit_end
-          in: query
-          schema:
-            type: string
-        - name: classification
-          in: query
-          schema:
-            type: string
-        - name: control_family
-          in: query
-          schema:
-            type: string
-        - name: limit
-          in: query
-          schema:
-            type: integer
-        - name: offset
-          in: query
-          schema:
-            type: integer
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/RequirementRow'
-        '400':
-          description: Invalid parameters
-
-  /api/requirements/{id}/evidence:
-    get:
-      tags: [Requirements]
-      operationId: listRequirementEvidence
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Requirement or control id
-        - name: policy_id
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: audit_start
-          in: query
-          schema:
-            type: string
-        - name: audit_end
-          in: query
-          schema:
-            type: string
-        - name: limit
-          in: query
-          schema:
-            type: integer
-        - name: offset
-          in: query
-          schema:
-            type: integer
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/RequirementEvidenceRow'
-        '404':
-          description: Requirement unknown for policy
-
-  # Export endpoints (CSV, Excel, PDF) are planned but not yet implemented.
-
-  /api/threats:
-    get:
-      tags: [ThreatsRisks]
-      operationId: listThreats
-      parameters:
-        - name: catalog_id
-          in: query
-          schema:
-            type: string
-        - name: policy_id
-          in: query
-          schema:
-            type: string
-        - name: limit
-          in: query
-          schema:
-            type: integer
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ThreatRow'
-
-  /api/control-threats:
-    get:
-      tags: [ThreatsRisks]
-      operationId: listControlThreats
-      parameters:
-        - name: catalog_id
-          in: query
-          schema:
-            type: string
-        - name: control_id
-          in: query
-          schema:
-            type: string
-        - name: limit
-          in: query
-          schema:
-            type: integer
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ControlThreatRow'
-
-  /api/risks:
-    get:
-      tags: [ThreatsRisks]
-      operationId: listRisks
-      parameters:
-        - name: catalog_id
-          in: query
-          schema:
-            type: string
-        - name: policy_id
-          in: query
-          schema:
-            type: string
-        - name: limit
-          in: query
-          schema:
-            type: integer
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/RiskRow'
-
-  /api/risk-threats:
-    get:
-      tags: [ThreatsRisks]
-      operationId: listRiskThreats
-      parameters:
-        - name: catalog_id
-          in: query
-          schema:
-            type: string
-        - name: risk_id
-          in: query
-          schema:
-            type: string
-        - name: limit
-          in: query
-          schema:
-            type: integer
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/RiskThreatRow'
-
-  /api/users:
-    get:
-      tags: [Users]
-      operationId: listUsers
-      summary: List users (admin)
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/User'
-        '401':
-          description: Unauthenticated
-        '403':
-          description: Admin required
-
-  /api/users/{email}/role:
-    patch:
-      tags: [Users]
-      operationId: setUserRole
-      parameters:
-        - name: email
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [role]
-              properties:
-                role:
-                  type: string
-                  enum: [admin, reviewer]
-      responses:
-        '200':
+        "200":
+          description: Identity from OAuth2 Proxy headers
           content:
             application/json:
               schema:
@@ -919,553 +144,115 @@ paths:
                 properties:
                   email:
                     type: string
-                  role:
+                  name:
                     type: string
-        '403':
-          description: Admin required
-        '404':
-          description: User not found
 
-  /api/role-changes:
+  /healthz:
     get:
-      tags: [Users]
-      operationId: listRoleChanges
+      operationId: healthCheck
+      summary: Liveness probe
+      description: Checks NATS connectivity
       responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/RoleChange'
+        "200":
+          description: Healthy
+        "503":
+          description: NATS unreachable
 
-  /api/setup-status:
+  /checkpoint:
     get:
-      tags: [Users]
-      operationId: setupStatus
-      security: []
-      summary: Whether first-admin bootstrap is needed
+      operationId: getCheckpoint
+      summary: Cosigned checkpoint (tlog-tiles)
+      description: |
+        Returns the current signed checkpoint in sumdb note format.
+        Public, no authentication required.
       responses:
-        '200':
+        "200":
+          description: Signed checkpoint with witness cosignatures
           content:
-            application/json:
+            text/plain:
               schema:
-                type: object
-                properties:
-                  needs_setup:
-                    type: boolean
+                type: string
 
-  /api/bootstrap:
-    post:
-      tags: [Users]
-      operationId: bootstrapAdmin
-      summary: Promote caller to admin when no admins exist
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  email:
-                    type: string
-                  role:
-                    type: string
-        '401':
-          description: Unauthenticated
-        '409':
-          description: Admin already exists
-
-  /api/targets:
+  /tile/{path}:
     get:
-      tags: [Enrollment]
-      operationId: listTargets
-      summary: List all registered targets
-      responses:
-        '200':
-          description: Array of registered targets
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/TargetSummary'
-
-  /api/policies/discover:
-    get:
-      tags: [Enrollment]
-      operationId: discoverPolicies
-      summary: Discover applicable policies for a target
+      operationId: getTile
+      summary: Merkle tree tile or entry bundle (tlog-tiles)
+      description: |
+        Serves Tessera POSIX storage tiles for offline inclusion proof
+        computation. Public, no authentication required.
       parameters:
-        - name: target_id
-          in: query
+        - name: path
+          in: path
           required: true
           schema:
             type: string
-          description: Target ID to match against policy dimensions
-        - name: timestamp
-          in: query
-          required: false
-          schema:
-            type: string
-            format: date-time
-          description: Point-in-time for evaluation (defaults to now)
       responses:
-        '200':
-          description: Target with matching policies
+        "200":
+          description: Tile data
+        "404":
+          description: Tile not found
+
+  /log/witnessed/{index}:
+    get:
+      operationId: getWitnessedStatus
+      summary: Witnessed status for a log index
+      description: |
+        Reports whether a given log index is covered by a witnessed
+        (cosigned) checkpoint. Public, no authentication required.
+      parameters:
+        - name: index
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: uint64
+      responses:
+        "200":
+          description: Witnessed status
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PolicyQueryResponse'
-        '400':
-          description: Missing or invalid parameters
-        '404':
-          description: Target not found
+                $ref: "#/components/schemas/WitnessedStatus"
 
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
-      description: Shared secret from `STUDIO_API_TOKEN`; treated as admin-capable service identity when configured.
-    oauth2:
-      type: oauth2
-      description: >
-        Google OAuth 2.0 login flow used to mint the encrypted `studio_session` cookie.
-        API requests authenticate via that cookie unless `bearerAuth` matches.
-      flows:
-        authorizationCode:
-          authorizationUrl: https://accounts.google.com/o/oauth2/v2/auth
-          tokenUrl: https://oauth2.googleapis.com/token
-          scopes:
-            openid: OpenID Connect
-            email: Email
-            profile: Profile
+      bearerFormat: JWT
+      description: OIDC JWT token from a configured issuer
 
-  parameters:
-    PolicyId:
-      name: id
-      in: path
-      required: true
-      schema:
-        type: string
-    AuditId:
-      name: id
-      in: path
-      required: true
-      schema:
-        type: string
-    DraftId:
-      name: id
-      in: path
-      required: true
-      schema:
-        type: string
   schemas:
-    ErrorResponse:
+    IngestResponse:
       type: object
       properties:
-        error:
+        job_id:
           type: string
-
-    ErrorsListResponse:
-      type: object
-      properties:
-        errors:
-          type: array
-          items:
-            type: string
-
-    Policy:
-      type: object
-      properties:
-        policy_id:
-          type: string
-        title:
-          type: string
-        version:
-          type: string
-        oci_reference:
-          type: string
-        content:
-          type: string
-        imported_at:
-          type: string
-          format: date-time
-        imported_by:
-          type: string
-
-    PolicyDetailResponse:
-      type: object
-      properties:
-        policy:
-          $ref: '#/components/schemas/Policy'
-        mappings:
-          type: array
-          items:
-            $ref: '#/components/schemas/MappingDocument'
-
-    ImportRequest:
-      type: object
-      description: >-
-        Unified import envelope. Send raw YAML as body (Content-Type: application/x-yaml)
-        or use this JSON envelope.
-      properties:
-        content:
-          type: string
-          description: Raw YAML content of the artifact
-        oci_reference:
-          type: string
-          description: Optional OCI reference to pull from
-      required: [content]
-
-    CatalogEntry:
-      type: object
-      properties:
-        catalog_id:
-          type: string
-        catalog_type:
-          type: string
-        title:
-          type: string
-        version:
-          type: string
-        entry_count:
+          format: uuid
+        log_index:
           type: integer
-        imported_at:
-          type: string
-          format: date-time
-
-    PolicyImportRequest:
-      type: object
-      deprecated: true
-      description: Use POST /api/import instead
-      properties:
-        oci_reference:
-          type: string
-        content:
-          type: string
-        title:
-          type: string
-        version:
-          type: string
-        policy_id:
-          type: string
-      required: [content, title]
-
-    MappingDocument:
-      type: object
-      properties:
-        mapping_id:
-          type: string
-        policy_id:
-          type: string
-        framework:
-          type: string
-        content:
-          type: string
-        imported_at:
-          type: string
-          format: date-time
-
-    MappingImportRequest:
-      type: object
-      required: [policy_id, framework, content]
-      properties:
-        mapping_id:
-          type: string
-        policy_id:
-          type: string
-        framework:
-          type: string
-        content:
-          type: string
-
-    ImportStatusResponse:
-      type: object
-      properties:
+          format: uint64
         status:
           type: string
-          example: imported
-        policy_id:
-          type: string
-
-    EvidenceRecord:
-      type: object
-      description: >
-        Ingest requires policy_id, target_id, control_id, collected_at (RFC3339).
-        Optional fields validated against PostgreSQL-backed store enums when present.
-      properties:
-        evidence_id:
-          type: string
-        policy_id:
-          type: string
-        target_id:
-          type: string
-        target_name:
-          type: string
-        target_type:
-          type: string
-        target_env:
-          type: string
-        engine_name:
-          type: string
-        engine_version:
-          type: string
-        rule_id:
-          type: string
-        rule_name:
-          type: string
-        rule_uri:
-          type: string
-        eval_result:
-          type: string
-          description: Not Run, Passed, Failed, Needs Review, Not Applicable, Unknown
-        eval_message:
-          type: string
-        control_id:
-          type: string
-        control_catalog_id:
-          type: string
-        control_category:
-          type: string
-        control_applicability:
-          type: array
-          items:
-            type: string
-        requirement_id:
-          type: string
-        plan_id:
-          type: string
-        confidence:
-          type: string
-          description: Undetermined, Low, Medium, High when set
-        steps_executed:
-          type: integer
-        compliance_status:
-          type: string
-          description: Compliant, Non-Compliant, Exempt, Not Applicable, Unknown when set
-        risk_level:
-          type: string
-          description: Critical, High, Medium, Low, Informational when set
-        frameworks:
-          type: array
-          items:
-            type: string
-        requirements:
-          type: array
-          items:
-            type: string
-        remediation_action:
-          type: string
-        remediation_status:
-          type: string
-        remediation_desc:
-          type: string
-        exception_id:
-          type: string
-        exception_active:
-          type: boolean
-        enrichment_status:
-          type: string
-          description: Success, Unmapped, Partial, Unknown, Skipped when set
-        attestation_ref:
-          type: string
-        source_registry:
-          type: string
-        blob_ref:
-          type: string
-        certified:
-          type: boolean
-        owner:
-          type: string
-        collected_at:
-          type: string
-          format: date-time
-
-    AuditLog:
-      type: object
-      properties:
-        audit_id:
-          type: string
-        policy_id:
-          type: string
-        audit_start:
-          type: string
-          format: date-time
-        audit_end:
-          type: string
-          format: date-time
-        framework:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-        created_by:
-          type: string
-        content:
-          type: string
-        summary:
-          type: string
-        model:
-          type: string
-        prompt_version:
-          type: string
-
-    DraftAuditLog:
-      type: object
-      properties:
-        draft_id:
-          type: string
-        policy_id:
-          type: string
-        audit_start:
-          type: string
-          format: date-time
-        audit_end:
-          type: string
-          format: date-time
-        framework:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-        status:
-          type: string
-        content:
-          type: string
-        summary:
-          type: string
-        agent_reasoning:
-          type: string
-        model:
-          type: string
-        prompt_version:
-          type: string
-        reviewed_by:
-          type: string
-        promoted_at:
-          type: string
-          format: date-time
-          nullable: true
-        reviewer_edits:
-          type: string
-          description: JSON map serialized server-side
-
-    DraftReviewerEditEntry:
-      type: object
-      properties:
-        type_override:
-          type: string
-        note:
-          type: string
-
-    CreateAuditLogRequest:
-      type: object
-      required: [policy_id, content]
-      properties:
-        policy_id:
-          type: string
-        content:
-          type: string
-        model:
-          type: string
-        prompt_version:
-          type: string
-
-    Catalog:
-      type: object
-      properties:
-        catalog_id:
-          type: string
-        catalog_type:
-          type: string
-          description: ControlCatalog, ThreatCatalog, or RiskCatalog
-        title:
-          type: string
-        content:
-          type: string
-        policy_id:
-          type: string
-        imported_at:
-          type: string
-          format: date-time
-
-    CatalogImportRequest:
-      type: object
-      required: [content]
-      properties:
-        catalog_id:
-          type: string
-        policy_id:
-          type: string
-        content:
-          type: string
-
-    RequirementRow:
-      type: object
-      properties:
-        catalog_id:
-          type: string
-        control_id:
-          type: string
-        control_title:
-          type: string
-        requirement_id:
-          type: string
-        requirement_text:
-          type: string
-        evidence_count:
-          type: integer
-          minimum: 0
-        latest_evidence:
-          type: string
-        classification:
-          type: string
-
-    RequirementEvidenceRow:
-      type: object
-      properties:
-        evidence_id:
-          type: string
-        target_id:
-          type: string
-        target_name:
-          type: string
-        rule_id:
-          type: string
-        eval_result:
-          type: string
-        classification:
-          type: string
-        assessed_at:
-          type: string
-        collected_at:
-          type: string
-        source_registry:
-          type: string
+          enum: [pending]
 
     IngestJobStatus:
       type: object
       properties:
         job_id:
           type: string
+          format: uuid
         status:
           type: string
           enum: [pending, completed, failed]
         inserted:
           type: integer
-          minimum: 0
-          description: Evidence row count (EvaluationLog/EnforcementLog only)
         policy_id:
           type: string
-          description: Derived policy ID (evidence only)
         artifact_id:
           type: string
-          description: Stored artifact ID (Policy, Catalog, Mapping)
         artifact_type:
           type: string
-          description: Detected Gemara artifact type
         error:
           type: string
         created_at:
@@ -1475,240 +262,16 @@ components:
           type: string
           format: date-time
 
-    CertificationRow:
+    WitnessedStatus:
       type: object
       properties:
-        evidence_id:
-          type: string
-        certifier:
-          type: string
-        certifier_version:
-          type: string
-        result:
-          type: string
-        reason:
-          type: string
-        certified_at:
-          type: string
-          format: date-time
-
-    ThreatRow:
-      type: object
-      properties:
-        catalog_id:
-          type: string
-        threat_id:
-          type: string
-        title:
-          type: string
-        description:
-          type: string
-        group_id:
-          type: string
-        policy_id:
-          type: string
-
-    ControlThreatRow:
-      type: object
-      properties:
-        catalog_id:
-          type: string
-        control_id:
-          type: string
-        threat_reference_id:
-          type: string
-        threat_entry_id:
-          type: string
-
-    RiskRow:
-      type: object
-      properties:
-        catalog_id:
-          type: string
-        risk_id:
-          type: string
-        title:
-          type: string
-        description:
-          type: string
-        severity:
-          type: string
-        group_id:
-          type: string
-        impact:
-          type: string
-        policy_id:
-          type: string
-
-    RiskThreatRow:
-      type: object
-      properties:
-        catalog_id:
-          type: string
-        risk_id:
-          type: string
-        threat_reference_id:
-          type: string
-        threat_entry_id:
-          type: string
-
-    UserInfo:
-      type: object
-      properties:
-        login:
-          type: string
-        name:
-          type: string
-        avatar_url:
-          type: string
-        email:
-          type: string
-        role:
-          type: string
-
-    User:
-      type: object
-      properties:
-        email:
-          type: string
-        name:
-          type: string
-        avatar_url:
-          type: string
-        role:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-
-    RoleChange:
-      type: object
-      properties:
-        changed_by:
-          type: string
-        target_email:
-          type: string
-        old_role:
-          type: string
-        new_role:
-          type: string
-        changed_at:
-          type: string
-          format: date-time
-
-    TargetSummary:
-      type: object
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        type:
-          type: string
-        technologies:
-          type: array
-          items:
-            type: string
-        geopolitical:
-          type: array
-          items:
-            type: string
-        sensitivity:
-          type: array
-          items:
-            type: string
-        registered_at:
-          type: string
-          format: date-time
-
-    PolicyWithDimensions:
-      type: object
-      properties:
-        log_index:
+        index:
           type: integer
-        policy_id:
-          type: string
-        title:
-          type: string
-        version:
-          type: string
-        technologies:
-          type: array
-          items:
-            type: string
-        geopolitical:
-          type: array
-          items:
-            type: string
-        sensitivity:
-          type: array
-          items:
-            type: string
-        evaluation_start:
-          type: string
-          format: date-time
-        evaluation_end:
-          type: string
-          format: date-time
-
-    CoverageResult:
-      type: object
-      properties:
-        policy_id:
-          type: string
-        total_requirements:
+          format: uint64
+        witnessed:
+          type: boolean
+        tree_size:
           type: integer
-        covered_requirements:
+          format: uint64
+        witness_count:
           type: integer
-        coverage_pct:
-          type: number
-        covered:
-          type: array
-          items:
-            type: string
-          description: Requirement IDs with evidence
-        gaps:
-          type: array
-          items:
-            type: string
-          description: Requirement IDs with no evidence
-        stale:
-          type: array
-          items:
-            type: string
-          description: Requirement IDs with evidence older than adherence frequency
-        unaligned:
-          type: array
-          items:
-            type: string
-          description: Control IDs with evidence not mapped to a specific requirement
-
-    TrustSignal:
-      type: object
-      properties:
-        evidence_id:
-          type: string
-        layer:
-          type: string
-          enum: [identity, quality, attestation]
-        check_name:
-          type: string
-          enum: [schema, provenance, executor, publisher_auth]
-        result:
-          type: string
-          enum: [pass, fail, skip, error]
-        reason:
-          type: string
-        checked_at:
-          type: string
-          format: date-time
-
-    PolicyQueryResponse:
-      type: object
-      properties:
-        target:
-          $ref: '#/components/schemas/TargetSummary'
-        applicable_policies:
-          type: array
-          items:
-            $ref: '#/components/schemas/PolicyWithDimensions'

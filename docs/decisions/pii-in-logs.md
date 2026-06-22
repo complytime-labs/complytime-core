@@ -20,7 +20,7 @@ The gateway logs user emails via `slog` during OAuth login, role changes, bootst
 |:--|:--|:--|
 | `internal/auth/auth.go` | First admin promoted | `sess.Email` |
 | `internal/auth/user_handlers.go` | Role change, bootstrap | `sess.Email`, `targetEmail` |
-| `cmd/gateway/main.go` | Login fallback warning | `sess.Email` |
+| `cmd/ingest/main.go` | Login fallback warning | `sess.Email` |
 
 ## Future Migration Path
 

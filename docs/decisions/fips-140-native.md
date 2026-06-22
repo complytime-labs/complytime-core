@@ -15,12 +15,12 @@ Use Go's native `GOFIPS140` build flag and `GODEBUG=fips140` runtime flag. FIPS 
 
 **Build-time activation:**
 ```bash
-GOFIPS140=latest go build -o bin/studio-gateway ./cmd/gateway/
+GOFIPS140=latest go build -o bin/complytime-ingest ./cmd/ingest/
 ```
 
 **Runtime activation:**
 ```bash
-GODEBUG=fips140=on ./bin/studio-gateway
+GODEBUG=fips140=on ./bin/complytime-ingest
 ```
 
 **Module version:** `GOFIPS140=latest` selects the best validated module available for the Go version (v1.0.0 on Go 1.24–1.25, CAVP Certificate A8028).

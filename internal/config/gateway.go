@@ -14,8 +14,7 @@ import (
 // GatewayConfig holds all configuration for the gateway binary.
 type GatewayConfig struct {
 	// Required
-	PostgresURL string
-	NatsURL     string
+	NatsURL string
 
 	// Server
 	Port       string
@@ -74,7 +73,6 @@ type GatewayConfig struct {
 // Returns an error listing all missing required variables.
 func GatewayFromEnv() (*GatewayConfig, error) {
 	cfg := &GatewayConfig{
-		PostgresURL:               os.Getenv("POSTGRES_URL"),
 		NatsURL:                   os.Getenv("NATS_URL"),
 		Port:                      envOr("PORT", "8080"),
 		ListenHost:                envOr("LISTEN_HOST", "0.0.0.0"),
@@ -119,9 +117,6 @@ func GatewayFromEnv() (*GatewayConfig, error) {
 	}
 
 	var missing []string
-	if cfg.PostgresURL == "" {
-		missing = append(missing, "POSTGRES_URL")
-	}
 	if cfg.NatsURL == "" {
 		missing = append(missing, "NATS_URL")
 	}
@@ -132,27 +127,20 @@ func GatewayFromEnv() (*GatewayConfig, error) {
 	return cfg, nil
 }
 
-// WitnessConfig holds all configuration for the witness binary.
-type WitnessConfig struct {
-	PostgresURL string
+// MonitorConfig holds all configuration for the monitor binary.
+type MonitorConfig struct {
 	ConfigPath  string
 	StatePath   string
 	TesseraPath string
 }
 
-// WitnessFromEnv loads witness configuration from environment variables.
-func WitnessFromEnv() (*WitnessConfig, error) {
-	cfg := &WitnessConfig{
-		PostgresURL: os.Getenv("POSTGRES_URL"),
-		ConfigPath:  envOr("WITNESS_CONFIG_PATH", "/etc/witness/config.yaml"),
-		StatePath:   envOr("WITNESS_STATE_PATH", "/var/lib/witness/state.json"),
+// MonitorFromEnv loads monitor configuration from environment variables.
+func MonitorFromEnv() (*MonitorConfig, error) {
+	cfg := &MonitorConfig{
+		ConfigPath:  envOr("MONITOR_CONFIG_PATH", "/etc/monitor/config.yaml"),
+		StatePath:   envOr("MONITOR_STATE_PATH", "/var/lib/monitor/state.json"),
 		TesseraPath: envOr("TESSERA_PATH", "/var/lib/tessera"),
 	}
-
-	if cfg.PostgresURL == "" {
-		return nil, fmt.Errorf("missing required environment variable: POSTGRES_URL")
-	}
-
 	return cfg, nil
 }
 

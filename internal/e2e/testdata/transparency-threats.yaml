@@ -128,9 +128,9 @@ threats:
     title: Evidence flooding via ingest endpoint
     description: >-
       An attacker submits a high volume of evidence to the ingest endpoint,
-      exhausting Tessera storage, NATS queue capacity, and PostgreSQL resources.
-      Without authentication and rate limiting, the log grows unboundedly with
-      garbage entries that cannot be removed from the append-only store.
+      exhausting Tessera storage and NATS queue capacity. Without authentication
+      and rate limiting, the log grows unboundedly with garbage entries that
+      cannot be removed from the append-only store.
     group: denial-of-service
     capabilities:
       - reference-id: tlog-capabilities
@@ -142,7 +142,7 @@ threats:
     description: >-
       An attacker sends a high volume of requests to the unauthenticated tlog
       read endpoints (/checkpoint, /tile/*, /log/witnessed/:index), exhausting
-      gateway resources. These endpoints have no application-level rate limiting.
+      ingest service resources. These endpoints have no application-level rate limiting.
       Mitigation is infrastructure-level: reverse proxy rate limiting, CDN
       caching for immutable tiles, or network-layer DDoS protection.
     group: denial-of-service
@@ -152,12 +152,12 @@ threats:
           - reference-id: tlog-capabilities
             remarks: Checkpoint publication
   - id: T-INFO-02
-    title: Log metadata disclosure via public checkpoint
+    title: Unauthenticated checkpoint access reveals operational cadence
     description: >-
-      An unauthenticated client can learn the log's tree size, checkpoint
-      publication frequency, and growth rate by polling the public /checkpoint
-      endpoint. This is inherent to transparency logs and accepted because
-      the checkpoint is a public commitment to log state.
+      Unauthenticated access to the checkpoint endpoint exposes log operational
+      metadata — tree size, publication frequency, and growth rate — to any
+      network observer. This enables reconnaissance of evidence submission
+      patterns and organizational compliance activity.
     group: information-disclosure
     capabilities:
       - reference-id: tlog-capabilities
@@ -165,27 +165,123 @@ threats:
           - reference-id: tlog-capabilities
             remarks: Checkpoint publication
   - id: T-INFO-03
-    title: Entry content disclosure via public tiles
+    title: Unauthenticated tile access exposes compliance evidence content
     description: >-
-      An unauthenticated client can read evidence content from entry bundles
-      served at the public /tile/* endpoint. Transparency log entries are
-      readable by design. If evidence confidentiality is required, entries
-      must be encrypted before appending.
+      Unauthenticated access to tile entry bundles exposes compliance evidence
+      content — vulnerability scan results, control assessments, and security
+      posture data — to any network observer without authentication.
     group: information-disclosure
     capabilities:
       - reference-id: tlog-capabilities
         entries:
           - reference-id: tlog-capabilities
             remarks: Entry storage and retrieval
-  - id: T-INFO-01
-    title: JWKS discovery requires network egress
+  - id: T-TAMP-03
+    title: Publisher trust state loss
     description: >-
-      The JWT verifier fetches issuer JWKS via HTTP discovery. In an air-gapped
-      deployment, this external dependency prevents authentication from
-      functioning without an in-enclave OIDC IdP or static JWKS provisioning.
-    group: information-disclosure
+      The NATS KV bucket containing publisher allowlists is lost or corrupted.
+      Without rebuild from Tessera, publisher authorization checks fail and
+      all ingestion is rejected (fail-closed). Recovery requires replaying
+      TargetRegistration entries from the transparency log.
+    group: tampering
     capabilities:
       - reference-id: tlog-capabilities
         entries:
           - reference-id: tlog-capabilities
             remarks: Publisher identity verification
+  - id: T-REP-04
+    title: Certification results not locally persisted
+    description: >-
+      Trust signals (schema, provenance, executor checks) are published as
+      NATS events but not stored by the ingest service. If no downstream
+      subscriber persists them, certification state is lost and cannot be
+      audited after the fact.
+    group: repudiation
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Content verification
+  - id: T-DOS-03
+    title: NATS KV unavailability blocks ingestion
+    description: >-
+      Publisher trust lookup is fail-closed. If NATS KV is unavailable, all
+      ingestion is rejected until KV recovers. This is an accepted tradeoff:
+      integrity over availability, since Tessera is append-only and bad
+      evidence cannot be removed.
+    group: denial-of-service
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Evidence ingestion
+  - id: T-SPOOF-02
+    title: Unauthenticated token issuance forges publisher identity
+    description: >-
+      A token issuer included in the deployment for development purposes
+      issues signed identity tokens for arbitrary subjects without requiring
+      authentication. If this issuer is trusted by the gateway in a non-
+      development context, an attacker can forge any publisher identity and
+      permanently anchor fraudulent evidence in the append-only log.
+    group: spoofing
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Publisher identity verification
+  - id: T-SPOOF-03
+    title: Gateway authentication bypass via proxy header forgery
+    description: >-
+      The gateway derives user identity from headers set by a reverse proxy.
+      If the gateway is reachable without traversing the proxy, an attacker
+      can forge identity headers and authenticate as any user, including
+      administrators. The gateway has no independent mechanism to verify
+      that headers originated from a trusted proxy.
+    group: spoofing
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Evidence ingestion
+  - id: T-TAMP-04
+    title: Silent witness degradation removes anti-equivocation guarantee
+    description: >-
+      If the system is configured to continue appending entries when the
+      witness service is unavailable, the anti-equivocation guarantee
+      silently degrades to single-operator trust. During this window, log
+      equivocation becomes undetectable by relying parties. Operators may
+      not be aware that witnessing has stopped.
+    group: tampering
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Checkpoint publication
+  - id: T-TAMP-05
+    title: Witness binary supply chain compromise
+    description: >-
+      The witness binary is fetched from an external source at build time
+      without artifact integrity verification. A supply chain compromise
+      could substitute a malicious binary that forges checkpoint cosignatures
+      or exfiltrates signing key material. All checkpoint signatures produced
+      by a compromised witness are untrustworthy.
+    group: tampering
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Checkpoint signing
+  - id: T-DOS-04
+    title: Rate limiter key spoofing bypasses ingest throttling
+    description: >-
+      If the ingest rate limiter derives its client identity from a
+      client-controlled input, an attacker can present a different identity
+      per request to allocate a fresh rate-limit bucket each time, bypassing
+      per-client throttling. A single session can then flood the ingest
+      endpoint, exhausting log storage or message queue capacity.
+    group: denial-of-service
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Evidence ingestion

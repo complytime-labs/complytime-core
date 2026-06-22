@@ -225,6 +225,95 @@ controls:
           caller to bound submission volume.
         applicability: [all]
         state: Draft
+  - id: CTRL-CI-05
+    title: Ingest Boundary Publisher Authorization
+    objective: >-
+      The ingest service checks the JWT caller's issuer and subject against
+      the per-target publisher allowlist in NATS KV before appending to
+      Tessera. Unauthorized publishers are rejected. Targets with no
+      configured publishers deny all submissions (deny by default).
+    group: content-integrity
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-SPOOF-01 (publisher trust bypass)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-CI-05.1
+        text: >-
+          The ingest service MUST reject evidence submissions from publishers
+          whose JWT issuer/subject do not match any entry in the target's
+          trusted publisher allowlist.
+        applicability: [all]
+        state: Active
+      - id: CTRL-CI-05.2
+        text: >-
+          The ingest service MUST reject evidence submissions for targets
+          with no trusted publishers configured (deny by default).
+        applicability: [all]
+        state: Active
+  - id: CTRL-CI-03
+    title: Publisher Trust Fail-Closed on KV Unavailability
+    objective: >-
+      When the NATS KV bucket for publisher trust is unavailable, the ingest
+      service rejects all submissions rather than accepting without authorization.
+      Integrity over availability — Tessera is append-only.
+    group: content-integrity
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-TAMP-03 (trust state loss) and T-DOS-03 (KV unavailability)
+    state: Draft
+    assessment-requirements:
+      - id: CTRL-CI-03.1
+        text: >-
+          The ingest service MUST reject evidence submissions with HTTP 503
+          when the publisher trust NATS KV bucket is unreachable.
+        applicability: [all]
+        state: Draft
+  - id: CTRL-CI-04
+    title: Publisher Trust State Rebuildable from Tessera
+    objective: >-
+      The NATS KV publisher trust state can be fully rebuilt by replaying
+      TargetRegistration entries from the Tessera transparency log. No
+      external state is required beyond what Tessera already stores.
+    group: content-integrity
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-TAMP-03 (trust state loss)
+    state: Draft
+    assessment-requirements:
+      - id: CTRL-CI-04.1
+        text: >-
+          After a NATS KV bucket loss, the ingest service MUST rebuild the
+          publisher trust state by replaying all TargetRegistration entries
+          from Tessera before accepting new submissions.
+        applicability: [all]
+        state: Draft
+  - id: CTRL-OI-04
+    title: Certification Events Durable in NATS JetStream
+    objective: >-
+      Certification results (trust signals) are published to durable NATS
+      JetStream streams so downstream subscribers can persist and query them.
+      The ingest service does not store certification results locally.
+    group: operational-integrity
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-REP-04 (certification results not persisted)
+    state: Draft
+    assessment-requirements:
+      - id: CTRL-OI-04.1
+        text: >-
+          Certification results MUST be published to a durable NATS JetStream
+          stream with at-least-once delivery guarantees.
+        applicability: [all]
+        state: Draft
   - id: CTRL-OI-02
     title: Zero-Egress Air-Gap Conformance
     objective: >-

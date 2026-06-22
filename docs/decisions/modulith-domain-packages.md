@@ -53,7 +53,7 @@ The modulith is designed so these can become independent binaries without proto 
 
 | Service | Current location | Split trigger | Transport |
 |:--|:--|:--|:--|
-| **Gateway** | `cmd/gateway` | Already separate | HTTP |
+| **Ingest** | `cmd/ingest` | Already separate | HTTP |
 | **Ingest Worker** | `store/ingest_worker.go` | Need to scale YAML parsing independently | NATS JetStream (already wired) |
 | **Certifier** | `certify/handler.go` | Need to scale certification independently | NATS evidence events (already wired) |
 | **Content Monitor** | `cmd/monitor` | Already separate | PostgreSQL + Tessera |
