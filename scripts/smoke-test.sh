@@ -7,7 +7,7 @@
 #
 # Prerequisites:
 #   ./scripts/setup-witness.sh
-#   cd deploy/compose && docker compose up --build -d
+#   cd deploy/compose && docker compose -f docker-compose.yaml -f docker-compose.testjwks.yml up --build -d
 #
 # Usage:
 #   ./scripts/smoke-test.sh

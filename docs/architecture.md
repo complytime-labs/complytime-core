@@ -199,7 +199,7 @@ go test -tags dev ./...
 
 # Smoke test (requires docker compose stack)
 ./scripts/setup-witness.sh
-cd deploy/compose && docker compose up --build -d
+cd deploy/compose && docker compose -f docker-compose.yaml -f docker-compose.testjwks.yml up --build -d
 cd ../.. && ./scripts/smoke-test.sh
 
 # Integration tests (Ginkgo, in-process Tessera)

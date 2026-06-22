@@ -101,7 +101,7 @@ Tests the full deployed stack against docker compose with real containers. Verif
 **Run:**
 ```bash
 ./scripts/setup-witness.sh
-cd deploy/compose && docker compose up --build -d
+cd deploy/compose && docker compose -f docker-compose.yaml -f docker-compose.testjwks.yml up --build -d
 cd ../.. && ./scripts/smoke-test.sh
 ```
 
