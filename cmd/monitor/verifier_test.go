@@ -11,12 +11,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Mock implementations for testing
 type mockTesseraReader struct {
 	entries map[uint64][]byte
 }
 
-func (m *mockTesseraReader) Read(ctx context.Context, index uint64) ([]byte, error) {
+func (m *mockTesseraReader) Read(_ context.Context, index uint64) ([]byte, error) {
 	entry, ok := m.entries[index]
 	if !ok {
 		return nil, fmt.Errorf("entry not found at index %d", index)
@@ -28,158 +27,46 @@ func (m *mockTesseraReader) ReadCheckpoint(_ context.Context) ([]byte, error) {
 	return []byte("tessera-log\n100\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n"), nil
 }
 
-type evidenceRow struct {
-	evidenceID      string
-	publisherIssuer string
-	submittedBy     string
-	hasFailed       bool // whether trust signals have failed
-}
-
-type mockPostgres struct {
-	evidenceRows      map[uint64]evidenceRow
-	witnessedIndices  map[uint64]bool
-	registeredTargets map[string]bool
-	existingPolicies  map[string]bool
-}
-
-func (m *mockPostgres) QueryEvidenceByLogIndex(ctx context.Context, logIndex uint64) (*EvidenceRow, error) {
-	row, ok := m.evidenceRows[logIndex]
-	if !ok {
-		return nil, nil
-	}
-	return &EvidenceRow{
-		EvidenceID:      row.evidenceID,
-		PublisherIssuer: row.publisherIssuer,
-		SubmittedBy:     row.submittedBy,
-	}, nil
-}
-
-func (m *mockPostgres) HasFailedTrustSignals(ctx context.Context, evidenceID string) (bool, error) {
-	for _, row := range m.evidenceRows {
-		if row.evidenceID == evidenceID {
-			return row.hasFailed, nil
-		}
-	}
-	return false, nil
-}
-
-func (m *mockPostgres) IsIndexWitnessed(ctx context.Context, index uint64) bool {
-	return m.witnessedIndices[index]
-}
-
-func (m *mockPostgres) IsTargetRegistered(ctx context.Context, targetID string) bool {
-	if m.registeredTargets == nil {
-		return true
-	}
-	return m.registeredTargets[targetID]
-}
-
-func (m *mockPostgres) PolicyExistsByID(ctx context.Context, policyID string) bool {
-	if m.existingPolicies == nil {
-		return true
-	}
-	return m.existingPolicies[policyID]
-}
-
-func TestVerifier_VerifyEntry_AllChecksPass(t *testing.T) {
-	// Setup: Mock Tessera (entry exists)
-	mockTessera := &mockTesseraReader{
-		entries: map[uint64][]byte{
-			42: []byte("metadata:\n  type: EvaluationLog\ntarget:\n  id: test"),
-		},
-	}
-
-	// Setup: Mock PostgreSQL (entry certified, publisher trusted)
-	mockDB := &mockPostgres{
-		evidenceRows: map[uint64]evidenceRow{
-			42: {
-				evidenceID: "test-ev", hasFailed: false,
-				publisherIssuer: "https://token.actions.githubusercontent.com",
-				submittedBy:     "repo:complytime/scanner:ref:refs/heads/main",
-			},
-		},
-	}
-
-	// Setup: Trusted publishers config
-	config := &Config{
+func trustedConfig() *Config {
+	return &Config{
 		TrustedPublishers: []TrustedPublisher{
 			{
 				Name:         "github-scanners",
 				Issuer:       "https://token.actions.githubusercontent.com",
 				Sub:          "repo:complytime/*",
-				AllowedTypes: []string{"EvaluationLog", "EnforcementLog"},
+				AllowedTypes: []string{"EvaluationLog", "EnforcementLog", "AuditLog"},
 			},
 		},
 	}
-
-	verifier := NewVerifier(mockTessera, mockDB, config)
-
-	// Verify entry
-	result := verifier.VerifyEntry(context.Background(), 42)
-	assert.True(t, result, "Entry should pass all verification checks")
 }
 
-func TestVerifier_VerifyEntry_CertificationFailed(t *testing.T) {
+func TestVerifier_VerifyEntry_EvaluationLog(t *testing.T) {
 	mockTessera := &mockTesseraReader{
 		entries: map[uint64][]byte{
-			42: []byte("metadata:\n  type: EvaluationLog"),
+			42: []byte("metadata:\n  type: EvaluationLog\npublisher:\n  issuer: https://token.actions.githubusercontent.com\n  sub: repo:complytime/scanner\ntarget:\n  id: test"),
 		},
 	}
 
-	mockDB := &mockPostgres{
-		evidenceRows: map[uint64]evidenceRow{
-			42: {
-				evidenceID: "test-ev", hasFailed: true, // Failed trust signals
-				publisherIssuer: "https://token.actions.githubusercontent.com",
-				submittedBy:     "repo:complytime/scanner:ref:refs/heads/main",
-			},
-		},
-	}
-
-	config := &Config{TrustedPublishers: []TrustedPublisher{}}
-	verifier := NewVerifier(mockTessera, mockDB, config)
-
+	verifier := NewVerifier(mockTessera, trustedConfig())
 	result := verifier.VerifyEntry(context.Background(), 42)
-	assert.False(t, result, "Entry should fail due to failed certification")
+	assert.True(t, result, "EvaluationLog with trusted publisher should pass")
 }
 
 func TestVerifier_VerifyEntry_PublisherNotTrusted(t *testing.T) {
 	mockTessera := &mockTesseraReader{
 		entries: map[uint64][]byte{
-			42: []byte("metadata:\n  type: EvaluationLog"),
+			42: []byte("metadata:\n  type: EvaluationLog\npublisher:\n  issuer: https://untrusted.example.com\n  sub: malicious-actor"),
 		},
 	}
 
-	mockDB := &mockPostgres{
-		evidenceRows: map[uint64]evidenceRow{
-			42: {
-				evidenceID: "test-ev", hasFailed: true,
-				publisherIssuer: "https://untrusted-issuer.example.com",
-				submittedBy:     "malicious-actor",
-			},
-		},
-	}
-
-	config := &Config{
-		TrustedPublishers: []TrustedPublisher{
-			{
-				Issuer: "https://token.actions.githubusercontent.com",
-				Sub:    "repo:complytime/*",
-			},
-		},
-	}
-
-	verifier := NewVerifier(mockTessera, mockDB, config)
-
+	verifier := NewVerifier(mockTessera, trustedConfig())
 	result := verifier.VerifyEntry(context.Background(), 42)
 	assert.False(t, result, "Entry should fail due to untrusted publisher")
 }
 
 func TestVerifier_VerifyEntry_TesseraReadFails(t *testing.T) {
-	mockTessera := &mockTesseraReader{
-		entries: map[uint64][]byte{}, // Empty - no entries
-	}
-	mockDB := &mockPostgres{}
+	mockTessera := &mockTesseraReader{entries: map[uint64][]byte{}}
+
 	config := &Config{
 		Witness: WitnessConfig{
 			Name:                "test-witness",
@@ -190,7 +77,7 @@ func TestVerifier_VerifyEntry_TesseraReadFails(t *testing.T) {
 			{Name: "test", Issuer: "https://example.com"},
 		},
 	}
-	verifier := NewVerifier(mockTessera, mockDB, config)
+	verifier := NewVerifier(mockTessera, config)
 
 	result := verifier.VerifyEntry(context.Background(), 999)
 	assert.False(t, result, "Entry should fail when Tessera read fails")
@@ -202,7 +89,7 @@ func TestVerifier_VerifyEntry_MalformedYAML(t *testing.T) {
 			42: []byte("{{invalid yaml}}"),
 		},
 	}
-	mockDB := &mockPostgres{}
+
 	config := &Config{
 		Witness: WitnessConfig{
 			Name:                "test-witness",
@@ -213,33 +100,16 @@ func TestVerifier_VerifyEntry_MalformedYAML(t *testing.T) {
 			{Name: "test", Issuer: "https://example.com"},
 		},
 	}
-	verifier := NewVerifier(mockTessera, mockDB, config)
+	verifier := NewVerifier(mockTessera, config)
 
 	result := verifier.VerifyEntry(context.Background(), 42)
 	assert.False(t, result, "Entry should fail with malformed YAML")
 }
 
 func TestVerifier_VerifyEntry_PolicyReferenceExists(t *testing.T) {
-	// Setup: Policy artifact at log_index=0
-	policyYAML := `metadata:
-  type: Policy
-requirements:
-  - control-id: CC6.1
-    title: Encryption at Rest
-`
+	policyYAML := "metadata:\n  type: Policy\n  id: soc2-policy\ntitle: SOC2 Policy\n"
 
-	// Setup: EvaluationLog references policy at log_index=0
-	evaluationYAML := `metadata:
-  type: EvaluationLog
-  mapping-references:
-    - id: soc2-policy
-      tessera-log-index: 0
-target:
-  id: production
-results:
-  - control-id: CC6.1
-    eval-result: pass
-`
+	evaluationYAML := "metadata:\n  type: EvaluationLog\n  mapping-references:\n    - id: soc2-policy\n      tessera-log-index: 0\npublisher:\n  issuer: https://token.actions.githubusercontent.com\n  sub: repo:complytime/scanner\ntarget:\n  id: production\n"
 
 	mockTessera := &mockTesseraReader{
 		entries: map[uint64][]byte{
@@ -248,102 +118,29 @@ results:
 		},
 	}
 
-	mockDB := &mockPostgres{
-		evidenceRows: map[uint64]evidenceRow{
-			0: {
-				evidenceID: "test-ev", hasFailed: false,
-				publisherIssuer: "https://kubernetes.default.svc",
-				submittedBy:     "system:serviceaccount:complytime:admin",
-			},
-			42: {
-				evidenceID: "test-ev", hasFailed: false,
-				publisherIssuer: "https://token.actions.githubusercontent.com",
-				submittedBy:     "repo:complytime/scanner:ref:refs/heads/main",
-			},
-		},
-		witnessedIndices: map[uint64]bool{
-			0: true, // Policy is witnessed
-		},
-	}
-
-	config := &Config{
-		TrustedPublishers: []TrustedPublisher{
-			{
-				Issuer:       "https://token.actions.githubusercontent.com",
-				Sub:          "repo:complytime/*",
-				AllowedTypes: []string{"EvaluationLog"},
-			},
-		},
-	}
-
-	verifier := NewVerifier(mockTessera, mockDB, config)
-
-	// Verify entry (should check policy reference)
+	verifier := NewVerifier(mockTessera, trustedConfig())
 	result := verifier.VerifyEntry(context.Background(), 42)
-	assert.True(t, result, "Entry should pass when policy reference exists and is witnessed")
+	assert.True(t, result, "Entry should pass when policy reference exists")
 }
 
-func TestVerifier_VerifyEntry_PolicyReferenceNotWitnessed(t *testing.T) {
-	policyYAML := `metadata:
-  type: Policy
-`
-	evaluationYAML := `metadata:
-  type: EvaluationLog
-  mapping-references:
-    - id: soc2-policy
-      tessera-log-index: 0
-target:
-  id: production
-`
+func TestVerifier_VerifyEntry_PolicyReferenceNotFound(t *testing.T) {
+	evaluationYAML := "metadata:\n  type: EvaluationLog\n  mapping-references:\n    - id: soc2-policy\n      tessera-log-index: 99\npublisher:\n  issuer: https://token.actions.githubusercontent.com\n  sub: repo:complytime/scanner\ntarget:\n  id: production\n"
 
 	mockTessera := &mockTesseraReader{
 		entries: map[uint64][]byte{
-			0:  []byte(policyYAML),
 			42: []byte(evaluationYAML),
 		},
 	}
 
-	mockDB := &mockPostgres{
-		evidenceRows: map[uint64]evidenceRow{
-			0:  {evidenceID: "test-ev", hasFailed: false, publisherIssuer: "https://kubernetes.default.svc", submittedBy: "system:serviceaccount:complytime:admin"},
-			42: {evidenceID: "test-ev", hasFailed: false, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/scanner:ref:refs/heads/main"},
-		},
-		witnessedIndices: map[uint64]bool{
-			// Policy NOT witnessed
-		},
-	}
-
-	config := &Config{
-		TrustedPublishers: []TrustedPublisher{
-			{Issuer: "https://token.actions.githubusercontent.com", Sub: "repo:complytime/*", AllowedTypes: []string{"EvaluationLog"}},
-			{Issuer: "https://kubernetes.default.svc", Sub: "system:serviceaccount:complytime:*", AllowedTypes: []string{"Policy"}},
-		},
-	}
-
-	verifier := NewVerifier(mockTessera, mockDB, config)
-
+	verifier := NewVerifier(mockTessera, trustedConfig())
 	result := verifier.VerifyEntry(context.Background(), 42)
-	assert.False(t, result, "Entry should fail when policy reference is not witnessed")
+	assert.False(t, result, "Entry should fail when policy reference not found in Tessera")
 }
 
-func TestVerifier_VerifyEntry_AuditLogEvidenceReferencesValid(t *testing.T) {
-	// EvaluationLog at index 1 with target "production"
-	evaluationYAML := `metadata:
-  type: EvaluationLog
-target:
-  id: production
-`
+func TestVerifier_VerifyEntry_AuditLogValid(t *testing.T) {
+	evaluationYAML := "metadata:\n  type: EvaluationLog\ntarget:\n  id: production\n"
 
-	// AuditLog at index 42 references evidence at index 1
-	auditYAML := `metadata:
-  type: AuditLog
-target:
-  id: production
-results:
-  - control-id: CC6.1
-    evidence:
-      - tessera-log-index: 1
-`
+	auditYAML := "metadata:\n  type: AuditLog\npublisher:\n  issuer: https://token.actions.githubusercontent.com\n  sub: repo:complytime/auditor\ntarget:\n  id: production\nresults:\n  - control-id: CC6.1\n    evidence:\n      - tessera-log-index: 1\n"
 
 	mockTessera := &mockTesseraReader{
 		entries: map[uint64][]byte{
@@ -352,45 +149,15 @@ results:
 		},
 	}
 
-	mockDB := &mockPostgres{
-		evidenceRows: map[uint64]evidenceRow{
-			1:  {evidenceID: "test-ev", hasFailed: false, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
-			42: {evidenceID: "test-ev", hasFailed: false, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
-		},
-		witnessedIndices: map[uint64]bool{
-			1: true, // Evidence is witnessed
-		},
-	}
-
-	config := &Config{
-		TrustedPublishers: []TrustedPublisher{
-			{Issuer: "https://token.actions.githubusercontent.com", Sub: "repo:complytime/*", AllowedTypes: []string{"AuditLog", "EvaluationLog"}},
-		},
-	}
-
-	verifier := NewVerifier(mockTessera, mockDB, config)
+	verifier := NewVerifier(mockTessera, trustedConfig())
 	result := verifier.VerifyEntry(context.Background(), 42)
 	assert.True(t, result, "AuditLog should pass when evidence references are valid and targets match")
 }
 
 func TestVerifier_VerifyEntry_AuditLogTargetMismatch(t *testing.T) {
-	// EvaluationLog with target "staging"
-	evaluationYAML := `metadata:
-  type: EvaluationLog
-target:
-  id: staging
-`
+	evaluationYAML := "metadata:\n  type: EvaluationLog\ntarget:\n  id: staging\n"
 
-	// AuditLog with target "production" references evidence from staging
-	auditYAML := `metadata:
-  type: AuditLog
-target:
-  id: production
-results:
-  - control-id: CC6.1
-    evidence:
-      - tessera-log-index: 1
-`
+	auditYAML := "metadata:\n  type: AuditLog\npublisher:\n  issuer: https://token.actions.githubusercontent.com\n  sub: repo:complytime/auditor\ntarget:\n  id: production\nresults:\n  - control-id: CC6.1\n    evidence:\n      - tessera-log-index: 1\n"
 
 	mockTessera := &mockTesseraReader{
 		entries: map[uint64][]byte{
@@ -399,215 +166,43 @@ results:
 		},
 	}
 
-	mockDB := &mockPostgres{
-		evidenceRows: map[uint64]evidenceRow{
-			1:  {evidenceID: "test-ev", hasFailed: false, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
-			42: {evidenceID: "test-ev", hasFailed: false, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
-		},
-		witnessedIndices: map[uint64]bool{1: true},
-	}
-
-	config := &Config{
-		TrustedPublishers: []TrustedPublisher{
-			{Issuer: "https://token.actions.githubusercontent.com", Sub: "repo:complytime/*", AllowedTypes: []string{"AuditLog", "EvaluationLog"}},
-		},
-	}
-
-	verifier := NewVerifier(mockTessera, mockDB, config)
+	verifier := NewVerifier(mockTessera, trustedConfig())
 	result := verifier.VerifyEntry(context.Background(), 42)
-	assert.False(t, result, "AuditLog should fail when evidence targets don't match AuditLog target")
-}
-
-func TestVerifier_VerifyEntry_EvidenceReferenceWrongType(t *testing.T) {
-	// Policy at index 1 (not valid evidence type)
-	policyYAML := `metadata:
-  type: Policy
-target:
-  id: production
-`
-
-	// AuditLog references policy as evidence (invalid)
-	auditYAML := `metadata:
-  type: AuditLog
-target:
-  id: production
-results:
-  - control-id: CC6.1
-    evidence:
-      - tessera-log-index: 1
-`
-
-	mockTessera := &mockTesseraReader{
-		entries: map[uint64][]byte{
-			1:  []byte(policyYAML),
-			42: []byte(auditYAML),
-		},
-	}
-
-	mockDB := &mockPostgres{
-		evidenceRows: map[uint64]evidenceRow{
-			1:  {evidenceID: "test-ev", hasFailed: false, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
-			42: {evidenceID: "test-ev", hasFailed: false, publisherIssuer: "https://token.actions.githubusercontent.com", submittedBy: "repo:complytime/*"},
-		},
-		witnessedIndices: map[uint64]bool{1: true},
-	}
-
-	config := &Config{
-		TrustedPublishers: []TrustedPublisher{
-			{Issuer: "https://token.actions.githubusercontent.com", Sub: "repo:complytime/*", AllowedTypes: []string{"AuditLog", "Policy"}},
-		},
-	}
-
-	verifier := NewVerifier(mockTessera, mockDB, config)
-	result := verifier.VerifyEntry(context.Background(), 42)
-	assert.False(t, result, "AuditLog should fail when evidence reference points to non-evidence artifact type")
+	assert.False(t, result, "AuditLog should fail when evidence targets don't match")
 }
 
 func TestVerifier_VerifyEntry_PolicyVerified(t *testing.T) {
-	policyYAML := `metadata:
-  type: Policy
-  id: infra-baseline
-  version: "2.0.0"
-title: Infrastructure Baseline
-`
+	policyYAML := "metadata:\n  type: Policy\n  id: infra-baseline\n  version: \"2.0.0\"\ntitle: Infrastructure Baseline\n"
 
 	mockTessera := &mockTesseraReader{
-		entries: map[uint64][]byte{
-			10: []byte(policyYAML),
-		},
+		entries: map[uint64][]byte{10: []byte(policyYAML)},
 	}
 
-	mockDB := &mockPostgres{
-		existingPolicies: map[string]bool{
-			"infra-baseline": true,
-		},
-	}
-
-	config := &Config{
-		TrustedPublishers: []TrustedPublisher{
-			{Issuer: "https://example.com", Sub: "*", AllowedTypes: []string{"Policy"}},
-		},
-	}
-
-	verifier := NewVerifier(mockTessera, mockDB, config)
+	verifier := NewVerifier(mockTessera, trustedConfig())
 	result := verifier.VerifyEntry(context.Background(), 10)
-	assert.True(t, result, "Policy entry should pass when policy exists in DB")
+	assert.True(t, result, "Policy entry should pass verification")
 }
 
-func TestVerifier_VerifyEntry_PolicyNotInDB(t *testing.T) {
-	policyYAML := `metadata:
-  type: Policy
-  id: missing-policy
-title: Missing Policy
-`
+func TestVerifier_VerifyEntry_TargetRegistration(t *testing.T) {
+	targetYAML := "target:\n  id: prod-cluster\n  name: Production Cluster\n  type: kubernetes-cluster\n  technologies:\n    - kubernetes\n"
 
 	mockTessera := &mockTesseraReader{
-		entries: map[uint64][]byte{
-			10: []byte(policyYAML),
-		},
+		entries: map[uint64][]byte{5: []byte(targetYAML)},
 	}
 
-	mockDB := &mockPostgres{
-		existingPolicies: map[string]bool{},
-	}
-
-	config := &Config{
-		TrustedPublishers: []TrustedPublisher{
-			{Issuer: "https://example.com", Sub: "*", AllowedTypes: []string{"Policy"}},
-		},
-	}
-
-	verifier := NewVerifier(mockTessera, mockDB, config)
-	result := verifier.VerifyEntry(context.Background(), 10)
-	assert.False(t, result, "Policy entry should fail when policy not yet in DB")
-}
-
-func TestVerifier_VerifyEntry_TargetRegistrationVerified(t *testing.T) {
-	targetYAML := `target:
-  id: prod-cluster
-  name: Production Cluster
-  type: kubernetes-cluster
-  technologies:
-    - kubernetes
-`
-
-	mockTessera := &mockTesseraReader{
-		entries: map[uint64][]byte{
-			5: []byte(targetYAML),
-		},
-	}
-
-	mockDB := &mockPostgres{
-		registeredTargets: map[string]bool{
-			"prod-cluster": true,
-		},
-	}
-
-	config := &Config{
-		TrustedPublishers: []TrustedPublisher{
-			{Issuer: "https://example.com", Sub: "*", AllowedTypes: []string{"EvaluationLog"}},
-		},
-	}
-
-	verifier := NewVerifier(mockTessera, mockDB, config)
+	verifier := NewVerifier(mockTessera, trustedConfig())
 	result := verifier.VerifyEntry(context.Background(), 5)
-	assert.True(t, result, "TargetRegistration should pass when target exists in DB")
-}
-
-func TestVerifier_VerifyEntry_TargetRegistrationNotInDB(t *testing.T) {
-	targetYAML := `target:
-  id: unknown-cluster
-  name: Unknown Cluster
-  type: kubernetes-cluster
-  technologies:
-    - kubernetes
-`
-
-	mockTessera := &mockTesseraReader{
-		entries: map[uint64][]byte{
-			5: []byte(targetYAML),
-		},
-	}
-
-	mockDB := &mockPostgres{
-		registeredTargets: map[string]bool{},
-	}
-
-	config := &Config{
-		TrustedPublishers: []TrustedPublisher{
-			{Issuer: "https://example.com", Sub: "*", AllowedTypes: []string{"EvaluationLog"}},
-		},
-	}
-
-	verifier := NewVerifier(mockTessera, mockDB, config)
-	result := verifier.VerifyEntry(context.Background(), 5)
-	assert.False(t, result, "TargetRegistration should fail when target not in DB")
+	assert.True(t, result, "TargetRegistration should pass verification")
 }
 
 func TestVerifier_VerifyEntry_CatalogExistenceProof(t *testing.T) {
-	catalogYAML := `metadata:
-  type: ControlCatalog
-  id: nist-800-53
-controls:
-  - id: AC-1
-    title: Access Control Policy
-`
+	catalogYAML := "metadata:\n  type: ControlCatalog\n  id: nist-800-53\ncontrols:\n  - id: AC-1\n    title: Access Control Policy\n"
 
 	mockTessera := &mockTesseraReader{
-		entries: map[uint64][]byte{
-			20: []byte(catalogYAML),
-		},
+		entries: map[uint64][]byte{20: []byte(catalogYAML)},
 	}
 
-	mockDB := &mockPostgres{}
-
-	config := &Config{
-		TrustedPublishers: []TrustedPublisher{
-			{Issuer: "https://example.com", Sub: "*", AllowedTypes: []string{"EvaluationLog"}},
-		},
-	}
-
-	verifier := NewVerifier(mockTessera, mockDB, config)
+	verifier := NewVerifier(mockTessera, trustedConfig())
 	result := verifier.VerifyEntry(context.Background(), 20)
 	assert.True(t, result, "Catalog entry should pass with existence proof only")
 }

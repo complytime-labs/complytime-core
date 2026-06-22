@@ -49,7 +49,7 @@ type GatewayConfig struct {
 	BlobUseSSL    bool
 
 	// Platform Info
-	StudioVersion string
+	Version string
 	GitHubOrg     string
 	GitHubRepo    string
 
@@ -86,15 +86,15 @@ func GatewayFromEnv() (*GatewayConfig, error) {
 		JWTAudience:               os.Getenv("JWT_AUDIENCE"),
 		CORSOrigins:               splitComma(os.Getenv("CORS_ORIGINS")),
 		OAuth2ProxyEnabled:        os.Getenv("OAUTH2_PROXY_ENABLED") != "false",
-		WorkbenchURL:              envOr("WORKBENCH_URL", "http://studio-workbench:8090"),
+		WorkbenchURL:              envOr("WORKBENCH_URL", ""),
 		BlobEndpoint:              os.Getenv("BLOB_ENDPOINT"),
 		BlobBucket:                os.Getenv("BLOB_BUCKET"),
 		BlobAccessKey:             os.Getenv("BLOB_ACCESS_KEY"),
 		BlobSecretKey:             os.Getenv("BLOB_SECRET_KEY"),
 		BlobUseSSL:                os.Getenv("BLOB_USE_SSL") == "true",
-		StudioVersion:             envOr("STUDIO_VERSION", "dev"),
+		Version:             envOr("VERSION", "dev"),
 		GitHubOrg:                 os.Getenv("GITHUB_ORG"),
-		GitHubRepo:                envOr("GITHUB_REPO", "complytime-studio"),
+		GitHubRepo:                envOr("GITHUB_REPO", "complytime-core"),
 		RegistryInsecure:          os.Getenv("REGISTRY_INSECURE") == "true",
 		IngestMaxDeliver:          envInt("NATS_INGEST_MAX_DELIVER", 5),
 		IngestAckWait:             envDuration("NATS_INGEST_ACK_WAIT", 30*time.Second),

@@ -10,7 +10,7 @@ import (
 const executorVersion = "1.0.0"
 
 // ExecutorCertifier verifies that the evidence row's engine_name is present
-// and matches a registered engine in Studio's configuration.
+// and matches a registered engine in the service configuration.
 type ExecutorCertifier struct {
 	KnownEngines map[string]bool
 }
