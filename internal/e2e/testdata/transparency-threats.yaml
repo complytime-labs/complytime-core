@@ -152,12 +152,12 @@ threats:
           - reference-id: tlog-capabilities
             remarks: Checkpoint publication
   - id: T-INFO-02
-    title: Log metadata disclosure via public checkpoint
+    title: Unauthenticated checkpoint access reveals operational cadence
     description: >-
-      An unauthenticated client can learn the log's tree size, checkpoint
-      publication frequency, and growth rate by polling the public /checkpoint
-      endpoint. This is inherent to transparency logs and accepted because
-      the checkpoint is a public commitment to log state.
+      Unauthenticated access to the checkpoint endpoint exposes log operational
+      metadata — tree size, publication frequency, and growth rate — to any
+      network observer. This enables reconnaissance of evidence submission
+      patterns and organizational compliance activity.
     group: information-disclosure
     capabilities:
       - reference-id: tlog-capabilities
@@ -165,12 +165,11 @@ threats:
           - reference-id: tlog-capabilities
             remarks: Checkpoint publication
   - id: T-INFO-03
-    title: Entry content disclosure via public tiles
+    title: Unauthenticated tile access exposes compliance evidence content
     description: >-
-      An unauthenticated client can read evidence content from entry bundles
-      served at the public /tile/* endpoint. Transparency log entries are
-      readable by design. If evidence confidentiality is required, entries
-      must be encrypted before appending.
+      Unauthenticated access to tile entry bundles exposes compliance evidence
+      content — vulnerability scan results, control assessments, and security
+      posture data — to any network observer without authentication.
     group: information-disclosure
     capabilities:
       - reference-id: tlog-capabilities
@@ -190,19 +189,6 @@ threats:
         entries:
           - reference-id: tlog-capabilities
             remarks: Publisher identity verification
-  - id: T-ELEV-02
-    title: No role-based write protection
-    description: >-
-      Any authenticated user can submit to the ingest endpoint. Authorization
-      depends on per-target publisher allowlists in NATS KV, not API-level
-      roles. If an allowlist is empty or misconfigured, unauthorized
-      submissions are accepted for that target.
-    group: elevation-of-privilege
-    capabilities:
-      - reference-id: tlog-capabilities
-        entries:
-          - reference-id: tlog-capabilities
-            remarks: Evidence ingestion
   - id: T-REP-04
     title: Certification results not locally persisted
     description: >-
@@ -229,18 +215,6 @@ threats:
         entries:
           - reference-id: tlog-capabilities
             remarks: Evidence ingestion
-  - id: T-INFO-01
-    title: JWKS discovery requires network egress
-    description: >-
-      The JWT verifier fetches issuer JWKS via HTTP discovery. In an air-gapped
-      deployment, this external dependency prevents authentication from
-      functioning without an in-enclave OIDC IdP or static JWKS provisioning.
-    group: information-disclosure
-    capabilities:
-      - reference-id: tlog-capabilities
-        entries:
-          - reference-id: tlog-capabilities
-            remarks: Publisher identity verification
   - id: T-SPOOF-02
     title: Unauthenticated token issuance forges publisher identity
     description: >-
@@ -297,20 +271,6 @@ threats:
         entries:
           - reference-id: tlog-capabilities
             remarks: Checkpoint signing
-  - id: T-TAMP-06
-    title: Unconfigured provenance validation passes all evidence sources
-    description: >-
-      When provenance and executor allowlists are not configured, certifiers
-      accept evidence from any registry or scanner engine without validation.
-      Evidence from unauthorized sources receives trust signals identical to
-      authorized sources, silently degrading the integrity of compliance
-      posture computations.
-    group: tampering
-    capabilities:
-      - reference-id: tlog-capabilities
-        entries:
-          - reference-id: tlog-capabilities
-            remarks: Content verification
   - id: T-DOS-04
     title: Rate limiter key spoofing bypasses ingest throttling
     description: >-
@@ -325,17 +285,3 @@ threats:
         entries:
           - reference-id: tlog-capabilities
             remarks: Evidence ingestion
-  - id: T-INFO-04
-    title: Telemetry pipeline confidentiality loss from TLS misconfiguration
-    description: >-
-      If TLS certificate verification is disabled on the compliance telemetry
-      pipeline (e.g., a development overlay applied to a shared environment),
-      compliance event data transits without protection. An attacker on the
-      network path can intercept or inject false compliance events into
-      monitoring dashboards.
-    group: information-disclosure
-    capabilities:
-      - reference-id: tlog-capabilities
-        entries:
-          - reference-id: tlog-capabilities
-            remarks: Entry storage and retrieval
