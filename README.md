@@ -21,7 +21,7 @@ Built around the [OpenSSF Gemara](https://gemara.openssf.org/) compliance schema
 
 ## How It Works
 
-```
+```text
 Scanner / CI pipeline
     │ Gemara YAML (EvaluationLog, EnforcementLog)
     ▼
@@ -82,7 +82,7 @@ make test-integration    # Integration (Ginkgo, in-process Tessera)
 ## Configuration
 
 | Variable | Default | Purpose |
-|:--|:--|:--|
+| :-- | :-- |:--|
 | `NATS_URL` | (required) | NATS server URL |
 | `TESSERA_PATH` | `/data/tessera` | POSIX storage path for the transparency log |
 | `TESSERA_SIGNER_KEY_PATH` | (empty) | Persist Tessera signer key. Without this, the log identity changes on restart. |
@@ -94,7 +94,7 @@ make test-integration    # Integration (Ginkgo, in-process Tessera)
 ## ComplyTime Ecosystem
 
 | Repository | What it does |
-|:--|:--|
+| :-- | :-- |
 | **complytime-core** (this repo) | Evidence ingestion — ingest, verify, transparency log |
 | [complyctl](https://github.com/complytime/complyctl) | CLI — scan targets, produce evidence, pull policies from OCI |
 | [CrossCodex](https://github.com/complytime-labs/crosscodex) | Framework crosswalking — map requirements across standards |

@@ -49,9 +49,9 @@ type GatewayConfig struct {
 	BlobUseSSL    bool
 
 	// Platform Info
-	Version string
-	GitHubOrg     string
-	GitHubRepo    string
+	Version    string
+	GitHubOrg  string
+	GitHubRepo string
 
 	// Registry
 	RegistryInsecure bool
@@ -92,7 +92,7 @@ func GatewayFromEnv() (*GatewayConfig, error) {
 		BlobAccessKey:             os.Getenv("BLOB_ACCESS_KEY"),
 		BlobSecretKey:             os.Getenv("BLOB_SECRET_KEY"),
 		BlobUseSSL:                os.Getenv("BLOB_USE_SSL") == "true",
-		Version:             envOr("VERSION", "dev"),
+		Version:                   envOr("VERSION", "dev"),
 		GitHubOrg:                 os.Getenv("GITHUB_ORG"),
 		GitHubRepo:                envOr("GITHUB_REPO", "complytime-core"),
 		RegistryInsecure:          os.Getenv("REGISTRY_INSECURE") == "true",

@@ -19,14 +19,14 @@ implementation, and keep the backlog visible.
 
 **Workflow:**
 
-```
+```text
 Issue → Branch → PR (references issue) → Review → Merge
 ```
 
 **Where does my contribution go?**
 
 | If you have... | Then... |
-|:--|:--|
+| :-- | :-- |
 | A bug | File a [Bug Report](https://github.com/complytime-labs/complytime-core/issues/new?template=bug_report.yml) |
 | A feature idea | File a [Feature Request](https://github.com/complytime-labs/complytime-core/issues/new?template=feature_request.yml) |
 | An architectural question | File a [Design Discussion](https://github.com/complytime-labs/complytime-core/issues/new?template=design_discussion.yml) |
