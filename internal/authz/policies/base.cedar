@@ -23,3 +23,9 @@ permit(
 ) when {
   principal has groups && principal.groups.contains("auditors")
 };
+
+permit(
+  principal,
+  action == Action::"submit",
+  resource
+);

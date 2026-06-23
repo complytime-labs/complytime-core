@@ -74,6 +74,25 @@ func TestIsAuthorized_ReadCheckpoint_AllowedForAny(t *testing.T) {
 	}
 }
 
+func TestIsAuthorized_Submit_AllowedForAny(t *testing.T) {
+	a, err := NewAuthorizer("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	principal := cedar.NewEntityUID("Identity", "charlie@example.com")
+	action := cedar.NewEntityUID("Action", "submit")
+	resource := cedar.NewEntityUID("Resource", "system")
+
+	allowed, err := a.IsAuthorized(principal, nil, action, resource, nil)
+	if err != nil {
+		t.Fatalf("IsAuthorized failed: %v", err)
+	}
+	if !allowed {
+		t.Error("submit should be allowed for any identity")
+	}
+}
+
 func TestIsAuthorized_ReadEntries_DeniedWithoutAuditorsGroup(t *testing.T) {
 	a, err := NewAuthorizer("")
 	if err != nil {
