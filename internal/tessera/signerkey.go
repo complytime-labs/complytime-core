@@ -115,27 +115,27 @@ func generateAndPersist(path string) (skey, vkey string, err error) {
 	if err != nil {
 		return "", "", fmt.Errorf("create temp file: %w", err)
 	}
-	tmp := f.Name()
+	tmp := f.Name() //nolint:gosec // G703: tmp is from os.CreateTemp, not user-controlled
 
 	if err := f.Chmod(0600); err != nil {
 		f.Close()
-		_ = os.Remove(tmp)
+		_ = os.Remove(tmp) //nolint:gosec // G703: tmp is from os.CreateTemp
 		return "", "", fmt.Errorf("chmod temp file: %w", err)
 	}
 
 	if _, err := f.Write([]byte(fileContent)); err != nil {
 		f.Close()
-		_ = os.Remove(tmp)
+		_ = os.Remove(tmp) //nolint:gosec // G703: tmp is from os.CreateTemp
 		return "", "", fmt.Errorf("write signer key: %w", err)
 	}
 
 	if err := f.Close(); err != nil {
-		_ = os.Remove(tmp)
+		_ = os.Remove(tmp) //nolint:gosec // G703: tmp is from os.CreateTemp
 		return "", "", fmt.Errorf("close temp file: %w", err)
 	}
 
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+	if err := os.Rename(tmp, path); err != nil { //nolint:gosec // G703: tmp is from os.CreateTemp
+		_ = os.Remove(tmp) //nolint:gosec // G703: tmp is from os.CreateTemp
 		return "", "", fmt.Errorf("rename signer key: %w", err)
 	}
 

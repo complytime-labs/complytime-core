@@ -51,7 +51,7 @@ func main() {
 	// (artifact type detection, schema validation). Publisher trust and
 	// policy reference checks require NATS KV migration (#128).
 
-	verifier := NewVerifier(&tesseraAdapter{tesseraReader}, nil, witnessCfg)
+	verifier := NewVerifier(&tesseraAdapter{tesseraReader}, witnessCfg)
 
 	var wg sync.WaitGroup
 	wg.Add(1)

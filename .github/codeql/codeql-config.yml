@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# CodeQL analysis config for complytime-studio.
+# CodeQL analysis config for complytime-core.
 #
 # Loaded by the CodeQL workflow via config-file. Two jobs:
 #   1. Keep the security-and-quality query suite in scope.
 #   2. Load the local MaD model pack (.github/codeql/) that declares
 #      project-specific sanitizers for the standard Go queries.
 
-name: complytime-studio-codeql
+name: complytime-core-codeql
 
 queries:
   - uses: security-and-quality

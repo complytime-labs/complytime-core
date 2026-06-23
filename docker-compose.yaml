@@ -1,7 +1,0 @@
-# SPDX-License-Identifier: Apache-2.0
-#
-# Moved to studio-deploy repo for cross-repo orchestration.
-# See: ../studio-deploy/docker-compose.yaml
-#
-# To run locally:
-#   cd ../studio-deploy && docker compose up

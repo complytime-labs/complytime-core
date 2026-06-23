@@ -59,7 +59,7 @@ func (h *Handler) Register(e *echo.Echo) {
 
 func handleLoggedOut(c echo.Context) error {
 	return c.HTML(http.StatusOK, `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Signed Out — ComplyTime Studio</title>
+<html><head><meta charset="utf-8"><title>Signed Out — ComplyTime</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#f8f9fa;color:#1e293b}

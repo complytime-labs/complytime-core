@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# CodeQL model pack for complytime-studio.
+# CodeQL model pack for complytime-core.
 #
 # Extends the standard Go queries with project-specific Models-as-Data
 # (MaD) extensions. Currently declares BuildAllowedRegistryURL as a
@@ -10,7 +10,7 @@
 # Requires CodeQL CLI >= 2.25.2 (barrierModel support for Go, shipped
 # 2026-04-21). github/codeql-action@v3 includes a recent-enough CLI.
 
-name: complytime/complytime-studio-codeql-models
+name: complytime/complytime-core-codeql-models
 version: 0.0.1
 library: true
 extensionTargets:

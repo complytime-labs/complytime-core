@@ -190,7 +190,7 @@ func main() {
 			natsStatus = "unreachable"
 		}
 		return c.JSON(http.StatusOK, map[string]any{
-			"version": cfg.StudioVersion,
+			"version": cfg.Version,
 			"storage": "Tessera (POSIX) + NATS KV",
 			"nats":    natsStatus,
 		})

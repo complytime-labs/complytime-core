@@ -27,7 +27,7 @@ const (
 	DefaultDedupeWindow  = 2 * time.Minute
 )
 
-// SubjectPrefix is the NATS subject namespace for studio events.
+// SubjectPrefix is the NATS subject namespace for complytime events.
 // Kept for backward compatibility with evidence subscribers.
 const SubjectPrefix = SubjectEvidence
 
@@ -52,7 +52,7 @@ type IngestStreamConfig struct {
 	AckWait    time.Duration
 }
 
-// Bus wraps a NATS connection for studio event publishing and subscribing.
+// Bus wraps a NATS connection for event publishing and subscribing.
 type Bus struct {
 	conn *nats.Conn
 	js   jetstream.JetStream
