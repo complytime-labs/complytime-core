@@ -69,7 +69,7 @@ func (a *Authorizer) IsAuthorized(principal cedar.EntityUID, principalAttrs map[
 		Resource:  resource,
 	}
 
-	decision, diag := ps.IsAuthorized(entities, req)
+	decision, diag := cedar.Authorize(ps, entities, req)
 	if len(diag.Errors) > 0 {
 		return false, fmt.Errorf("authorization errors: %v", diag.Errors)
 	}
