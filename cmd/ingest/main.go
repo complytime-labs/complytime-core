@@ -18,6 +18,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/complytime-labs/complytime-core/internal/auth"
+	"github.com/complytime-labs/complytime-core/internal/authz"
 	eventbus "github.com/complytime-labs/complytime-core/internal/bus"
 	"github.com/complytime-labs/complytime-core/internal/config"
 	"github.com/complytime-labs/complytime-core/internal/consts"
@@ -123,7 +124,23 @@ func main() {
 	defer ingestCC.Stop()
 	slog.Info("jetstream ingest consumer started", "consumer", "ingest-worker")
 
-	authHandler := auth.NewHandler()
+	// Initialize Cedar authorizer
+	authorizer, err := authz.NewAuthorizer(cfg.CedarPolicyDir)
+	if err != nil {
+		slog.Error("cedar authorizer init failed", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("cedar authorizer ready", "policy_dir", cfg.CedarPolicyDir)
+
+	// Start policy watcher if configured
+	if cfg.CedarPolicyDir != "" && cfg.CedarPollInterval > 0 {
+		watcher := authz.NewWatcher(authorizer, cfg.CedarPolicyDir, cfg.CedarPollInterval)
+		watcher.Start()
+		defer watcher.Stop()
+		slog.Info("cedar policy watcher started", "interval", cfg.CedarPollInterval)
+	}
+
+	authHandler := auth.NewHandler(authorizer)
 
 	e := echo.New()
 	e.HideBanner = true

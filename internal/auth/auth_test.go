@@ -8,11 +8,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/complytime-labs/complytime-core/internal/authz"
 	"github.com/labstack/echo/v4"
 )
 
 func TestMiddleware_ProxyHeaders(t *testing.T) {
-	h := NewHandler()
+	h := NewHandler(nil)
 
 	e := echo.New()
 	e.Use(h.Middleware())
@@ -45,7 +46,7 @@ func TestMiddleware_ProxyHeaders(t *testing.T) {
 }
 
 func TestMiddleware_NoHeaders_Returns401(t *testing.T) {
-	h := NewHandler()
+	h := NewHandler(nil)
 
 	e := echo.New()
 	e.Use(h.Middleware())
@@ -62,8 +63,8 @@ func TestMiddleware_NoHeaders_Returns401(t *testing.T) {
 	}
 }
 
-func TestMiddleware_SkipsNonAPI(t *testing.T) {
-	h := NewHandler()
+func TestMiddleware_SkipsHealthz(t *testing.T) {
+	h := NewHandler(nil)
 
 	e := echo.New()
 	e.Use(h.Middleware())
@@ -76,12 +77,16 @@ func TestMiddleware_SkipsNonAPI(t *testing.T) {
 	e.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200 (non-API path should pass)", rec.Code)
+		t.Fatalf("status = %d, want 200 (/healthz should pass without auth)", rec.Code)
 	}
 }
 
-func TestMiddleware_SkipsAPIConfig(t *testing.T) {
-	h := NewHandler()
+func TestMiddleware_APIConfigWithAuth(t *testing.T) {
+	authorizer, err := authz.NewAuthorizer("")
+	if err != nil {
+		t.Fatalf("failed to create authorizer: %v", err)
+	}
+	h := NewHandler(authorizer)
 
 	e := echo.New()
 	e.Use(h.Middleware())
@@ -91,15 +96,16 @@ func TestMiddleware_SkipsAPIConfig(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
+	req.Header.Set("X-Forwarded-Email", "user@example.com")
 	e.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200 (/api/config should pass without auth)", rec.Code)
+		t.Fatalf("status = %d, want 200 (/api/config with auth should be allowed)", rec.Code)
 	}
 }
 
 func TestMiddleware_NoStaticToken(t *testing.T) {
-	h := NewHandler()
+	h := NewHandler(nil)
 
 	e := echo.New()
 	e.Use(h.Middleware())
@@ -118,7 +124,7 @@ func TestMiddleware_NoStaticToken(t *testing.T) {
 }
 
 func TestTokenFromRequest_XForwardedAccessToken(t *testing.T) {
-	h := NewHandler()
+	h := NewHandler(nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/a2a/agent", nil)
 	req.Header.Set("X-Forwarded-Access-Token", "ya29.access-token-123")
 
@@ -129,7 +135,7 @@ func TestTokenFromRequest_XForwardedAccessToken(t *testing.T) {
 }
 
 func TestTokenFromRequest_NoHeader(t *testing.T) {
-	h := NewHandler()
+	h := NewHandler(nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/a2a/agent", nil)
 
 	_, ok := h.TokenFromRequest(req)
@@ -139,7 +145,7 @@ func TestTokenFromRequest_NoHeader(t *testing.T) {
 }
 
 func TestHandleMe_ReturnsIdentity(t *testing.T) {
-	h := NewHandler()
+	h := NewHandler(nil)
 
 	e := echo.New()
 	h.Register(e)
@@ -181,6 +187,157 @@ func TestSplitGroups(t *testing.T) {
 		got := splitGroups(tt.input)
 		if len(got) != tt.want {
 			t.Errorf("splitGroups(%q) = %d groups, want %d", tt.input, len(got), tt.want)
+		}
+	}
+}
+
+func TestMiddleware_RequiresAuthForTlogPaths(t *testing.T) {
+	authorizer, err := authz.NewAuthorizer("")
+	if err != nil {
+		t.Fatalf("failed to create authorizer: %v", err)
+	}
+	h := NewHandler(authorizer)
+
+	e := echo.New()
+	e.Use(h.Middleware())
+	e.GET("/checkpoint", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+	e.GET("/tile/entries/000", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+	e.GET("/log/witnessed/0", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+
+	tests := []struct {
+		path string
+	}{
+		{"/checkpoint"},
+		{"/tile/entries/000"},
+		{"/log/witnessed/0"},
+	}
+
+	for _, tt := range tests {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s without auth: status = %d, want 401", tt.path, rec.Code)
+		}
+	}
+}
+
+func TestMiddleware_TlogPathsWithAuth(t *testing.T) {
+	authorizer, err := authz.NewAuthorizer("")
+	if err != nil {
+		t.Fatalf("failed to create authorizer: %v", err)
+	}
+	h := NewHandler(authorizer)
+
+	e := echo.New()
+	e.Use(h.Middleware())
+	e.GET("/checkpoint", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+	e.GET("/log/witnessed/0", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+
+	tests := []struct {
+		path string
+	}{
+		{"/checkpoint"},
+		{"/log/witnessed/0"},
+	}
+
+	for _, tt := range tests {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+		req.Header.Set("X-Forwarded-Email", "user@example.com")
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s with auth: status = %d, want 200 (read:checkpoint is permitted for all)", tt.path, rec.Code)
+		}
+	}
+}
+
+func TestMiddleware_TlogEntriesDeniedWithoutGroup(t *testing.T) {
+	authorizer, err := authz.NewAuthorizer("")
+	if err != nil {
+		t.Fatalf("failed to create authorizer: %v", err)
+	}
+	h := NewHandler(authorizer)
+
+	e := echo.New()
+	e.Use(h.Middleware())
+	e.GET("/tile/entries/000", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/tile/entries/000", nil)
+	req.Header.Set("X-Forwarded-Email", "user@example.com")
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 (read:entries requires auditors group)", rec.Code)
+	}
+}
+
+func TestMiddleware_TlogEntriesAllowedWithGroup(t *testing.T) {
+	authorizer, err := authz.NewAuthorizer("")
+	if err != nil {
+		t.Fatalf("failed to create authorizer: %v", err)
+	}
+	h := NewHandler(authorizer)
+
+	e := echo.New()
+	e.Use(h.Middleware())
+	e.GET("/tile/entries/000", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/tile/entries/000", nil)
+	req.Header.Set("X-Forwarded-Email", "auditor@example.com")
+	req.Header.Set("X-Forwarded-Groups", "auditors")
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (read:entries allowed for auditors)", rec.Code)
+	}
+}
+
+func TestMiddleware_NilAuthorizerFallback(t *testing.T) {
+	h := NewHandler(nil)
+
+	e := echo.New()
+	e.Use(h.Middleware())
+	e.GET("/api/test", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+	e.GET("/checkpoint", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+
+	tests := []struct {
+		path string
+	}{
+		{"/api/test"},
+		{"/checkpoint"},
+	}
+
+	for _, tt := range tests {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+		req.Header.Set("X-Forwarded-Email", "user@example.com")
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s with nil authorizer: status = %d, want 200 (backward compat)", tt.path, rec.Code)
 		}
 	}
 }
