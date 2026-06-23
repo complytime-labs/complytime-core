@@ -47,11 +47,11 @@ Read access is split by sensitivity:
 
 | Property | Threat | Control |
 |:--|:--|:--|
-| Log metadata protection | Checkpoint size and timing disclose log growth patterns (T-INFO-02) | Authenticated read via `read:checkpoint` |
-| Evidence confidentiality | Unauthenticated reads expose vulnerability scans, control assessments (T-INFO-03) | Authenticated read via `read:entries`, authorization gated by auditors group |
-| Ingestion integrity | Unauthenticated writes allow evidence flooding and spoofing | Cedar `submit` action required for `/api/ingest`, publisher trust enforced at handler via JWT issuer/subject matching, rate limiting (CTRL-OI-03) |
-| Witness availability | Public endpoints overwhelmed via DDoS (T-DOS-02) | Separate internal listener (:8081) for witnesses, isolated from internet traffic; rate limiting on authenticated endpoints |
-| Non-equivocation | Independent verification blocked if reads require authentication | Witness service uses internal :8081 listener (no auth), still verifies cosignatures independently |
+| Log metadata protection | Checkpoint size and timing disclose log growth patterns (T-INFO-02) | Authenticated read via `read:checkpoint` (CTRL-AC-02) |
+| Evidence confidentiality | Unauthenticated reads expose vulnerability scans, control assessments (T-INFO-03) | Authenticated read via `read:entries`, auditors group required (CTRL-AC-03) |
+| Default-deny posture | Any new endpoint silently accessible without auth (T-SPOOF-03) | Cedar default-deny middleware (CTRL-AC-01) |
+| Ingestion integrity | Unauthenticated writes allow evidence flooding and spoofing | Cedar `submit` action required for `/api/ingest`, publisher trust enforced at handler via JWT issuer/subject matching (CTRL-CI-05), rate limiting (CTRL-OI-03) |
+| Witness availability | Public endpoints overwhelmed via DDoS (T-DOS-02) | Separate internal listener (:8081, CTRL-AC-04) for witnesses, bound to 127.0.0.1 by default; rate limiting on authenticated endpoints |
 
 ## Threat Model
 

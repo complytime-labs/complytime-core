@@ -35,6 +35,9 @@ groups:
   - id: operational-integrity
     title: Operational Integrity
     description: Controls ensuring correct operational separation and identity
+  - id: access-control
+    title: Access Control
+    description: Controls enforcing authentication and authorization on API endpoints
 controls:
   - id: CTRL-AE-01
     title: Witness Cosigned Checkpoints
@@ -335,3 +338,108 @@ controls:
           network egress blocked.
         applicability: [airgap]
         state: Draft
+  - id: CTRL-AC-01
+    title: Default-Deny Authorization Middleware
+    objective: >-
+      All HTTP endpoints require authentication and Cedar policy authorization
+      by default. Only explicitly exempted paths (/healthz, /auth/*) bypass
+      the authorization check.
+    group: access-control
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-SPOOF-03 (proxy header forgery bypass)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-AC-01.1
+        text: >-
+          A request to any endpoint other than /healthz or /auth/* without
+          a valid X-Forwarded-Email header MUST receive HTTP 401.
+        applicability: [all]
+        state: Active
+      - id: CTRL-AC-01.2
+        text: >-
+          A request with a valid identity but no matching Cedar permit
+          policy MUST receive HTTP 403.
+        applicability: [all]
+        state: Active
+  - id: CTRL-AC-02
+    title: Authenticated Checkpoint Access
+    objective: >-
+      Checkpoint metadata is accessible only to authenticated identities on
+      the primary listener. The internal listener provides unauthenticated
+      access for the witness service only.
+    group: access-control
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-INFO-02 (checkpoint metadata disclosure)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-AC-02.1
+        text: >-
+          An unauthenticated GET /checkpoint on the primary listener (:8080)
+          MUST receive HTTP 401.
+        applicability: [all]
+        state: Active
+      - id: CTRL-AC-02.2
+        text: >-
+          An authenticated GET /checkpoint with any valid identity MUST
+          succeed (Cedar read:checkpoint is permitted for all).
+        applicability: [all]
+        state: Active
+  - id: CTRL-AC-03
+    title: Authorized Evidence Content Access
+    objective: >-
+      Evidence content in tile entry bundles is accessible only to identities
+      with the auditors group membership. This prevents unauthorized access
+      to vulnerability scans, control assessments, and security posture data.
+    group: access-control
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-INFO-03 (evidence content disclosure)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-AC-03.1
+        text: >-
+          An authenticated GET /tile/* without auditors group membership
+          MUST receive HTTP 403.
+        applicability: [all]
+        state: Active
+      - id: CTRL-AC-03.2
+        text: >-
+          An authenticated GET /tile/* with auditors group membership
+          MUST succeed.
+        applicability: [all]
+        state: Active
+  - id: CTRL-AC-04
+    title: Internal Listener Network Isolation
+    objective: >-
+      The internal tlog read listener binds to a non-routable address by
+      default and is not exposed to external networks. Access is restricted
+      to the container or pod network.
+    group: access-control
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-DOS-02 (public endpoint flooding)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-AC-04.1
+        text: >-
+          The internal listener MUST bind to 127.0.0.1 by default. An
+          explicit INTERNAL_LISTEN_HOST override is required for container
+          deployments where cross-container access is needed.
+        applicability: [all]
+        state: Active
+      - id: CTRL-AC-04.2
+        text: >-
+          The internal listener port MUST NOT be mapped to the host in
+          the default compose configuration.
+        applicability: [all]
+        state: Active
