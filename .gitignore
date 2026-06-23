@@ -43,6 +43,7 @@ __pycache__/
 deploy/compose/witness-config/
 
 # Editor/IDE
+.claude/
 .cursor/
 .idea/
 .vscode/

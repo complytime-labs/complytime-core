@@ -28,7 +28,7 @@ Read access is split by sensitivity:
 | `GET /tile/*` | Merkle tree tiles + entry bundles | `read:entries` (auditors group) |
 | `GET /log/witnessed/:index` | Witnessed status by log index | `read:checkpoint` (any authenticated identity) |
 | `GET /api/evidence/*` | Evidence queries | `read:entries` (auditors group) |
-| `POST /api/ingest` | Evidence submission (writes to log) | `write:entries` (publishers group) |
+| `POST /api/ingest` | Evidence submission (writes to log) | `submit` (any authenticated identity; publisher trust enforced at handler via JWT) |
 | `/api/targets/*` | Target management | `admin` |
 | `/api/users/*`, `/api/role-changes/*` | User administration | `admin` |
 | `/api/config` | Application config | `admin` for write, `read:checkpoint` for public read |
@@ -49,7 +49,7 @@ Read access is split by sensitivity:
 |:--|:--|:--|
 | Log metadata protection | Checkpoint size and timing disclose log growth patterns (T-INFO-02) | Authenticated read via `read:checkpoint` |
 | Evidence confidentiality | Unauthenticated reads expose vulnerability scans, control assessments (T-INFO-03) | Authenticated read via `read:entries`, authorization gated by auditors group |
-| Ingestion integrity | Unauthenticated writes allow evidence flooding and spoofing | Cedar authorization required for `/api/ingest`, publishers group membership, rate limiting (CTRL-OI-03) |
+| Ingestion integrity | Unauthenticated writes allow evidence flooding and spoofing | Cedar `submit` action required for `/api/ingest`, publisher trust enforced at handler via JWT issuer/subject matching, rate limiting (CTRL-OI-03) |
 | Witness availability | Public endpoints overwhelmed via DDoS (T-DOS-02) | Separate internal listener (:8081) for witnesses, isolated from internet traffic; rate limiting on authenticated endpoints |
 | Non-equivocation | Independent verification blocked if reads require authentication | Witness service uses internal :8081 listener (no auth), still verifies cosignatures independently |
 

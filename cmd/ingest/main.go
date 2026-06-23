@@ -229,7 +229,7 @@ func main() {
 	slog.Info("api routes registered", "groups", []string{"ingest", "import", "config"})
 
 	// Start internal listener
-	internalAddr := net.JoinHostPort(cfg.ListenHost, cfg.InternalPort)
+	internalAddr := net.JoinHostPort(cfg.InternalListenHost, cfg.InternalPort)
 	go func() {
 		slog.Info("internal tlog listener starting", "addr", internalAddr)
 		if err := internal.Start(internalAddr); err != nil && err != http.ErrServerClosed {

@@ -16,6 +16,7 @@ services:
     environment:
       PORT: "8080"
       INTERNAL_PORT: "8081"
+      INTERNAL_LISTEN_HOST: "0.0.0.0"
       NATS_URL: nats://nats:4222
       CORS_ORIGINS: ""
       JWT_ISSUERS: ""

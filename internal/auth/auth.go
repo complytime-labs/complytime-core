@@ -4,6 +4,7 @@ package auth
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -124,6 +125,7 @@ func (h *Handler) Middleware() echo.MiddlewareFunc {
 			// Map route to Cedar action
 			action, ok := authz.MapRouteAction(r.Method, r.URL.Path)
 			if !ok {
+				slog.Warn("unmapped route denied", "method", r.Method, "path", r.URL.Path)
 				authRequestTotal.Add("denied", 1)
 				return c.JSON(http.StatusForbidden, map[string]string{"error": "access denied"})
 			}

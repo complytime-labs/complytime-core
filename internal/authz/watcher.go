@@ -3,7 +3,7 @@
 package authz
 
 import (
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -58,7 +58,7 @@ func (w *Watcher) run() {
 		case <-ticker.C:
 			if w.hasChanges() {
 				if err := w.authorizer.Reload(w.dir); err != nil {
-					log.Printf("failed to reload policies: %v", err)
+					slog.Error("failed to reload policies", "error", err)
 				} else {
 					w.scanModTimes()
 				}
