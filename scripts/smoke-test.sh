@@ -23,7 +23,8 @@ fail() { echo "  FAIL: $1"; exit 1; }
 step() { echo ""; echo "Step $1: $2"; }
 
 HEADERS=(-H "X-Forwarded-Email: smoke-test@complytime.dev" \
-         -H "X-Forwarded-Preferred-Username: smoke-test")
+         -H "X-Forwarded-Preferred-Username: smoke-test" \
+         -H "X-Forwarded-Groups: auditors")
 
 # ── Step 1: Wait for services ──────────────────────────────────────────────
 
@@ -121,7 +122,7 @@ pass "Ingested at log_index=$LOG_INDEX"
 step 5 "Wait for checkpoint to include entry"
 
 for i in $(seq 1 30); do
-    CHECKPOINT=$(curl -sf "$GATEWAY/checkpoint" || true)
+    CHECKPOINT=$(curl -sf "${HEADERS[@]}" "$GATEWAY/checkpoint" || true)
     TREE_SIZE=$(echo "$CHECKPOINT" | sed -n '2p')
     if [ -n "$TREE_SIZE" ] && [ "$TREE_SIZE" -gt "$LOG_INDEX" ] 2>/dev/null; then
         break
@@ -147,7 +148,7 @@ pass "Checkpoint has $SIG_COUNT signatures (log + $(( SIG_COUNT - 1 )) witness)"
 
 step 7 "Verify /log/witnessed/$LOG_INDEX"
 
-WITNESSED=$(curl -sf "$GATEWAY/log/witnessed/$LOG_INDEX")
+WITNESSED=$(curl -sf "${HEADERS[@]}" "$GATEWAY/log/witnessed/$LOG_INDEX")
 if echo "$WITNESSED" | grep -q '"witnessed":true'; then
     pass "Index $LOG_INDEX is witnessed"
 elif echo "$WITNESSED" | grep -q '"witnessed":false'; then
@@ -161,7 +162,7 @@ fi
 step 8 "Verify entry readable from tlog-tiles API"
 
 TILE_PATH="tile/entries/000.p/1"
-TILE_RESP=$(curl -sf -o /dev/null -w "%{http_code}" "$GATEWAY/$TILE_PATH" || true)
+TILE_RESP=$(curl -sf -o /dev/null -w "%{http_code}" "${HEADERS[@]}" "$GATEWAY/$TILE_PATH" || true)
 if [ "$TILE_RESP" = "200" ]; then
     pass "Entry bundle readable at /$TILE_PATH"
 else

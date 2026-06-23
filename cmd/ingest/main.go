@@ -177,6 +177,19 @@ func main() {
 		slog.Info("CORS enabled", "origins", cfg.CORSOrigins)
 	}
 
+	// Internal listener for tlog reads (witnesses, internal tooling).
+	// No auth — access controlled at the network layer.
+	internal := echo.New()
+	internal.HideBanner = true
+	internal.HidePort = true
+	internal.Use(middleware.Recover())
+
+	tessera.RegisterTilesAPI(internal, cfg.TesseraPath)
+	tessera.RegisterWitnessedStatus(internal, cfg.TesseraPath)
+	internal.GET("/healthz", func(c echo.Context) error {
+		return c.String(http.StatusOK, "ok")
+	})
+
 	tessera.RegisterTilesAPI(e, cfg.TesseraPath)
 	tessera.RegisterWitnessedStatus(e, cfg.TesseraPath)
 
@@ -215,11 +228,21 @@ func main() {
 
 	slog.Info("api routes registered", "groups", []string{"ingest", "import", "config"})
 
+	// Start internal listener
+	internalAddr := net.JoinHostPort(cfg.ListenHost, cfg.InternalPort)
+	go func() {
+		slog.Info("internal tlog listener starting", "addr", internalAddr)
+		if err := internal.Start(internalAddr); err != nil && err != http.ErrServerClosed {
+			slog.Error("internal listener failed", "error", err)
+		}
+	}()
+
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = e.Shutdown(shutdownCtx)
+		_ = internal.Shutdown(shutdownCtx)
 	}()
 
 	addr := net.JoinHostPort(cfg.ListenHost, cfg.Port)
