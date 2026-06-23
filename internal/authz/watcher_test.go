@@ -12,7 +12,7 @@ import (
 func TestWatcher_DetectsChangesAndReloads(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyFile := filepath.Join(tmpDir, "test.cedar")
-	if err := os.WriteFile(policyFile, []byte(`permit(principal, action, resource);`), 0644); err != nil {
+	if err := os.WriteFile(policyFile, []byte(`permit(principal, action, resource);`), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -31,7 +31,7 @@ func TestWatcher_DetectsChangesAndReloads(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Modify file
-	if err := os.WriteFile(policyFile, []byte(`forbid(principal, action, resource);`), 0644); err != nil {
+	if err := os.WriteFile(policyFile, []byte(`forbid(principal, action, resource);`), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -47,7 +47,7 @@ func TestWatcher_DetectsChangesAndReloads(t *testing.T) {
 func TestWatcher_SkipsReloadOnParseError(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyFile := filepath.Join(tmpDir, "test.cedar")
-	if err := os.WriteFile(policyFile, []byte(`permit(principal, action, resource);`), 0644); err != nil {
+	if err := os.WriteFile(policyFile, []byte(`permit(principal, action, resource);`), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -66,7 +66,7 @@ func TestWatcher_SkipsReloadOnParseError(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Write invalid Cedar syntax
-	if err := os.WriteFile(policyFile, []byte(`this is not valid cedar syntax`), 0644); err != nil {
+	if err := os.WriteFile(policyFile, []byte(`this is not valid cedar syntax`), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -82,7 +82,7 @@ func TestWatcher_SkipsReloadOnParseError(t *testing.T) {
 func TestWatcher_StopsCleanly(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyFile := filepath.Join(tmpDir, "test.cedar")
-	if err := os.WriteFile(policyFile, []byte(`permit(principal, action, resource);`), 0644); err != nil {
+	if err := os.WriteFile(policyFile, []byte(`permit(principal, action, resource);`), 0600); err != nil {
 		t.Fatal(err)
 	}
 

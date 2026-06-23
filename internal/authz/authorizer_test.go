@@ -13,7 +13,7 @@ import (
 func TestNewAuthorizer_FromDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyFile := filepath.Join(tmpDir, "test.cedar")
-	if err := os.WriteFile(policyFile, []byte(`permit(principal, action, resource);`), 0644); err != nil {
+	if err := os.WriteFile(policyFile, []byte(`permit(principal, action, resource);`), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -170,7 +170,7 @@ func TestIsAuthorized_Submit_WithMatchingPublisherTrust(t *testing.T) {
 ) when {
   resource has trustedPublishers && resource.trustedPublishers.contains(principal.issuer)
 };`
-	if err := os.WriteFile(policyFile, []byte(policy), 0644); err != nil {
+	if err := os.WriteFile(policyFile, []byte(policy), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -209,7 +209,7 @@ func TestIsAuthorized_Submit_WithoutMatchingPublisherTrust(t *testing.T) {
 ) when {
   resource has trustedPublishers && resource.trustedPublishers.contains(principal.issuer)
 };`
-	if err := os.WriteFile(policyFile, []byte(policy), 0644); err != nil {
+	if err := os.WriteFile(policyFile, []byte(policy), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -260,7 +260,7 @@ func TestIsAuthorized_UnknownAction_Denied(t *testing.T) {
 func TestReload_SwapsAtomically(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyFile := filepath.Join(tmpDir, "test.cedar")
-	if err := os.WriteFile(policyFile, []byte(`permit(principal, action, resource);`), 0644); err != nil {
+	if err := os.WriteFile(policyFile, []byte(`permit(principal, action, resource);`), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -272,7 +272,7 @@ func TestReload_SwapsAtomically(t *testing.T) {
 	oldPS := a.policies.Load()
 
 	// Modify policy file
-	if err := os.WriteFile(policyFile, []byte(`forbid(principal, action, resource);`), 0644); err != nil {
+	if err := os.WriteFile(policyFile, []byte(`forbid(principal, action, resource);`), 0600); err != nil {
 		t.Fatal(err)
 	}
 
