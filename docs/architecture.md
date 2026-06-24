@@ -24,10 +24,19 @@ flowchart TB
   subgraph Clients
     complyctl["complyctl"]
     CI["CI/CD Pipelines"]
+    Browser["Browser (auditors)"]
   end
 
-  subgraph Ingest["Ingest Service — cmd/ingest — :8080"]
-    Echo["Echo — auth, /api/ingest, tlog-tiles"]
+  Proxy["OAuth2 Proxy"]
+
+  subgraph Ingest["Ingest Service — cmd/ingest"]
+    subgraph Primary[":8080 — authenticated"]
+      Cedar["Cedar authz middleware"]
+      Echo["Echo — /api/ingest, /api/import, tlog-tiles"]
+    end
+    subgraph Internal[":8081 — internal only"]
+      IntTiles["tlog-tiles (no auth)"]
+    end
   end
 
   Tessera[("Tessera (POSIX storage)")]
@@ -43,11 +52,15 @@ flowchart TB
     Other["Other services"]
   end
 
-  complyctl -->|"JWT"| Echo
-  CI -->|"JWT"| Echo
+  complyctl -->|"JWT + proxy"| Proxy
+  CI -->|"JWT + proxy"| Proxy
+  Browser -->|"OIDC"| Proxy
+  Proxy -->|"X-Forwarded-*"| Cedar
+  Cedar --> Echo
   Echo --> Tessera
   Echo --> NATS
-  Tessera --> Witness
+  Witness -->|"checkpoint polling"| IntTiles
+  IntTiles --> Tessera
   WS --> Tessera
   NATS --> Downstream
 ```
@@ -60,13 +73,15 @@ Accepts Gemara artifacts, appends to Tessera, publishes NATS events. Serves the 
 
 | Concern | Implementation |
 |:--|:--|
-| HTTP | Echo — single listener, middleware stack |
+| HTTP | Echo — two listeners (:8080 authenticated, :8081 internal) |
+| Authorization | Cedar policies — default-deny middleware with forbid safety floors |
 | Transparency | Tessera — embedded Go library, POSIX storage, cosigned checkpoints |
-| Publisher trust | NATS KV bucket `publisher-trust` — fail-closed authorization |
+| Publisher trust | NATS KV bucket `publisher-trust` + Cedar `publish:artifact` evaluation |
 | Target registry | NATS KV bucket `targets-registry` |
 | Events | NATS JetStream — async ingest worker, evidence/policy/target events |
-| Auth | JWT bearer (OIDC JWKS) + OAuth2 Proxy `X-Forwarded-*` headers |
-| tlog-tiles | `/checkpoint`, `/tile/*`, `/log/witnessed/:index` — public, no auth |
+| Auth | OAuth2 Proxy `X-Forwarded-*` headers + JWT bearer (OIDC JWKS) for publish |
+| tlog-tiles (:8080) | `/checkpoint`, `/tile/*`, `/log/witnessed/:index` — authenticated, Cedar-gated |
+| tlog-tiles (:8081) | Same endpoints — unauthenticated, network-isolated for witness |
 
 **Hard requirements:** `NATS_URL` must be set and reachable.
 
@@ -82,35 +97,45 @@ Independent verification daemon that polls Tessera and validates evidence qualit
 
 **Hard requirements:** `TESSERA_PATH` must be set.
 
-## Authentication
+## Authentication and Authorization
 
-| Mode | Condition |
+| Layer | Mechanism |
 |:--|:--|
-| **OAuth2 Proxy** | Sidecar handles OIDC, session cookies. Ingest reads `X-Forwarded-Email/User/Groups`. |
-| **JWT Bearer** | `POST /api/ingest` accepts OIDC JWT tokens verified via JWKS discovery. For CI/CD pipelines and scanning tools. |
-| **No proxy** | `/api/*` returns 401 without `X-Forwarded-Email`. |
-
-No role-based write protection. Authorization is per-target publisher allowlist in NATS KV.
+| **Authentication** | OAuth2 Proxy sidecar handles OIDC, sets `X-Forwarded-Email/User/Groups` headers. All routes on :8080 except `/healthz` and `/auth/*` require `X-Forwarded-Email`. |
+| **JWT Bearer** | `POST /api/ingest` additionally accepts OIDC JWT tokens verified via JWKS discovery. For CI/CD pipelines and scanning tools. |
+| **Cedar middleware** | Default-deny. Every authenticated request is evaluated against Cedar policies. Unmapped routes return 403. |
+| **Cedar publish gate** | `POST /api/ingest` and `POST /api/import` require `publishers` group membership (Cedar `Action::"publish"`). |
+| **Cedar target trust** | Ingest handler evaluates `publish:artifact` (target-scoped publisher trust), `publish:registration`, or `publish:policy` based on artifact type. |
+| **Forbid safety floors** | Embedded `forbid/unless` rules for `read:entries` (auditors), `publish` (publishers), and `publish:artifact` (target trust) cannot be overridden by directory policies. |
+| **Internal listener** | `:8081` serves tlog-tiles without auth for witness. Network-isolated by default (127.0.0.1). |
 
 ## Data Flow
 
 ```mermaid
 sequenceDiagram
   participant C as Client
+  participant P as OAuth2 Proxy
   participant I as Ingest Service
+  participant Cedar as Cedar Policies
   participant T as Tessera
   participant KV as NATS KV
   participant N as NATS JetStream
   participant W as Witness
   participant M as Monitor
 
-  C->>I: POST /api/ingest (YAML + JWT)
-  I->>I: Verify JWT
-  I->>KV: Check publisher trust (fail-closed)
+  C->>P: POST /api/ingest (YAML + JWT)
+  P->>P: OIDC authentication
+  P->>I: X-Forwarded-Email/Groups + request
+  I->>Cedar: middleware: Action::"publish" + publishers group?
+  Cedar-->>I: permit/deny
+  I->>I: Verify JWT (handler)
+  I->>KV: Resolve publisher trust for target
+  I->>Cedar: handler: Action::"publish:artifact" + publisher_trusted?
+  Cedar-->>I: permit/deny
   I->>T: Append to log → log_index
-  T->>W: Witness cosigns checkpoint
   I->>N: publish core.ingest
   I->>C: 202 Accepted {job_id, log_index}
+  T->>W: Witness cosigns checkpoint (via :8081)
   N->>I: worker detects artifact type
   I->>N: publish core.evidence / core.policy / core.target
   I->>KV: update publisher trust (TargetRegistration)
@@ -121,18 +146,30 @@ sequenceDiagram
 
 ## Key Routes
 
-| Method | Path | Notes |
+### Primary listener (:8080, authenticated + Cedar)
+
+| Method | Path | Cedar Action | Access |
+|:--|:--|:--|:--|
+| GET | `/healthz` | (exempt) | Unauthenticated |
+| GET | `/auth/me` | (exempt) | Unauthenticated |
+| GET | `/auth/logged-out` | (exempt) | Unauthenticated |
+| GET | `/checkpoint` | `read:checkpoint` | Any authenticated |
+| GET | `/tile/*` | `read:entries` | Auditors group |
+| GET | `/log/witnessed/:index` | `read:checkpoint` | Any authenticated |
+| GET | `/api/config` | `read:status` | Any authenticated |
+| GET | `/api/system-info` | `read:status` | Any authenticated |
+| GET | `/api/ingest/jobs/:job_id` | `read:status` | Any authenticated |
+| POST | `/api/ingest` | `publish` | Publishers group + target trust |
+| POST | `/api/import` | `publish` | Publishers group |
+
+### Internal listener (:8081, network-isolated)
+
+| Method | Path | Access |
 |:--|:--|:--|
-| GET | `/healthz` | NATS connectivity check |
-| GET | `/checkpoint` | Cosigned checkpoint (public) |
-| GET | `/tile/*` | Merkle tree tiles + entry bundles (public) |
-| GET | `/log/witnessed/:index` | Witnessed status by log index (public) |
-| GET | `/api/config` | Non-secret config (public) |
-| POST | `/api/ingest` | Gemara artifact ingest (async, 202, JWT auth) |
-| GET | `/api/ingest/jobs/{job_id}` | Poll ingest job status |
-| POST | `/api/import` | OCI bundle import (routes through Tessera) |
-| GET | `/api/system-info` | System status |
-| GET | `/auth/me` | Current user identity |
+| GET | `/healthz` | Unauthenticated |
+| GET | `/checkpoint` | Unauthenticated (witness) |
+| GET | `/tile/*` | Unauthenticated (witness) |
+| GET | `/log/witnessed/:index` | Unauthenticated (witness) |
 
 ## NATS Subjects
 
@@ -166,6 +203,10 @@ Both are materialized views of TargetRegistration entries in Tessera. Rebuildabl
 | `JWT_ISSUERS` | No | Comma-separated allowed JWT issuers |
 | `JWT_AUDIENCE` | No | Expected JWT audience claim |
 | `PORT` | No | Listen port (default: 8080) |
+| `INTERNAL_PORT` | No | Internal listener port (default: 8081) |
+| `INTERNAL_LISTEN_HOST` | No | Internal listener bind address (default: 127.0.0.1) |
+| `CEDAR_POLICY_DIR` | No | Directory with additional `.cedar` policy files (merged with embedded defaults) |
+| `CEDAR_POLL_INTERVAL` | No | Policy directory poll interval (default: 30s) |
 | `CORS_ORIGINS` | No | Comma-separated allowed origins |
 
 ## Removed Query Endpoints (moved to CrossCodex)

@@ -17,5 +17,6 @@ USER 65532
 COPY --from=builder /complytime-ingest /complytime-ingest
 
 EXPOSE 8080
+EXPOSE 8081
 
 ENTRYPOINT ["/complytime-ingest"]

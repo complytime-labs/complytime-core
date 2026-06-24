@@ -47,11 +47,11 @@ func TestCheckPublisherTrust_Authorized(t *testing.T) {
 		{TargetID: "tgt-1", Issuer: "https://issuer.example.com", SubPattern: "repo:org/repo", AddedAt: time.Now()},
 	}))
 
-	body := []byte("metadata:\n  type: EvaluationLog\ntarget:\n  id: tgt-1\n")
 	claims := &auth.JWTClaims{Iss: "https://issuer.example.com", Sub: "repo:org/repo"}
 
-	err = checkPublisherTrust(ctx, body, claims, store)
+	trusted, err := isPublisherTrusted(ctx, claims, "tgt-1", store)
 	assert.NoError(t, err)
+	assert.True(t, trusted)
 }
 
 func TestCheckPublisherTrust_Unauthorized(t *testing.T) {
@@ -64,12 +64,11 @@ func TestCheckPublisherTrust_Unauthorized(t *testing.T) {
 		{TargetID: "tgt-1", Issuer: "https://issuer.example.com", SubPattern: "repo:org/repo", AddedAt: time.Now()},
 	}))
 
-	body := []byte("metadata:\n  type: EvaluationLog\ntarget:\n  id: tgt-1\n")
 	claims := &auth.JWTClaims{Iss: "https://issuer.example.com", Sub: "repo:evil/attacker"}
 
-	err = checkPublisherTrust(ctx, body, claims, store)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "not authorized")
+	trusted, err := isPublisherTrusted(ctx, claims, "tgt-1", store)
+	assert.NoError(t, err)
+	assert.False(t, trusted)
 }
 
 func TestCheckPublisherTrust_GlobMatch(t *testing.T) {
@@ -82,27 +81,31 @@ func TestCheckPublisherTrust_GlobMatch(t *testing.T) {
 		{TargetID: "tgt-1", Issuer: "https://issuer.example.com", SubPattern: "repo:org/*", AddedAt: time.Now()},
 	}))
 
-	body := []byte("metadata:\n  type: EvaluationLog\ntarget:\n  id: tgt-1\n")
 	claims := &auth.JWTClaims{Iss: "https://issuer.example.com", Sub: "repo:org/any-repo"}
 
-	err = checkPublisherTrust(ctx, body, claims, store)
+	trusted, err := isPublisherTrusted(ctx, claims, "tgt-1", store)
 	assert.NoError(t, err)
+	assert.True(t, trusted)
 }
 
-func TestCheckPublisherTrust_NoTargetID_Skips(t *testing.T) {
-	body := []byte("metadata:\n  type: Policy\n  id: my-policy\n")
+func TestResolvePublishAction_NoTargetID_ReturnsPolicy(t *testing.T) {
+	body := []byte("metadata:\n  type: EvaluationLog\n  id: my-eval\n")
 	claims := &auth.JWTClaims{Iss: "https://issuer.example.com", Sub: "anyone"}
 
-	err := checkPublisherTrust(context.Background(), body, claims, nil)
+	action, attrs, err := resolvePublishAction(context.Background(), body, claims, nil)
 	assert.NoError(t, err)
+	assert.Equal(t, "publish:policy", action.ID.String())
+	assert.Nil(t, attrs)
 }
 
-func TestCheckPublisherTrust_TargetRegistration_Skips(t *testing.T) {
+func TestResolvePublishAction_TargetRegistration_ReturnsRegistration(t *testing.T) {
 	body := []byte("metadata:\n  type: TargetRegistration\ntarget:\n  id: tgt-1\n")
 	claims := &auth.JWTClaims{Iss: "https://issuer.example.com", Sub: "anyone"}
 
-	err := checkPublisherTrust(context.Background(), body, claims, nil)
+	action, attrs, err := resolvePublishAction(context.Background(), body, claims, nil)
 	assert.NoError(t, err)
+	assert.Equal(t, "publish:registration", action.ID.String())
+	assert.Nil(t, attrs)
 }
 
 func TestCheckPublisherTrust_EmptyAllowlist_Denies(t *testing.T) {
@@ -111,11 +114,11 @@ func TestCheckPublisherTrust_EmptyAllowlist_Denies(t *testing.T) {
 	store, err := bus.NewPublisherTrustKV(ctx, js)
 	require.NoError(t, err)
 
-	body := []byte("metadata:\n  type: EvaluationLog\ntarget:\n  id: tgt-no-publishers\n")
 	claims := &auth.JWTClaims{Iss: "https://issuer.example.com", Sub: "anyone"}
 
-	err = checkPublisherTrust(ctx, body, claims, store)
+	trusted, err := isPublisherTrusted(ctx, claims, "tgt-no-publishers", store)
 	assert.Error(t, err)
+	assert.False(t, trusted)
 	assert.Contains(t, err.Error(), "no trusted publishers configured")
 }
 

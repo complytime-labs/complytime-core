@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 
+	"github.com/cedar-policy/cedar-go"
 	"github.com/complytime-labs/complytime-core/internal/auth"
 	"github.com/complytime-labs/complytime-core/internal/httputil"
 	"github.com/complytime-labs/complytime-core/internal/requirements"
@@ -30,6 +31,11 @@ type JWTVerifier interface {
 	Verify(ctx context.Context, token string) (*auth.JWTClaims, error)
 }
 
+// CedarAuthorizer provides Cedar-based authorization.
+type CedarAuthorizer interface {
+	IsAuthorized(principal cedar.EntityUID, principalAttrs map[string]cedar.Value, action cedar.EntityUID, resource cedar.EntityUID, resourceAttrs map[string]cedar.Value) (bool, error)
+}
+
 // ── Stores composition ──────────────────────────────────────────────────────
 
 // Stores groups the dependencies needed by ingest and import handlers.
@@ -42,5 +48,6 @@ type Stores struct {
 	IngestPublisher   IngestPublisher
 	TesseraAppender   TesseraAppender
 	JWTVerifier       JWTVerifier
+	Authorizer        CedarAuthorizer
 	IngestRateLimit   httputil.RateLimitOptions
 }

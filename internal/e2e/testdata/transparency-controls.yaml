@@ -35,6 +35,9 @@ groups:
   - id: operational-integrity
     title: Operational Integrity
     description: Controls ensuring correct operational separation and identity
+  - id: access-control
+    title: Access Control
+    description: Controls enforcing authentication and authorization on API endpoints
 controls:
   - id: CTRL-AE-01
     title: Witness Cosigned Checkpoints
@@ -228,10 +231,10 @@ controls:
   - id: CTRL-CI-05
     title: Ingest Boundary Publisher Authorization
     objective: >-
-      The ingest service checks the JWT caller's issuer and subject against
-      the per-target publisher allowlist in NATS KV before appending to
-      Tessera. Unauthorized publishers are rejected. Targets with no
-      configured publishers deny all submissions (deny by default).
+      The ingest service evaluates Cedar publish:artifact authorization,
+      checking the JWT caller's issuer and subject against the per-target
+      publisher allowlist in NATS KV. Cedar's forbid safety floor ensures
+      this check cannot be bypassed by directory-added policies.
     group: content-integrity
     threats:
       - reference-id: tlog-threats
@@ -253,6 +256,12 @@ controls:
           with no trusted publishers configured (deny by default).
         applicability: [all]
         state: Active
+      - id: CTRL-CI-05.3
+        text: >-
+          The ingest service MUST deny evidence submissions when the
+          TrustedPublisherStore is unavailable (fail-secure).
+        applicability: [all]
+        state: Active
   - id: CTRL-CI-03
     title: Publisher Trust Fail-Closed on KV Unavailability
     objective: >-
@@ -265,14 +274,14 @@ controls:
         entries:
           - reference-id: tlog-threats
             remarks: Mitigates T-TAMP-03 (trust state loss) and T-DOS-03 (KV unavailability)
-    state: Draft
+    state: Active
     assessment-requirements:
       - id: CTRL-CI-03.1
         text: >-
           The ingest service MUST reject evidence submissions with HTTP 503
           when the publisher trust NATS KV bucket is unreachable.
         applicability: [all]
-        state: Draft
+        state: Active
   - id: CTRL-CI-04
     title: Publisher Trust State Rebuildable from Tessera
     objective: >-
@@ -335,3 +344,231 @@ controls:
           network egress blocked.
         applicability: [airgap]
         state: Draft
+  - id: CTRL-AC-01
+    title: Default-Deny Authorization Middleware
+    objective: >-
+      All HTTP endpoints require authentication and Cedar policy authorization
+      by default. Only explicitly exempted paths (/healthz, /auth/*) bypass
+      the authorization check.
+    group: access-control
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-SPOOF-03 (proxy header forgery bypass)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-AC-01.1
+        text: >-
+          A request to any endpoint other than /healthz or /auth/* without
+          a valid X-Forwarded-Email header MUST receive HTTP 401.
+        applicability: [all]
+        state: Active
+      - id: CTRL-AC-01.2
+        text: >-
+          A request with a valid identity but no matching Cedar permit
+          policy MUST receive HTTP 403.
+        applicability: [all]
+        state: Active
+  - id: CTRL-AC-02
+    title: Authenticated Checkpoint Access
+    objective: >-
+      Checkpoint metadata is accessible only to authenticated identities on
+      the primary listener. The internal listener provides unauthenticated
+      access for the witness service only.
+    group: access-control
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-INFO-02 (checkpoint metadata disclosure)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-AC-02.1
+        text: >-
+          An unauthenticated GET /checkpoint on the primary listener (:8080)
+          MUST receive HTTP 401.
+        applicability: [all]
+        state: Active
+      - id: CTRL-AC-02.2
+        text: >-
+          An authenticated GET /checkpoint with any valid identity MUST
+          succeed (Cedar read:checkpoint is permitted for all).
+        applicability: [all]
+        state: Active
+  - id: CTRL-AC-03
+    title: Authorized Evidence Content Access
+    objective: >-
+      Evidence content in tile entry bundles is accessible only to identities
+      with the auditors group membership. This prevents unauthorized access
+      to vulnerability scans, control assessments, and security posture data.
+    group: access-control
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-INFO-03 (evidence content disclosure)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-AC-03.1
+        text: >-
+          An authenticated GET /tile/* without auditors group membership
+          MUST receive HTTP 403.
+        applicability: [all]
+        state: Active
+      - id: CTRL-AC-03.2
+        text: >-
+          An authenticated GET /tile/* with auditors group membership
+          MUST succeed.
+        applicability: [all]
+        state: Active
+  - id: CTRL-AC-04
+    title: Internal Listener Network Isolation
+    objective: >-
+      The internal tlog read listener binds to a non-routable address by
+      default and is not exposed to external networks. Access is restricted
+      to the container or pod network.
+    group: access-control
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-DOS-02 (public endpoint flooding)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-AC-04.1
+        text: >-
+          The internal listener MUST bind to 127.0.0.1 by default. An
+          explicit INTERNAL_LISTEN_HOST override is required for container
+          deployments where cross-container access is needed.
+        applicability: [all]
+        state: Active
+      - id: CTRL-AC-04.2
+        text: >-
+          The internal listener port MUST NOT be mapped to the host in
+          the default compose configuration.
+        applicability: [all]
+        state: Active
+  - id: CTRL-AC-05
+    title: Cedar Policy Safety Floors
+    objective: >-
+      Embedded Cedar forbid/unless rules create non-bypassable safety floors
+      for security-critical actions. Directory-added policies can add permits
+      for new actions but cannot override the group membership requirements
+      for read:entries (auditors) or publish (publishers), nor the target-
+      scoped trust requirement for publish:artifact.
+    group: access-control
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-ELEV-02 (policy directory override)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-AC-05.1
+        text: >-
+          A directory-added permit(principal, action == Action::"read:entries",
+          resource) without the auditors group condition MUST NOT override the
+          embedded forbid — the request MUST be denied.
+        applicability: [all]
+        state: Active
+      - id: CTRL-AC-05.2
+        text: >-
+          A directory-added permit(principal, action == Action::"publish",
+          resource) without the publishers group condition MUST NOT override
+          the embedded forbid — the request MUST be denied.
+        applicability: [all]
+        state: Active
+      - id: CTRL-AC-05.3
+        text: >-
+          A directory-added permit(principal, action == Action::"publish:artifact",
+          resource) without the publisher_trusted condition MUST NOT override
+          the embedded forbid — the request MUST be denied.
+        applicability: [all]
+        state: Active
+  - id: CTRL-AC-06
+    title: Publishers Group Authorization
+    objective: >-
+      Evidence submission endpoints (POST /api/ingest, POST /api/import)
+      require the publishers group membership in the caller's OAuth2 Proxy
+      identity. This coarse-grained gate prevents unauthorized identities
+      from reaching the publish handler.
+    group: access-control
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-SPOOF-01 (publisher trust bypass)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-AC-06.1
+        text: >-
+          An authenticated POST /api/ingest without publishers group membership
+          MUST receive HTTP 403.
+        applicability: [all]
+        state: Active
+      - id: CTRL-AC-06.2
+        text: >-
+          An authenticated POST /api/ingest with publishers group membership
+          MUST proceed to handler-level authorization.
+        applicability: [all]
+        state: Active
+  - id: CTRL-AC-07
+    title: Trust Modification Authorization
+    objective: >-
+      Modification of trusted publisher lists for existing targets requires
+      the caller to be an existing trusted publisher for that target. New
+      target registrations with no prior publishers are exempt. This prevents
+      privilege escalation from target registration to evidence publication.
+    group: access-control
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-ELEV-03 (trust escalation)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-AC-07.1
+        text: >-
+          A TargetRegistration that adds trusted publishers to a target with
+          existing publishers MUST be rejected if the caller is not an existing
+          trusted publisher for that target.
+        applicability: [all]
+        state: Active
+      - id: CTRL-AC-07.2
+        text: >-
+          A TargetRegistration that adds trusted publishers to a new target
+          (no existing publishers) MUST be accepted from any authenticated
+          publisher.
+        applicability: [all]
+        state: Active
+  - id: CTRL-AC-08
+    title: Import Path Compensating Controls
+    objective: >-
+      Until handler-level Cedar publish:artifact evaluation is added to
+      POST /api/import, the publishers group MUST be restricted to operators
+      trusted across all targets. Imported artifacts enter the append-only
+      log and are detectable by the content monitor. This is a compensating
+      control for T-SPOOF-04 (import path bypasses target-scoped trust).
+    group: access-control
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-SPOOF-04 (import path publisher trust bypass)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-AC-08.1
+        text: >-
+          The publishers group membership MUST be limited to operators
+          authorized to publish evidence for all targets until per-target
+          Cedar authorization is added to the import handler.
+        applicability: [all]
+        state: Active
+      - id: CTRL-AC-08.2
+        text: >-
+          Artifacts imported via POST /api/import MUST be appended to
+          the transparency log with a traceable synthetic publisher
+          identity (import:<reference>).
+        applicability: [all]
+        state: Active

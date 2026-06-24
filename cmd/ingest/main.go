@@ -18,6 +18,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/complytime-labs/complytime-core/internal/auth"
+	"github.com/complytime-labs/complytime-core/internal/authz"
 	eventbus "github.com/complytime-labs/complytime-core/internal/bus"
 	"github.com/complytime-labs/complytime-core/internal/config"
 	"github.com/complytime-labs/complytime-core/internal/consts"
@@ -97,6 +98,14 @@ func main() {
 	jwtVerifier := auth.NewJWTVerifier(ctx, cfg.JWTIssuers, cfg.JWTAudience)
 	slog.Info("jwt verifier ready", "allowed_issuers", len(cfg.JWTIssuers), "audience", cfg.JWTAudience)
 
+	// Initialize Cedar authorizer
+	authorizer, err := authz.NewAuthorizer(cfg.CedarPolicyDir)
+	if err != nil {
+		slog.Error("cedar authorizer init failed", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("cedar authorizer ready", "policy_dir", cfg.CedarPolicyDir)
+
 	registryConfig := store.LoadRegistryConfig()
 
 	stores := store.Stores{
@@ -108,6 +117,7 @@ func main() {
 		IngestPublisher:   bus,
 		TesseraAppender:   tesseraClient,
 		JWTVerifier:       jwtVerifier,
+		Authorizer:        authorizer,
 		IngestRateLimit: httputil.RateLimitOptions{
 			Rate:  cfg.IngestRateLimit,
 			Burst: cfg.IngestRateBurst,
@@ -123,7 +133,15 @@ func main() {
 	defer ingestCC.Stop()
 	slog.Info("jetstream ingest consumer started", "consumer", "ingest-worker")
 
-	authHandler := auth.NewHandler()
+	// Start policy watcher if configured
+	if cfg.CedarPolicyDir != "" && cfg.CedarPollInterval > 0 {
+		watcher := authz.NewWatcher(authorizer, cfg.CedarPolicyDir, cfg.CedarPollInterval)
+		watcher.Start()
+		defer watcher.Stop()
+		slog.Info("cedar policy watcher started", "interval", cfg.CedarPollInterval)
+	}
+
+	authHandler := auth.NewHandler(authorizer)
 
 	e := echo.New()
 	e.HideBanner = true
@@ -159,6 +177,19 @@ func main() {
 		}))
 		slog.Info("CORS enabled", "origins", cfg.CORSOrigins)
 	}
+
+	// Internal listener for tlog reads (witnesses, internal tooling).
+	// No auth — access controlled at the network layer.
+	internal := echo.New()
+	internal.HideBanner = true
+	internal.HidePort = true
+	internal.Use(middleware.Recover())
+
+	tessera.RegisterTilesAPI(internal, cfg.TesseraPath)
+	tessera.RegisterWitnessedStatus(internal, cfg.TesseraPath)
+	internal.GET("/healthz", func(c echo.Context) error {
+		return c.String(http.StatusOK, "ok")
+	})
 
 	tessera.RegisterTilesAPI(e, cfg.TesseraPath)
 	tessera.RegisterWitnessedStatus(e, cfg.TesseraPath)
@@ -198,11 +229,21 @@ func main() {
 
 	slog.Info("api routes registered", "groups", []string{"ingest", "import", "config"})
 
+	// Start internal listener
+	internalAddr := net.JoinHostPort(cfg.InternalListenHost, cfg.InternalPort)
+	go func() {
+		slog.Info("internal tlog listener starting", "addr", internalAddr)
+		if err := internal.Start(internalAddr); err != nil && err != http.ErrServerClosed {
+			slog.Error("internal listener failed", "error", err)
+		}
+	}()
+
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = e.Shutdown(shutdownCtx)
+		_ = internal.Shutdown(shutdownCtx)
 	}()
 
 	addr := net.JoinHostPort(cfg.ListenHost, cfg.Port)

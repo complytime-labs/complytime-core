@@ -4,9 +4,12 @@ package auth
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 
+	"github.com/cedar-policy/cedar-go"
+	"github.com/complytime-labs/complytime-core/internal/authz"
 	"github.com/complytime-labs/complytime-core/internal/httputil"
 	"github.com/labstack/echo/v4"
 )
@@ -39,14 +42,21 @@ func SessionFrom(ctx context.Context) (*Session, bool) {
 	return s, ok
 }
 
+// Authorizer evaluates Cedar authorization requests.
+type Authorizer interface {
+	IsAuthorized(principal cedar.EntityUID, principalAttrs map[string]cedar.Value, action cedar.EntityUID, resource cedar.EntityUID, resourceAttrs map[string]cedar.Value) (bool, error)
+}
+
 // Handler provides auth middleware and identity endpoints. Identity
 // is established by OAuth2 Proxy via X-Forwarded-* headers.
-type Handler struct{}
+type Handler struct {
+	authorizer Authorizer
+}
 
 // NewHandler creates an auth handler. OAuth2 Proxy handles OIDC externally;
-// the handler only reads proxy-injected headers.
-func NewHandler() *Handler {
-	return &Handler{}
+// the handler only reads proxy-injected headers. The authorizer must not be nil.
+func NewHandler(authorizer Authorizer) *Handler {
+	return &Handler{authorizer: authorizer}
 }
 
 // Register mounts auth endpoints. Login, callback, and logout are handled by
@@ -74,23 +84,27 @@ a:hover{background:#3b8ea5;color:#fff}
 }
 
 // Middleware reads X-Forwarded-* headers from OAuth2 Proxy and injects a
-// Session into the request context. Falls through to anonymous for non-API
-// paths.
+// Session into the request context. Uses Cedar authorization for access control.
 func (h *Handler) Middleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			r := c.Request()
-			requiresAuth := strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/workbench/")
-			if !requiresAuth || r.URL.Path == "/api/config" {
+
+			// Skip auth for healthz and auth endpoints
+			skipAuth := r.URL.Path == "/healthz" ||
+				strings.HasPrefix(r.URL.Path, "/auth/")
+			if skipAuth {
 				return next(c)
 			}
 
+			// All other paths require authentication
 			email := r.Header.Get("X-Forwarded-Email")
 			if email == "" {
 				authRequestTotal.Add("anonymous", 1)
 				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authentication required"})
 			}
 
+			// Extract identity from headers
 			name := r.Header.Get("X-Forwarded-Preferred-Username")
 			if name == "" {
 				name = emailLocalPart(email)
@@ -102,6 +116,58 @@ func (h *Handler) Middleware() echo.MiddlewareFunc {
 				Groups: splitGroups(r.Header.Get("X-Forwarded-Groups")),
 			}
 
+			// Map route to Cedar action
+			action, ok := authz.MapRouteAction(r.Method, r.URL.Path)
+			if !ok {
+				slog.Warn("unmapped route denied", "method", r.Method, "path", r.URL.Path)
+				authRequestTotal.Add("denied", 1)
+				return c.JSON(http.StatusForbidden, map[string]string{"error": "access denied"})
+			}
+
+			// Build principal and resource
+			principal := cedar.NewEntityUID("Identity", cedar.String(email))
+			resource := cedar.NewEntityUID("Resource", "system")
+
+			// Build principal attributes
+			principalAttrs := map[string]cedar.Value{
+				"email": cedar.String(email),
+				"name":  cedar.String(name),
+			}
+			groupSet := make([]cedar.Value, len(sess.Groups))
+			for i, g := range sess.Groups {
+				groupSet[i] = cedar.String(g)
+			}
+			principalAttrs["groups"] = cedar.NewSet(groupSet...)
+
+			// Check authorization
+			allowed, err := h.authorizer.IsAuthorized(principal, principalAttrs, action, resource, nil)
+			if err != nil {
+				authRequestTotal.Add("error", 1)
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "authorization error"})
+			}
+			reqID := c.Response().Header().Get(echo.HeaderXRequestID)
+
+			if !allowed {
+				slog.Warn("authorization denied",
+					"principal", email,
+					"action", action.ID,
+					"resource", resource.ID,
+					"decision", "deny",
+					"request_id", reqID,
+				)
+				authRequestTotal.Add("denied", 1)
+				return c.JSON(http.StatusForbidden, map[string]string{"error": "access denied"})
+			}
+
+			slog.Debug("authorization permitted",
+				"principal", email,
+				"action", action.ID,
+				"resource", resource.ID,
+				"decision", "allow",
+				"request_id", reqID,
+			)
+
+			// Inject session into context and proceed
 			ctx := context.WithValue(r.Context(), sessionKey, sess)
 			ctx = httputil.WithIdentity(ctx, email)
 			c.SetRequest(r.WithContext(ctx))

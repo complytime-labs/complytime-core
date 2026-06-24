@@ -49,6 +49,14 @@ func importArtifactHandler(s Stores) echo.HandlerFunc {
 
 // ── OCI reference import ────────────────────────────────────────────────────
 
+func importPublisherIdentity(ref string) bus.PublisherIdentity {
+	return bus.PublisherIdentity{
+		Sub:    "import:" + ref,
+		Issuer: "complytime-gateway",
+		Type:   "import",
+	}
+}
+
 func ociImport(c echo.Context, s Stores, ref string) error {
 	if s.Registry == nil {
 		return jsonError(c, http.StatusServiceUnavailable, "registry not configured")
@@ -73,12 +81,7 @@ func ociImport(c echo.Context, s Stores, ref string) error {
 		return jsonError(c, http.StatusServiceUnavailable, "tessera and NATS are required for import")
 	}
 
-	identity := bus.PublisherIdentity{
-		Sub:      "import:" + ref,
-		Issuer:   "complytime-gateway",
-		Type:     "import",
-		Verified: true,
-	}
+	identity := importPublisherIdentity(ref)
 
 	var imported []requirements.OciImportedArtifact
 	for _, f := range allFiles {

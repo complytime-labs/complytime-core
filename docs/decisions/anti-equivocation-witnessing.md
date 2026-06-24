@@ -24,9 +24,9 @@ Verifies log **consistency** — the log only grew and never forked — by check
 
 - The gateway embeds Tessera as a Go library and uses `WithWitnesses` with a configurable Sigsum witness policy
 - The gateway sends new checkpoints to witnesses, which verify consistency proofs against their stored state before cosigning
-- Cosigned checkpoints served at `GET /checkpoint` (public, no auth)
-- Tiles served at `GET /tile/*` for offline inclusion proof verification
-- Witnessed status at `GET /log/witnessed/:index`
+- Cosigned checkpoints served at `GET /checkpoint` (authenticated on :8080; unauthenticated on internal :8081 for witnesses)
+- Tiles served at `GET /tile/*` for offline inclusion proof verification (authenticated on :8080; unauthenticated on internal :8081 for witnesses)
+- Witnessed status at `GET /log/witnessed/:index` (authenticated on :8080; unauthenticated on internal :8081 for witnesses)
 - Development: local [`transparency-dev/witness`](https://github.com/transparency-dev/witness) instance with ephemeral SQLite state
 - Production: `transparency-dev/witness` or [`litewitness`](https://github.com/FiloSottile/litetlog) in a separate trust domain
 

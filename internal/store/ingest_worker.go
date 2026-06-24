@@ -187,6 +187,10 @@ func handleTargetRegistrationJS(
 	}
 
 	if len(reg.Target.TrustedPublishers) > 0 && trustedPubs != nil {
+		if outcome, ok := authorizeCallerForTrustModification(ctx, ref, reg.Target.ID, trustedPubs, tracker); !ok {
+			return outcome
+		}
+
 		logIdx := int64(ref.LogIndex) //nolint:gosec
 		addedBy := ref.PublisherIdentity.Sub
 		pubRows := make([]requirements.TrustedPublisherRow, len(reg.Target.TrustedPublishers))
@@ -213,6 +217,10 @@ func handleTargetRegistrationJS(
 	}
 
 	if len(reg.Target.RemovePublishers) > 0 && trustedPubs != nil {
+		if outcome, ok := authorizeCallerForTrustModification(ctx, ref, reg.Target.ID, trustedPubs, tracker); !ok {
+			return outcome
+		}
+
 		keys := make([]requirements.TrustedPublisherKey, len(reg.Target.RemovePublishers))
 		for i, p := range reg.Target.RemovePublishers {
 			keys[i] = requirements.TrustedPublisherKey{
@@ -239,6 +247,34 @@ func handleTargetRegistrationJS(
 		"target_id", reg.Target.ID,
 	)
 	return outcomeAck
+}
+
+func authorizeCallerForTrustModification(ctx context.Context, ref bus.IngestRef, targetID string, trustedPubs requirements.TrustedPublisherStore, tracker *IngestTracker) (ingestOutcome, bool) {
+	existingPubs, err := trustedPubs.GetTrustedPublishers(ctx, targetID)
+	if err != nil {
+		tracker.Fail(ref.JobID, fmt.Sprintf("trust check failed: %v", err))
+		slog.Error("async ingest: trust check failed", "job_id", ref.JobID, "error", err)
+		return outcomeNak, false
+	}
+
+	if len(existingPubs) == 0 {
+		return outcomeAck, true
+	}
+
+	for _, p := range existingPubs {
+		if matchPublisher(ref.PublisherIdentity.Issuer, ref.PublisherIdentity.Sub, p.Issuer, p.SubPattern) {
+			return outcomeAck, true
+		}
+	}
+
+	tracker.Fail(ref.JobID, "caller is not a trusted publisher for this target — cannot modify trust")
+	slog.Warn("async ingest: unauthorized trust modification attempt",
+		"job_id", ref.JobID,
+		"target_id", targetID,
+		"caller_issuer", ref.PublisherIdentity.Issuer,
+		"caller_sub", ref.PublisherIdentity.Sub,
+	)
+	return outcomeTerm, false
 }
 
 func isNotYetIntegrated(err error) bool {

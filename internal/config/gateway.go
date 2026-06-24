@@ -67,6 +67,12 @@ type GatewayConfig struct {
 	// Ingest Rate Limiting
 	IngestRateLimit float64
 	IngestRateBurst int
+
+	// Cedar Authorization
+	InternalPort       string
+	InternalListenHost string
+	CedarPolicyDir     string
+	CedarPollInterval  time.Duration
 }
 
 // GatewayFromEnv loads gateway configuration from environment variables.
@@ -102,6 +108,10 @@ func GatewayFromEnv() (*GatewayConfig, error) {
 		KnownEngines:              splitComma(os.Getenv("KNOWN_ENGINES")),
 		IngestRateLimit:           envFloat("INGEST_RATE_LIMIT", 10),
 		IngestRateBurst:           envInt("INGEST_RATE_BURST", 20),
+		InternalPort:              envOr("INTERNAL_PORT", "8081"),
+		InternalListenHost:        envOr("INTERNAL_LISTEN_HOST", "127.0.0.1"),
+		CedarPolicyDir:            os.Getenv("CEDAR_POLICY_DIR"),
+		CedarPollInterval:         envDuration("CEDAR_POLL_INTERVAL", 30*time.Second),
 	}
 
 	// Clamp rate-limit values to reasonable upper bounds.
