@@ -85,11 +85,17 @@ func NewClient(ctx context.Context, storagePath string, opts Options) (*Client, 
 			FailOpen: opts.WitnessFailOpen,
 		}
 		appendOpts = appendOpts.WithWitnesses(witnessGroup, witnessOpts)
-		slog.Info("tessera witnesses configured",
-			"policy", opts.WitnessPolicyPath,
-			"fail_open", opts.WitnessFailOpen,
-			"timeout", opts.WitnessTimeout,
-		)
+		if opts.WitnessFailOpen {
+			slog.Warn("tessera witnesses configured with FAIL-OPEN — checkpoints may publish without cosignatures",
+				"policy", opts.WitnessPolicyPath,
+				"timeout", opts.WitnessTimeout,
+			)
+		} else {
+			slog.Info("tessera witnesses configured",
+				"policy", opts.WitnessPolicyPath,
+				"timeout", opts.WitnessTimeout,
+			)
+		}
 	}
 
 	// Get appender and reader from the driver

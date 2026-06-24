@@ -58,10 +58,17 @@ git commit -S -s -m "feat: add posture endpoint"
 **CI gates** (must pass before merge):
 
 ```bash
-go vet ./...
-go test -race ./...
+go vet -tags dev ./...
+go test -tags dev -race ./...
 go build ./cmd/ingest/
-golangci-lint run ./...
+golangci-lint run -build-tags dev ./...
+```
+
+**Integration tests** (run locally before touching e2e code):
+
+```bash
+make test-integration
+# or: go test -tags integration ./internal/e2e/ -run "Transparency"
 ```
 
 **Review:** 2 maintainer approvals required. Exceptions for transient CI failures require maintainer consensus.

@@ -87,7 +87,7 @@ make test-integration    # Integration (Ginkgo, in-process Tessera)
 | `TESSERA_PATH` | `/data/tessera` | POSIX storage path for the transparency log |
 | `TESSERA_SIGNER_KEY_PATH` | (empty) | Persist Tessera signer key. Without this, the log identity changes on restart. |
 | `JWT_ISSUERS` | (empty) | Comma-separated OIDC issuer URLs for publisher JWT verification |
-| `JWT_AUDIENCE` | `complytime-core` | Expected JWT audience claim |
+| `JWT_AUDIENCE` | `complytime` | Expected JWT audience claim |
 | `INGEST_RATE_LIMIT` | `10` | Requests/second per IP on `/api/ingest` |
 | `INGEST_RATE_BURST` | `20` | Burst allowance for rate limiting |
 

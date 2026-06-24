@@ -24,8 +24,13 @@ import (
 )
 
 func main() {
+	if os.Getenv("TESTJWKS_ALLOW_UNSAFE") != "true" {
+		slog.Error("testjwks issues tokens for ANY subject — set TESTJWKS_ALLOW_UNSAFE=true to confirm this is not production")
+		os.Exit(1)
+	}
+
 	listen := httputil.EnvOr("TESTJWKS_LISTEN", ":9090")
-	audience := httputil.EnvOr("TESTJWKS_AUDIENCE", "complytime-core")
+	audience := httputil.EnvOr("TESTJWKS_AUDIENCE", "complytime")
 	issuerOverride := os.Getenv("TESTJWKS_ISSUER")
 
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

@@ -91,7 +91,7 @@ Independent verification daemon that polls Tessera and validates evidence qualit
 
 | Concern | Implementation |
 |:--|:--|
-| Verification | Schema validation, publisher trust, reference integrity, target registration (advisory) |
+| Verification | Schema validation (implemented). Publisher trust, reference integrity, and target registration checks are planned but not yet wired (#128). |
 | Config | YAML file with trusted publisher patterns and poll interval |
 | State | JSON file persisting last verified index across restarts |
 
