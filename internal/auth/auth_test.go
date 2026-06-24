@@ -182,6 +182,46 @@ func TestHandleMe_ReturnsIdentity(t *testing.T) {
 	}
 }
 
+func TestMiddleware_ImportDeniedWithoutPublishersGroup(t *testing.T) {
+	h := NewHandler(newTestAuthorizer(t))
+
+	e := echo.New()
+	e.Use(h.Middleware())
+	e.POST("/api/import", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/import", nil)
+	req.Header.Set("X-Forwarded-Email", "user@example.com")
+	req.Header.Set("X-Forwarded-Groups", "auditors")
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 (POST /api/import requires publishers group)", rec.Code)
+	}
+}
+
+func TestMiddleware_ImportAllowedWithPublishersGroup(t *testing.T) {
+	h := NewHandler(newTestAuthorizer(t))
+
+	e := echo.New()
+	e.Use(h.Middleware())
+	e.POST("/api/import", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/import", nil)
+	req.Header.Set("X-Forwarded-Email", "publisher@example.com")
+	req.Header.Set("X-Forwarded-Groups", "publishers")
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (POST /api/import allowed with publishers group)", rec.Code)
+	}
+}
+
 func TestSplitGroups(t *testing.T) {
 	tests := []struct {
 		input string
