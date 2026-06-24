@@ -542,3 +542,33 @@ controls:
           publisher.
         applicability: [all]
         state: Active
+  - id: CTRL-AC-08
+    title: Import Path Compensating Controls
+    objective: >-
+      Until handler-level Cedar publish:artifact evaluation is added to
+      POST /api/import, the publishers group MUST be restricted to operators
+      trusted across all targets. Imported artifacts enter the append-only
+      log and are detectable by the content monitor. This is a compensating
+      control for T-SPOOF-04 (import path bypasses target-scoped trust).
+    group: access-control
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-SPOOF-04 (import path publisher trust bypass)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-AC-08.1
+        text: >-
+          The publishers group membership MUST be limited to operators
+          authorized to publish evidence for all targets until per-target
+          Cedar authorization is added to the import handler.
+        applicability: [all]
+        state: Active
+      - id: CTRL-AC-08.2
+        text: >-
+          Artifacts imported via POST /api/import MUST be appended to
+          the transparency log with a traceable synthetic publisher
+          identity (import:<reference>).
+        applicability: [all]
+        state: Active

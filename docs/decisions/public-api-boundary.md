@@ -61,7 +61,7 @@ Authorization is enforced via Cedar policies (`.cedar` files with hot-reload). D
 
 **Authenticated checkpoint timing.** Auditors with `read:checkpoint` can learn log growth rate. Accepted — checkpoint reading is necessary for verifying witness cosignatures.
 
-**Import path bypasses target-scoped publisher trust (T-SPOOF-04).** The OCI bundle import endpoint (`POST /api/import`) applies the middleware-level publishers group gate but does not perform handler-level target-scoped trust checks. Imported artifacts receive a synthetic publisher identity. Accepted — the publishers group gate limits who can import, and imported evidence is append-only (detectable by the monitor). Target-scoped trust for the import path is tracked for a future release.
+**Import path bypasses target-scoped publisher trust (T-SPOOF-04).** The OCI bundle import endpoint (`POST /api/import`) applies the middleware-level publishers group gate but does not perform handler-level target-scoped trust checks. Imported artifacts receive a synthetic publisher identity. Compensating controls: (1) the `publishers` group must be restricted to operators trusted across all targets until handler-level Cedar evaluation is added to the import path; (2) imported evidence enters the append-only log and is detectable by the content monitor; (3) the transparency log is immutable, so fraudulent imports are permanently attributable. Target-scoped trust for the import path is tracked for a future release.
 
 ## Trust Assumptions
 
