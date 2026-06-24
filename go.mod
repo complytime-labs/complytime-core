@@ -13,7 +13,7 @@ require (
 	github.com/nats-io/nats-server/v2 v2.14.2
 	github.com/nats-io/nats.go v1.52.0
 	github.com/onsi/ginkgo/v2 v2.32.0
-	github.com/onsi/gomega v1.41.0
+	github.com/onsi/gomega v1.42.1
 	github.com/stretchr/testify v1.11.1
 	github.com/transparency-dev/formats v0.1.0
 	github.com/transparency-dev/tessera v1.0.2
