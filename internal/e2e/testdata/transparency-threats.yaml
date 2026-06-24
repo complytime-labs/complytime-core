@@ -285,3 +285,43 @@ threats:
         entries:
           - reference-id: tlog-capabilities
             remarks: Evidence ingestion
+  - id: T-ELEV-02
+    title: Cedar policy directory override
+    description: >-
+      An attacker with write access to the Cedar policy directory drops a
+      permissive policy file that widens authorization beyond the intended
+      model. Without merge semantics and forbid safety floors, directory
+      policies could replace the entire embedded policy set.
+    group: elevation-of-privilege
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Evidence ingestion
+  - id: T-ELEV-03
+    title: TargetRegistration trust escalation
+    description: >-
+      An authenticated publisher submits a TargetRegistration artifact that
+      adds themselves as a trusted publisher for a target they are not
+      authorized to publish to. Without trust modification restrictions, the
+      ability to register targets escalates to the ability to publish evidence
+      for any target.
+    group: elevation-of-privilege
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Publisher identity verification
+  - id: T-SPOOF-04
+    title: Import path bypasses publisher trust
+    description: >-
+      The OCI bundle import endpoint (POST /api/import) processes artifacts
+      with a synthetic publisher identity and no target-scoped trust check.
+      An authenticated user can import evidence for any target, bypassing
+      the publisher authorization model enforced on the ingest endpoint.
+    group: spoofing
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Evidence ingestion

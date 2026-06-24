@@ -231,10 +231,10 @@ controls:
   - id: CTRL-CI-05
     title: Ingest Boundary Publisher Authorization
     objective: >-
-      The ingest service checks the JWT caller's issuer and subject against
-      the per-target publisher allowlist in NATS KV before appending to
-      Tessera. Unauthorized publishers are rejected. Targets with no
-      configured publishers deny all submissions (deny by default).
+      The ingest service evaluates Cedar publish:artifact authorization,
+      checking the JWT caller's issuer and subject against the per-target
+      publisher allowlist in NATS KV. Cedar's forbid safety floor ensures
+      this check cannot be bypassed by directory-added policies.
     group: content-integrity
     threats:
       - reference-id: tlog-threats
@@ -256,6 +256,12 @@ controls:
           with no trusted publishers configured (deny by default).
         applicability: [all]
         state: Active
+      - id: CTRL-CI-05.3
+        text: >-
+          The ingest service MUST deny evidence submissions when the
+          TrustedPublisherStore is unavailable (fail-secure).
+        applicability: [all]
+        state: Active
   - id: CTRL-CI-03
     title: Publisher Trust Fail-Closed on KV Unavailability
     objective: >-
@@ -268,14 +274,14 @@ controls:
         entries:
           - reference-id: tlog-threats
             remarks: Mitigates T-TAMP-03 (trust state loss) and T-DOS-03 (KV unavailability)
-    state: Draft
+    state: Active
     assessment-requirements:
       - id: CTRL-CI-03.1
         text: >-
           The ingest service MUST reject evidence submissions with HTTP 503
           when the publisher trust NATS KV bucket is unreachable.
         applicability: [all]
-        state: Draft
+        state: Active
   - id: CTRL-CI-04
     title: Publisher Trust State Rebuildable from Tessera
     objective: >-
@@ -441,5 +447,91 @@ controls:
         text: >-
           The internal listener port MUST NOT be mapped to the host in
           the default compose configuration.
+        applicability: [all]
+        state: Active
+  - id: CTRL-AC-05
+    title: Cedar Policy Safety Floors
+    objective: >-
+      Embedded Cedar forbid/unless rules create non-bypassable safety floors
+      for security-critical actions. Directory-added policies can add permits
+      for new actions but cannot override the group membership requirements
+      for read:entries (auditors) or publish (publishers), nor the target-
+      scoped trust requirement for publish:artifact.
+    group: access-control
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-ELEV-02 (policy directory override)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-AC-05.1
+        text: >-
+          A directory-added permit(principal, action == Action::"read:entries",
+          resource) without the auditors group condition MUST NOT override the
+          embedded forbid — the request MUST be denied.
+        applicability: [all]
+        state: Active
+      - id: CTRL-AC-05.2
+        text: >-
+          A directory-added permit(principal, action == Action::"publish",
+          resource) without the publishers group condition MUST NOT override
+          the embedded forbid — the request MUST be denied.
+        applicability: [all]
+        state: Active
+  - id: CTRL-AC-06
+    title: Publishers Group Authorization
+    objective: >-
+      Evidence submission endpoints (POST /api/ingest, POST /api/import)
+      require the publishers group membership in the caller's OAuth2 Proxy
+      identity. This coarse-grained gate prevents unauthorized identities
+      from reaching the publish handler.
+    group: access-control
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-SPOOF-01 (publisher trust bypass)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-AC-06.1
+        text: >-
+          An authenticated POST /api/ingest without publishers group membership
+          MUST receive HTTP 403.
+        applicability: [all]
+        state: Active
+      - id: CTRL-AC-06.2
+        text: >-
+          An authenticated POST /api/ingest with publishers group membership
+          MUST proceed to handler-level authorization.
+        applicability: [all]
+        state: Active
+  - id: CTRL-AC-07
+    title: Trust Modification Authorization
+    objective: >-
+      Modification of trusted publisher lists for existing targets requires
+      the caller to be an existing trusted publisher for that target. New
+      target registrations with no prior publishers are exempt. This prevents
+      privilege escalation from target registration to evidence publication.
+    group: access-control
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-ELEV-03 (trust escalation)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-AC-07.1
+        text: >-
+          A TargetRegistration that adds trusted publishers to a target with
+          existing publishers MUST be rejected if the caller is not an existing
+          trusted publisher for that target.
+        applicability: [all]
+        state: Active
+      - id: CTRL-AC-07.2
+        text: >-
+          A TargetRegistration that adds trusted publishers to a new target
+          (no existing publishers) MUST be accepted from any authenticated
+          publisher.
         applicability: [all]
         state: Active
