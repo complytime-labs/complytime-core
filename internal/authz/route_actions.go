@@ -25,9 +25,9 @@ func MapRouteAction(method, path string) (cedar.EntityUID, bool) {
 	case method == "GET" && strings.HasPrefix(path, "/api/ingest/jobs/"):
 		return cedar.NewEntityUID("Action", "read:status"), true
 	case method == "POST" && path == "/api/ingest":
-		return cedar.NewEntityUID("Action", "submit"), true
+		return cedar.NewEntityUID("Action", "publish"), true
 	case method == "POST" && path == "/api/import":
-		return cedar.NewEntityUID("Action", "submit"), true
+		return cedar.NewEntityUID("Action", "publish"), true
 	default:
 		return cedar.EntityUID{}, false
 	}

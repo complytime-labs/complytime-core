@@ -74,25 +74,6 @@ func TestIsAuthorized_ReadCheckpoint_AllowedForAny(t *testing.T) {
 	}
 }
 
-func TestIsAuthorized_Submit_AllowedForAny(t *testing.T) {
-	a, err := NewAuthorizer("")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	principal := cedar.NewEntityUID("Identity", "charlie@example.com")
-	action := cedar.NewEntityUID("Action", "submit")
-	resource := cedar.NewEntityUID("Resource", "system")
-
-	allowed, err := a.IsAuthorized(principal, nil, action, resource, nil)
-	if err != nil {
-		t.Fatalf("IsAuthorized failed: %v", err)
-	}
-	if !allowed {
-		t.Error("submit should be allowed for any identity")
-	}
-}
-
 func TestIsAuthorized_ReadEntries_DeniedWithoutAuditorsGroup(t *testing.T) {
 	a, err := NewAuthorizer("")
 	if err != nil {
@@ -141,14 +122,169 @@ func TestIsAuthorized_ReadEntries_AllowedWithAuditorsGroup(t *testing.T) {
 	}
 }
 
-func TestIsAuthorized_Register_AllowedForAny(t *testing.T) {
+func TestIsAuthorized_Publish_DeniedWithoutPublishersGroup(t *testing.T) {
 	a, err := NewAuthorizer("")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	principal := cedar.NewEntityUID("Identity", "eve@example.com")
-	action := cedar.NewEntityUID("Action", "register")
+	principal := cedar.NewEntityUID("Identity", "alice@example.com")
+	action := cedar.NewEntityUID("Action", "publish")
+	resource := cedar.NewEntityUID("Resource", "system")
+
+	principalAttrs := map[string]cedar.Value{
+		"email":  cedar.String("alice@example.com"),
+		"groups": cedar.NewSet(),
+	}
+
+	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, nil)
+	if err != nil {
+		t.Fatalf("IsAuthorized failed: %v", err)
+	}
+	if allowed {
+		t.Error("publish should be denied without publishers group")
+	}
+}
+
+func TestIsAuthorized_Publish_AllowedWithPublishersGroup(t *testing.T) {
+	a, err := NewAuthorizer("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	principal := cedar.NewEntityUID("Identity", "ci@example.com")
+	action := cedar.NewEntityUID("Action", "publish")
+	resource := cedar.NewEntityUID("Resource", "system")
+
+	principalAttrs := map[string]cedar.Value{
+		"email":  cedar.String("ci@example.com"),
+		"groups": cedar.NewSet(cedar.String("publishers")),
+	}
+
+	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, nil)
+	if err != nil {
+		t.Fatalf("IsAuthorized failed: %v", err)
+	}
+	if !allowed {
+		t.Error("publish should be allowed with publishers group")
+	}
+}
+
+func TestIsAuthorized_Publish_ForbidCannotBeOverridden(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Try to override the forbid with a blanket permit
+	override := `permit(principal, action == Action::"publish", resource);`
+	if err := os.WriteFile(filepath.Join(tmpDir, "override.cedar"), []byte(override), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	a, err := NewAuthorizer(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	principal := cedar.NewEntityUID("Identity", "attacker@example.com")
+	action := cedar.NewEntityUID("Action", "publish")
+	resource := cedar.NewEntityUID("Resource", "system")
+
+	principalAttrs := map[string]cedar.Value{
+		"email":  cedar.String("attacker@example.com"),
+		"groups": cedar.NewSet(),
+	}
+
+	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, nil)
+	if err != nil {
+		t.Fatalf("IsAuthorized failed: %v", err)
+	}
+	if allowed {
+		t.Error("forbid should prevent directory policy from overriding publishers group requirement")
+	}
+}
+
+func TestIsAuthorized_ReadEntries_ForbidCannotBeOverridden(t *testing.T) {
+	tmpDir := t.TempDir()
+	override := `permit(principal, action == Action::"read:entries", resource);`
+	if err := os.WriteFile(filepath.Join(tmpDir, "override.cedar"), []byte(override), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	a, err := NewAuthorizer(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	principal := cedar.NewEntityUID("Identity", "attacker@example.com")
+	action := cedar.NewEntityUID("Action", "read:entries")
+	resource := cedar.NewEntityUID("Resource", "system")
+
+	principalAttrs := map[string]cedar.Value{
+		"email": cedar.String("attacker@example.com"),
+		"name":  cedar.String("attacker"),
+	}
+
+	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, nil)
+	if err != nil {
+		t.Fatalf("IsAuthorized failed: %v", err)
+	}
+	if allowed {
+		t.Error("forbid should prevent directory policy from overriding auditors group requirement")
+	}
+}
+
+func TestIsAuthorized_PublishArtifact_DeniedWithoutTrust(t *testing.T) {
+	a, err := NewAuthorizer("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	principal := cedar.NewEntityUID("Identity", "ci@example.com")
+	action := cedar.NewEntityUID("Action", "publish:artifact")
+	resource := cedar.NewEntityUID("Target", "project-1")
+
+	resourceAttrs := map[string]cedar.Value{
+		"publisher_trusted": cedar.Boolean(false),
+	}
+
+	allowed, err := a.IsAuthorized(principal, nil, action, resource, resourceAttrs)
+	if err != nil {
+		t.Fatalf("IsAuthorized failed: %v", err)
+	}
+	if allowed {
+		t.Error("publish:artifact should be denied without publisher trust")
+	}
+}
+
+func TestIsAuthorized_PublishArtifact_AllowedWithTrust(t *testing.T) {
+	a, err := NewAuthorizer("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	principal := cedar.NewEntityUID("Identity", "ci@example.com")
+	action := cedar.NewEntityUID("Action", "publish:artifact")
+	resource := cedar.NewEntityUID("Target", "project-1")
+
+	resourceAttrs := map[string]cedar.Value{
+		"publisher_trusted": cedar.Boolean(true),
+	}
+
+	allowed, err := a.IsAuthorized(principal, nil, action, resource, resourceAttrs)
+	if err != nil {
+		t.Fatalf("IsAuthorized failed: %v", err)
+	}
+	if !allowed {
+		t.Error("publish:artifact should be allowed with publisher trust")
+	}
+}
+
+func TestIsAuthorized_PublishRegistration_AllowedForAny(t *testing.T) {
+	a, err := NewAuthorizer("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	principal := cedar.NewEntityUID("Identity", "ci@example.com")
+	action := cedar.NewEntityUID("Action", "publish:registration")
 	resource := cedar.NewEntityUID("Resource", "system")
 
 	allowed, err := a.IsAuthorized(principal, nil, action, resource, nil)
@@ -156,87 +292,51 @@ func TestIsAuthorized_Register_AllowedForAny(t *testing.T) {
 		t.Fatalf("IsAuthorized failed: %v", err)
 	}
 	if !allowed {
-		t.Error("register should be allowed for any identity")
+		t.Error("publish:registration should be allowed for any principal")
 	}
 }
 
-func TestIsAuthorized_Submit_WithMatchingPublisherTrust(t *testing.T) {
-	tmpDir := t.TempDir()
-	policyFile := filepath.Join(tmpDir, "submit.cedar")
-	policy := `permit(
-  principal,
-  action == Action::"submit",
-  resource
-) when {
-  resource has trustedPublishers && resource.trustedPublishers.contains(principal.issuer)
-};`
-	if err := os.WriteFile(policyFile, []byte(policy), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	a, err := NewAuthorizer(tmpDir)
+func TestIsAuthorized_PublishPolicy_AllowedForAny(t *testing.T) {
+	a, err := NewAuthorizer("")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	principal := cedar.NewEntityUID("Identity", "frank@example.com")
-	action := cedar.NewEntityUID("Action", "submit")
-	resource := cedar.NewEntityUID("Target", "project-1")
+	principal := cedar.NewEntityUID("Identity", "ci@example.com")
+	action := cedar.NewEntityUID("Action", "publish:policy")
+	resource := cedar.NewEntityUID("Resource", "system")
 
-	principalAttrs := map[string]cedar.Value{
-		"issuer": cedar.String("https://github.com"),
-	}
-	resourceAttrs := map[string]cedar.Value{
-		"trustedPublishers": cedar.NewSet(cedar.String("https://github.com")),
-	}
-
-	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, resourceAttrs)
+	allowed, err := a.IsAuthorized(principal, nil, action, resource, nil)
 	if err != nil {
 		t.Fatalf("IsAuthorized failed: %v", err)
 	}
 	if !allowed {
-		t.Error("submit should be allowed with matching publisher trust")
+		t.Error("publish:policy should be allowed for any principal")
 	}
 }
 
-func TestIsAuthorized_Submit_WithoutMatchingPublisherTrust(t *testing.T) {
-	tmpDir := t.TempDir()
-	policyFile := filepath.Join(tmpDir, "submit.cedar")
-	// Use forbid to restrict submit when publisher trust doesn't match.
-	// This overrides the embedded permit(principal, action == Action::"submit", resource).
-	policy := `forbid(
-  principal,
-  action == Action::"submit",
-  resource
-) when {
-  resource has trustedPublishers && !resource.trustedPublishers.contains(principal.issuer)
-};`
-	if err := os.WriteFile(policyFile, []byte(policy), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	a, err := NewAuthorizer(tmpDir)
+func TestIsAuthorized_ReadEntries_DeniedWithNoGroupsKey(t *testing.T) {
+	a, err := NewAuthorizer("")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	principal := cedar.NewEntityUID("Identity", "grace@example.com")
-	action := cedar.NewEntityUID("Action", "submit")
-	resource := cedar.NewEntityUID("Target", "project-1")
+	principal := cedar.NewEntityUID("Identity", "user@example.com")
+	action := cedar.NewEntityUID("Action", "read:entries")
+	resource := cedar.NewEntityUID("Resource", "system")
 
+	// email and name present, but NO groups key at all
 	principalAttrs := map[string]cedar.Value{
-		"issuer": cedar.String("https://gitlab.com"),
-	}
-	resourceAttrs := map[string]cedar.Value{
-		"trustedPublishers": cedar.NewSet(cedar.String("https://github.com")),
+		"email": cedar.String("user@example.com"),
+		"name":  cedar.String("user"),
 	}
 
-	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, resourceAttrs)
+	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, nil)
 	if err != nil {
 		t.Fatalf("IsAuthorized failed: %v", err)
 	}
 	if allowed {
-		t.Error("submit should be denied without matching publisher trust")
+		t.Error("read:entries should be denied when groups key is absent (not just empty)")
 	}
 }
 
