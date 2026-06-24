@@ -58,7 +58,7 @@ WIT_VKEY=$(echo "$WITKEYS" | tail -1)
 
 echo "$WIT_SKEY" > "$OUTDIR/witness-signer.key"
 echo "$WIT_VKEY" > "$OUTDIR/witness-verifier.key"
-chmod 644 "$OUTDIR/witness-signer.key"
+chmod 600 "$OUTDIR/witness-signer.key"
 
 # Generate log signer key pair (pre-generate so witness can be provisioned)
 echo "Generating log signer key pair..."
@@ -69,7 +69,7 @@ LOG_VKEY=$(echo "$LOGKEYS" | tail -1)
 mkdir -p "$OUTDIR/log-signer"
 echo "$LOG_SKEY" > "$OUTDIR/log-signer/.signer.key"
 echo "$LOG_VKEY" >> "$OUTDIR/log-signer/.signer.key"
-chmod 644 "$OUTDIR/log-signer/.signer.key"
+chmod 600 "$OUTDIR/log-signer/.signer.key"
 
 # Write witness policy for the gateway (Sigsum format)
 cat > "$OUTDIR/witness-policy" << POLICYEOF

@@ -1,6 +1,6 @@
 # External Authorization Engine
 
-**Status:** Deferred (trigger: RACI Phase 3)
+**Status:** Superseded by [public-api-boundary.md](public-api-boundary.md)
 **Date:** 2026-04-27
 
 ## Context
@@ -12,6 +12,8 @@ External authorization engines (Zanzibar-based, policy-based, or identity-federa
 ## Decision
 
 **Do not adopt an external authorization engine now.** The current 2-role model does not justify the operational overhead. Evaluate when RACI-scoped policy visibility is implemented.
+
+**Update (2026-06-23):** Cedar authorization was adopted in the `public-api-boundary.md` decision. The project now uses AWS Cedar with a two-PEP model (public API + internal listener) and default-deny with forbid safety floors. This ADR is superseded.
 
 ## Rationale
 
@@ -53,3 +55,4 @@ Selection criteria: CNCF/OSS alignment, operational cost, consistency model, SDK
 
 - [Authorization Model: RACI-Scoped Multi-Tenancy](authorization-model.md) — the target architecture
 - [Default Admin & Token Hardening](default-admin-token-hardening.md) — current simple-authz
+- [Public API Boundary](public-api-boundary.md) — the Cedar authorization model that supersedes this ADR

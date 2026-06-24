@@ -1,13 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# Witness service configuration.
+# Monitor service configuration.
 # Copy to config.yaml and adjust for your environment.
 #
 # Environment variables override file-based paths:
-#   WITNESS_CONFIG_PATH  — path to this file (default: /etc/witness/config.yaml)
-#   WITNESS_STATE_PATH   — path to state file (default: /var/lib/witness/state.json)
+#   MONITOR_CONFIG_PATH  — path to this file (default: /etc/monitor/config.yaml)
+#   MONITOR_STATE_PATH   — path to state file (default: /var/lib/monitor/state.json)
 #   TESSERA_PATH         — path to Tessera POSIX storage (default: /var/lib/tessera)
-#   POSTGRES_URL         — PostgreSQL connection string (required)
 
 witness:
   # Unique name for this witness instance (appears in witnessed_indices table).
