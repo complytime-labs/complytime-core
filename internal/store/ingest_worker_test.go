@@ -244,3 +244,236 @@ func (m *fakeJSMsg) DoubleAck(_ context.Context) error         { return nil }
 
 // Satisfy the full interface — these aren't used in tests.
 var _ jetstream.Msg = (*fakeJSMsg)(nil)
+
+func TestHandleTargetRegistrationJS_UnauthorizedTrustModification(t *testing.T) {
+	// Initial registration with trusted publisher
+	initialReg := []byte(`metadata:
+  type: TargetRegistration
+  id: reg-001
+  date: "2026-06-19T00:00:00Z"
+target:
+  id: tgt-restricted
+  name: Restricted Target
+  type: Software
+  trusted-publishers:
+    - issuer: https://token.actions.githubusercontent.com
+      sub_pattern: "repo:org/repo"
+`)
+
+	// Attempt by unauthorized user to add another publisher
+	unauthorizedAdd := []byte(`metadata:
+  type: TargetRegistration
+  id: reg-002
+  date: "2026-06-19T01:00:00Z"
+target:
+  id: tgt-restricted
+  name: Restricted Target
+  type: Software
+  trusted-publishers:
+    - issuer: https://token.actions.githubusercontent.com
+      sub_pattern: "repo:attacker/malicious"
+`)
+
+	js := startIngestTestNATS(t)
+	ctx := context.Background()
+
+	targetStore, err := bus.NewTargetStoreKV(ctx, js)
+	require.NoError(t, err)
+	pubTrust, err := bus.NewPublisherTrustKV(ctx, js)
+	require.NoError(t, err)
+
+	tracker := NewIngestTracker()
+	pub := &recordingPublisher{}
+
+	// First registration by legitimate user
+	tracker.Create("job-1")
+	ref1 := bus.IngestRef{
+		JobID:    "job-1",
+		LogIndex: 0,
+		PublisherIdentity: bus.PublisherIdentity{
+			Issuer: "https://token.actions.githubusercontent.com",
+			Sub:    "repo:org/repo",
+		},
+		Timestamp: time.Now(),
+	}
+	outcome := handleTargetRegistrationJS(ctx, ref1, initialReg, targetStore, pubTrust, pub, tracker)
+	assert.Equal(t, outcomeAck, outcome, "initial registration should succeed")
+
+	// Verify initial publisher was added
+	pubs, err := pubTrust.GetTrustedPublishers(ctx, "tgt-restricted")
+	require.NoError(t, err)
+	assert.Len(t, pubs, 1)
+
+	// Second registration attempt by unauthorized user
+	tracker.Create("job-2")
+	ref2 := bus.IngestRef{
+		JobID:    "job-2",
+		LogIndex: 1,
+		PublisherIdentity: bus.PublisherIdentity{
+			Issuer: "https://token.actions.githubusercontent.com",
+			Sub:    "repo:attacker/malicious",
+		},
+		Timestamp: time.Now(),
+	}
+	outcome = handleTargetRegistrationJS(ctx, ref2, unauthorizedAdd, targetStore, pubTrust, pub, tracker)
+	assert.Equal(t, outcomeTerm, outcome, "unauthorized trust modification should be terminated")
+
+	// Verify only the original publisher remains
+	pubs, err = pubTrust.GetTrustedPublishers(ctx, "tgt-restricted")
+	require.NoError(t, err)
+	assert.Len(t, pubs, 1, "should still have exactly one publisher")
+	assert.Equal(t, "repo:org/repo", pubs[0].SubPattern)
+
+	// Verify the second job failed
+	status := tracker.Get("job-2")
+	require.NotNil(t, status)
+	assert.Equal(t, "failed", status.Status)
+}
+
+func TestHandleTargetRegistrationJS_AuthorizedTrustModification(t *testing.T) {
+	// Initial registration
+	initialReg := []byte(`metadata:
+  type: TargetRegistration
+  id: reg-001
+  date: "2026-06-19T00:00:00Z"
+target:
+  id: tgt-authorized
+  name: Authorized Target
+  type: Software
+  trusted-publishers:
+    - issuer: https://token.actions.githubusercontent.com
+      sub_pattern: "repo:org/repo"
+`)
+
+	// Legitimate addition by existing trusted publisher
+	authorizedAdd := []byte(`metadata:
+  type: TargetRegistration
+  id: reg-002
+  date: "2026-06-19T01:00:00Z"
+target:
+  id: tgt-authorized
+  name: Authorized Target
+  type: Software
+  trusted-publishers:
+    - issuer: https://token.actions.githubusercontent.com
+      sub_pattern: "repo:org/another-repo"
+`)
+
+	js := startIngestTestNATS(t)
+	ctx := context.Background()
+
+	targetStore, err := bus.NewTargetStoreKV(ctx, js)
+	require.NoError(t, err)
+	pubTrust, err := bus.NewPublisherTrustKV(ctx, js)
+	require.NoError(t, err)
+
+	tracker := NewIngestTracker()
+	pub := &recordingPublisher{}
+
+	// Initial registration
+	tracker.Create("job-1")
+	ref1 := bus.IngestRef{
+		JobID:    "job-1",
+		LogIndex: 0,
+		PublisherIdentity: bus.PublisherIdentity{
+			Issuer: "https://token.actions.githubusercontent.com",
+			Sub:    "repo:org/repo",
+		},
+		Timestamp: time.Now(),
+	}
+	outcome := handleTargetRegistrationJS(ctx, ref1, initialReg, targetStore, pubTrust, pub, tracker)
+	assert.Equal(t, outcomeAck, outcome)
+
+	// Authorized addition by same publisher
+	tracker.Create("job-2")
+	ref2 := bus.IngestRef{
+		JobID:    "job-2",
+		LogIndex: 1,
+		PublisherIdentity: bus.PublisherIdentity{
+			Issuer: "https://token.actions.githubusercontent.com",
+			Sub:    "repo:org/repo",
+		},
+		Timestamp: time.Now(),
+	}
+	outcome = handleTargetRegistrationJS(ctx, ref2, authorizedAdd, targetStore, pubTrust, pub, tracker)
+	assert.Equal(t, outcomeAck, outcome, "authorized trust modification should succeed")
+
+	// Verify both publishers are present
+	pubs, err := pubTrust.GetTrustedPublishers(ctx, "tgt-authorized")
+	require.NoError(t, err)
+	assert.Len(t, pubs, 2, "should have two publishers after authorized addition")
+}
+
+func TestHandleTargetRegistrationJS_UnauthorizedTrustRemoval(t *testing.T) {
+	// Initial registration
+	initialReg := []byte(`metadata:
+  type: TargetRegistration
+  id: reg-001
+  date: "2026-06-19T00:00:00Z"
+target:
+  id: tgt-removal
+  name: Removal Test Target
+  type: Software
+  trusted-publishers:
+    - issuer: https://token.actions.githubusercontent.com
+      sub_pattern: "repo:org/repo"
+`)
+
+	// Unauthorized removal attempt
+	unauthorizedRemoval := []byte(`metadata:
+  type: TargetRegistration
+  id: reg-002
+  date: "2026-06-19T01:00:00Z"
+target:
+  id: tgt-removal
+  name: Removal Test Target
+  type: Software
+  remove-publishers:
+    - issuer: https://token.actions.githubusercontent.com
+      sub_pattern: "repo:org/repo"
+`)
+
+	js := startIngestTestNATS(t)
+	ctx := context.Background()
+
+	targetStore, err := bus.NewTargetStoreKV(ctx, js)
+	require.NoError(t, err)
+	pubTrust, err := bus.NewPublisherTrustKV(ctx, js)
+	require.NoError(t, err)
+
+	tracker := NewIngestTracker()
+	pub := &recordingPublisher{}
+
+	// Initial registration
+	tracker.Create("job-1")
+	ref1 := bus.IngestRef{
+		JobID:    "job-1",
+		LogIndex: 0,
+		PublisherIdentity: bus.PublisherIdentity{
+			Issuer: "https://token.actions.githubusercontent.com",
+			Sub:    "repo:org/repo",
+		},
+		Timestamp: time.Now(),
+	}
+	outcome := handleTargetRegistrationJS(ctx, ref1, initialReg, targetStore, pubTrust, pub, tracker)
+	assert.Equal(t, outcomeAck, outcome)
+
+	// Unauthorized removal attempt
+	tracker.Create("job-2")
+	ref2 := bus.IngestRef{
+		JobID:    "job-2",
+		LogIndex: 1,
+		PublisherIdentity: bus.PublisherIdentity{
+			Issuer: "https://token.actions.githubusercontent.com",
+			Sub:    "repo:attacker/malicious",
+		},
+		Timestamp: time.Now(),
+	}
+	outcome = handleTargetRegistrationJS(ctx, ref2, unauthorizedRemoval, targetStore, pubTrust, pub, tracker)
+	assert.Equal(t, outcomeTerm, outcome, "unauthorized trust removal should be terminated")
+
+	// Verify the original publisher is still present
+	pubs, err := pubTrust.GetTrustedPublishers(ctx, "tgt-removal")
+	require.NoError(t, err)
+	assert.Len(t, pubs, 1, "publisher should not have been removed")
+}
