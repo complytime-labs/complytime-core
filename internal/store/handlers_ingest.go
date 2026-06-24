@@ -110,6 +110,7 @@ func IngestAsyncHandler(pub IngestPublisher, tracker *IngestTracker, appender Te
 			return
 		}
 
+		// Info (not Debug) — publish events are low-volume and audit-relevant
 		slog.Info("publish authorization permitted",
 			"principal", claims.Sub,
 			"action", cedarAction.ID,
