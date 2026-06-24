@@ -98,6 +98,14 @@ func main() {
 	jwtVerifier := auth.NewJWTVerifier(ctx, cfg.JWTIssuers, cfg.JWTAudience)
 	slog.Info("jwt verifier ready", "allowed_issuers", len(cfg.JWTIssuers), "audience", cfg.JWTAudience)
 
+	// Initialize Cedar authorizer
+	authorizer, err := authz.NewAuthorizer(cfg.CedarPolicyDir)
+	if err != nil {
+		slog.Error("cedar authorizer init failed", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("cedar authorizer ready", "policy_dir", cfg.CedarPolicyDir)
+
 	registryConfig := store.LoadRegistryConfig()
 
 	stores := store.Stores{
@@ -109,6 +117,7 @@ func main() {
 		IngestPublisher:   bus,
 		TesseraAppender:   tesseraClient,
 		JWTVerifier:       jwtVerifier,
+		Authorizer:        authorizer,
 		IngestRateLimit: httputil.RateLimitOptions{
 			Rate:  cfg.IngestRateLimit,
 			Burst: cfg.IngestRateBurst,
@@ -123,14 +132,6 @@ func main() {
 	}
 	defer ingestCC.Stop()
 	slog.Info("jetstream ingest consumer started", "consumer", "ingest-worker")
-
-	// Initialize Cedar authorizer
-	authorizer, err := authz.NewAuthorizer(cfg.CedarPolicyDir)
-	if err != nil {
-		slog.Error("cedar authorizer init failed", "error", err)
-		os.Exit(1)
-	}
-	slog.Info("cedar authorizer ready", "policy_dir", cfg.CedarPolicyDir)
 
 	// Start policy watcher if configured
 	if cfg.CedarPolicyDir != "" && cfg.CedarPollInterval > 0 {

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cedar-policy/cedar-go"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
@@ -24,7 +25,7 @@ import (
 
 func registerIngestRoutes(g *echo.Group, s Stores) {
 	ingestHandler := httputil.RateLimit(s.IngestRateLimit)(
-		IngestAsyncHandler(s.IngestPublisher, s.IngestTracker, s.TesseraAppender, s.JWTVerifier, s.TrustedPublishers),
+		IngestAsyncHandler(s.IngestPublisher, s.IngestTracker, s.TesseraAppender, s.JWTVerifier, s.TrustedPublishers, s.Authorizer),
 	)
 	g.POST("/ingest", echo.WrapHandler(ingestHandler))
 	g.GET("/ingest/jobs/:job_id", IngestJobStatusHandler(s.IngestTracker))
@@ -39,7 +40,7 @@ type IngestPublisher interface {
 // YAML with a Bearer JWT token, verifies the JWT, appends to Tessera,
 // assigns a job ID, publishes an IngestRef to JetStream, and returns
 // 202 Accepted with the job ID and log_index for polling.
-func IngestAsyncHandler(pub IngestPublisher, tracker *IngestTracker, appender TesseraAppender, verifier JWTVerifier, trustedPubs requirements.TrustedPublisherStore) http.HandlerFunc {
+func IngestAsyncHandler(pub IngestPublisher, tracker *IngestTracker, appender TesseraAppender, verifier JWTVerifier, trustedPubs requirements.TrustedPublisherStore, authorizer CedarAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
@@ -72,13 +73,48 @@ func IngestAsyncHandler(pub IngestPublisher, tracker *IngestTracker, appender Te
 			return
 		}
 
-		if err := checkPublisherTrust(ctx, body, claims, trustedPubs); err != nil {
-			slog.Warn("publisher trust check failed", "issuer", claims.Iss, "sub", claims.Sub, "error", err)
+		// Map artifact type to Cedar action
+		cedarAction, resourceAttrs, err := resolvePublishAction(ctx, body, claims, trustedPubs)
+		if err != nil {
+			slog.Warn("publish authorization failed", "issuer", claims.Iss, "sub", claims.Sub, "error", err)
 			httputil.WriteJSON(w, http.StatusForbidden, map[string]any{
 				"errors": []string{err.Error()},
 			})
 			return
 		}
+
+		// Cedar authorization check
+		principal := cedar.NewEntityUID("Identity", cedar.String(claims.Sub))
+		resource := cedar.NewEntityUID("Resource", "system")
+		if targetID := evidence.DetectTargetID(body); targetID != "" {
+			resource = cedar.NewEntityUID("Target", cedar.String(targetID))
+		}
+
+		allowed, err := authorizer.IsAuthorized(principal, nil, cedarAction, resource, resourceAttrs)
+		if err != nil {
+			slog.Error("cedar authorization error", "error", err)
+			httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
+				"errors": []string{"authorization error"},
+			})
+			return
+		}
+		if !allowed {
+			slog.Warn("publish authorization denied",
+				"principal", claims.Sub,
+				"action", cedarAction.ID,
+				"decision", "deny",
+			)
+			httputil.WriteJSON(w, http.StatusForbidden, map[string]any{
+				"errors": []string{"publisher not authorized"},
+			})
+			return
+		}
+
+		slog.Info("publish authorization permitted",
+			"principal", claims.Sub,
+			"action", cedarAction.ID,
+			"decision", "allow",
+		)
 
 		logIndex, err := appender.Add(ctx, body)
 		if err != nil {
@@ -158,41 +194,57 @@ func extractBearerToken(r *http.Request) string {
 	return parts[1]
 }
 
-// checkPublisherTrust verifies that the JWT caller is authorized to submit
-// artifacts for the target in the YAML. TargetRegistrations are exempt (any
-// authenticated user can register a target). Artifacts without a target ID
-// (e.g., policies) are also exempt.
-func checkPublisherTrust(ctx context.Context, body []byte, claims *auth.JWTClaims, store requirements.TrustedPublisherStore) error {
-	if store == nil {
-		return nil
-	}
-
+// resolvePublishAction maps artifact type to Cedar action and resolves publisher trust.
+func resolvePublishAction(ctx context.Context, body []byte, claims *auth.JWTClaims, store requirements.TrustedPublisherStore) (cedar.EntityUID, map[string]cedar.Value, error) {
 	typeStr := evidence.DetectArtifactTypeString(body)
-	if typeStr == "TargetRegistration" || typeStr == "Policy" {
-		return nil
+
+	switch typeStr {
+	case "TargetRegistration":
+		return cedar.NewEntityUID("Action", "publish:registration"), nil, nil
+	case "Policy":
+		return cedar.NewEntityUID("Action", "publish:policy"), nil, nil
 	}
 
+	// All other artifact types require target-scoped publisher trust
 	targetID := evidence.DetectTargetID(body)
 	if targetID == "" {
-		return nil
+		return cedar.NewEntityUID("Action", "publish:policy"), nil, nil
 	}
 
+	if store == nil {
+		return cedar.EntityUID{}, nil, fmt.Errorf("publisher trust store unavailable")
+	}
+
+	trusted, err := isPublisherTrusted(ctx, claims, targetID, store)
+	if err != nil {
+		return cedar.EntityUID{}, nil, err
+	}
+
+	resourceAttrs := map[string]cedar.Value{
+		"publisher_trusted": cedar.Boolean(trusted),
+	}
+
+	return cedar.NewEntityUID("Action", "publish:artifact"), resourceAttrs, nil
+}
+
+// isPublisherTrusted checks if the JWT claims match a trusted publisher for the target.
+func isPublisherTrusted(ctx context.Context, claims *auth.JWTClaims, targetID string, store requirements.TrustedPublisherStore) (bool, error) {
 	pubs, err := store.GetTrustedPublishers(ctx, targetID)
 	if err != nil {
-		return fmt.Errorf("publisher trust check unavailable — try again later")
+		return false, fmt.Errorf("publisher trust check unavailable — try again later")
 	}
 
 	if len(pubs) == 0 {
-		return fmt.Errorf("no trusted publishers configured for target %s", targetID)
+		return false, fmt.Errorf("no trusted publishers configured for target %s", targetID)
 	}
 
 	for _, p := range pubs {
 		if matchPublisher(claims.Iss, claims.Sub, p.Issuer, p.SubPattern) {
-			return nil
+			return true, nil
 		}
 	}
 
-	return fmt.Errorf("publisher not authorized for target %s", targetID)
+	return false, nil
 }
 
 // matchPublisher checks if a JWT issuer/subject matches a trusted publisher
