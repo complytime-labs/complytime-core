@@ -24,7 +24,7 @@ step() { echo ""; echo "Step $1: $2"; }
 
 HEADERS=(-H "X-Forwarded-Email: smoke-test@complytime.dev" \
          -H "X-Forwarded-Preferred-Username: smoke-test" \
-         -H "X-Forwarded-Groups: auditors")
+         -H "X-Forwarded-Groups: auditors,publishers")
 
 # ── Step 1: Wait for services ──────────────────────────────────────────────
 

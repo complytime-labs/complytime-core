@@ -133,7 +133,7 @@ func TestMiddleware_NoStaticToken(t *testing.T) {
 }
 
 func TestTokenFromRequest_XForwardedAccessToken(t *testing.T) {
-	h := NewHandler(nil)
+	h := NewHandler(newTestAuthorizer(t))
 	req := httptest.NewRequest(http.MethodGet, "/api/a2a/agent", nil)
 	req.Header.Set("X-Forwarded-Access-Token", "ya29.access-token-123")
 
@@ -144,7 +144,7 @@ func TestTokenFromRequest_XForwardedAccessToken(t *testing.T) {
 }
 
 func TestTokenFromRequest_NoHeader(t *testing.T) {
-	h := NewHandler(nil)
+	h := NewHandler(newTestAuthorizer(t))
 	req := httptest.NewRequest(http.MethodGet, "/api/a2a/agent", nil)
 
 	_, ok := h.TokenFromRequest(req)
@@ -154,7 +154,7 @@ func TestTokenFromRequest_NoHeader(t *testing.T) {
 }
 
 func TestHandleMe_ReturnsIdentity(t *testing.T) {
-	h := NewHandler(nil)
+	h := NewHandler(newTestAuthorizer(t))
 
 	e := echo.New()
 	h.Register(e)

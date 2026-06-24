@@ -8,27 +8,37 @@ import (
 	"github.com/cedar-policy/cedar-go"
 )
 
+type routeMapping struct {
+	method string
+	path   string
+	prefix bool
+	action string
+}
+
+var routeMappings = []routeMapping{
+	{"GET", "/checkpoint", false, "read:checkpoint"},
+	{"GET", "/log/witnessed/", true, "read:checkpoint"},
+	{"GET", "/tile/", true, "read:entries"},
+	{"GET", "/api/system-info", false, "read:status"},
+	{"GET", "/api/config", false, "read:status"},
+	{"GET", "/api/ingest/jobs/", true, "read:status"},
+	{"POST", "/api/ingest", false, "publish"},
+	{"POST", "/api/import", false, "publish"},
+}
+
 // MapRouteAction maps HTTP method and path to a Cedar action entity UID.
 // Returns false if the route is not recognized.
 func MapRouteAction(method, path string) (cedar.EntityUID, bool) {
-	switch {
-	case method == "GET" && path == "/checkpoint":
-		return cedar.NewEntityUID("Action", "read:checkpoint"), true
-	case method == "GET" && strings.HasPrefix(path, "/log/witnessed/"):
-		return cedar.NewEntityUID("Action", "read:checkpoint"), true
-	case method == "GET" && strings.HasPrefix(path, "/tile/"):
-		return cedar.NewEntityUID("Action", "read:entries"), true
-	case method == "GET" && path == "/api/system-info":
-		return cedar.NewEntityUID("Action", "read:status"), true
-	case method == "GET" && path == "/api/config":
-		return cedar.NewEntityUID("Action", "read:status"), true
-	case method == "GET" && strings.HasPrefix(path, "/api/ingest/jobs/"):
-		return cedar.NewEntityUID("Action", "read:status"), true
-	case method == "POST" && path == "/api/ingest":
-		return cedar.NewEntityUID("Action", "publish"), true
-	case method == "POST" && path == "/api/import":
-		return cedar.NewEntityUID("Action", "publish"), true
-	default:
-		return cedar.EntityUID{}, false
+	for _, m := range routeMappings {
+		if m.method != method {
+			continue
+		}
+		if m.prefix && strings.HasPrefix(path, m.path) {
+			return cedar.NewEntityUID("Action", cedar.String(m.action)), true
+		}
+		if !m.prefix && path == m.path {
+			return cedar.NewEntityUID("Action", cedar.String(m.action)), true
+		}
 	}
+	return cedar.EntityUID{}, false
 }

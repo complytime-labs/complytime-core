@@ -187,33 +187,8 @@ func handleTargetRegistrationJS(
 	}
 
 	if len(reg.Target.TrustedPublishers) > 0 && trustedPubs != nil {
-		// Check if caller is authorized to modify trust for this target
-		existingPubs, err := trustedPubs.GetTrustedPublishers(ctx, reg.Target.ID)
-		if err != nil {
-			tracker.Fail(ref.JobID, fmt.Sprintf("trust check failed: %v", err))
-			slog.Error("async ingest: trust check failed", "job_id", ref.JobID, "error", err)
-			return outcomeNak
-		}
-
-		// If target already has trusted publishers, caller must be one of them
-		if len(existingPubs) > 0 {
-			callerTrusted := false
-			for _, p := range existingPubs {
-				if matchPublisher(ref.PublisherIdentity.Issuer, ref.PublisherIdentity.Sub, p.Issuer, p.SubPattern) {
-					callerTrusted = true
-					break
-				}
-			}
-			if !callerTrusted {
-				tracker.Fail(ref.JobID, "caller is not a trusted publisher for this target — cannot modify trust")
-				slog.Warn("async ingest: unauthorized trust modification attempt",
-					"job_id", ref.JobID,
-					"target_id", reg.Target.ID,
-					"caller_issuer", ref.PublisherIdentity.Issuer,
-					"caller_sub", ref.PublisherIdentity.Sub,
-				)
-				return outcomeTerm
-			}
+		if outcome, ok := authorizeCallerForTrustModification(ctx, ref, reg.Target.ID, trustedPubs, tracker); !ok {
+			return outcome
 		}
 
 		logIdx := int64(ref.LogIndex) //nolint:gosec
@@ -242,33 +217,8 @@ func handleTargetRegistrationJS(
 	}
 
 	if len(reg.Target.RemovePublishers) > 0 && trustedPubs != nil {
-		// Check if caller is authorized to modify trust for this target
-		existingPubs, err := trustedPubs.GetTrustedPublishers(ctx, reg.Target.ID)
-		if err != nil {
-			tracker.Fail(ref.JobID, fmt.Sprintf("trust check failed: %v", err))
-			slog.Error("async ingest: trust check failed", "job_id", ref.JobID, "error", err)
-			return outcomeNak
-		}
-
-		// If target already has trusted publishers, caller must be one of them
-		if len(existingPubs) > 0 {
-			callerTrusted := false
-			for _, p := range existingPubs {
-				if matchPublisher(ref.PublisherIdentity.Issuer, ref.PublisherIdentity.Sub, p.Issuer, p.SubPattern) {
-					callerTrusted = true
-					break
-				}
-			}
-			if !callerTrusted {
-				tracker.Fail(ref.JobID, "caller is not a trusted publisher for this target — cannot modify trust")
-				slog.Warn("async ingest: unauthorized trust modification attempt",
-					"job_id", ref.JobID,
-					"target_id", reg.Target.ID,
-					"caller_issuer", ref.PublisherIdentity.Issuer,
-					"caller_sub", ref.PublisherIdentity.Sub,
-				)
-				return outcomeTerm
-			}
+		if outcome, ok := authorizeCallerForTrustModification(ctx, ref, reg.Target.ID, trustedPubs, tracker); !ok {
+			return outcome
 		}
 
 		keys := make([]requirements.TrustedPublisherKey, len(reg.Target.RemovePublishers))
@@ -297,6 +247,34 @@ func handleTargetRegistrationJS(
 		"target_id", reg.Target.ID,
 	)
 	return outcomeAck
+}
+
+func authorizeCallerForTrustModification(ctx context.Context, ref bus.IngestRef, targetID string, trustedPubs requirements.TrustedPublisherStore, tracker *IngestTracker) (ingestOutcome, bool) {
+	existingPubs, err := trustedPubs.GetTrustedPublishers(ctx, targetID)
+	if err != nil {
+		tracker.Fail(ref.JobID, fmt.Sprintf("trust check failed: %v", err))
+		slog.Error("async ingest: trust check failed", "job_id", ref.JobID, "error", err)
+		return outcomeNak, false
+	}
+
+	if len(existingPubs) == 0 {
+		return outcomeAck, true
+	}
+
+	for _, p := range existingPubs {
+		if matchPublisher(ref.PublisherIdentity.Issuer, ref.PublisherIdentity.Sub, p.Issuer, p.SubPattern) {
+			return outcomeAck, true
+		}
+	}
+
+	tracker.Fail(ref.JobID, "caller is not a trusted publisher for this target — cannot modify trust")
+	slog.Warn("async ingest: unauthorized trust modification attempt",
+		"job_id", ref.JobID,
+		"target_id", targetID,
+		"caller_issuer", ref.PublisherIdentity.Issuer,
+		"caller_sub", ref.PublisherIdentity.Sub,
+	)
+	return outcomeTerm, false
 }
 
 func isNotYetIntegrated(err error) bool {

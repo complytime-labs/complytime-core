@@ -479,6 +479,13 @@ controls:
           the embedded forbid — the request MUST be denied.
         applicability: [all]
         state: Active
+      - id: CTRL-AC-05.3
+        text: >-
+          A directory-added permit(principal, action == Action::"publish:artifact",
+          resource) without the publisher_trusted condition MUST NOT override
+          the embedded forbid — the request MUST be denied.
+        applicability: [all]
+        state: Active
   - id: CTRL-AC-06
     title: Publishers Group Authorization
     objective: >-

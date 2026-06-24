@@ -61,13 +61,17 @@ Authorization is enforced via Cedar policies (`.cedar` files with hot-reload). D
 
 **Authenticated checkpoint timing.** Auditors with `read:checkpoint` can learn log growth rate. Accepted — checkpoint reading is necessary for verifying witness cosignatures.
 
+**Import path bypasses target-scoped publisher trust (T-SPOOF-04).** The OCI bundle import endpoint (`POST /api/import`) applies the middleware-level publishers group gate but does not perform handler-level target-scoped trust checks. Imported artifacts receive a synthetic publisher identity. Accepted — the publishers group gate limits who can import, and imported evidence is append-only (detectable by the monitor). Target-scoped trust for the import path is tracked for a future release.
+
 ## Trust Assumptions
 
 **OAuth2 Proxy is the sole ingress to :8080.** The identity model depends on `X-Forwarded-*` headers set by the proxy. Port 8080 must not be directly exposed; the compose/k8s topology enforces this.
 
 **Internal listener (:8081) serves tiles without authentication.** Network access to this port is equivalent to `read:entries` authorization. The compose network restricts access to the witness container. In production deployments, use k8s network policies or equivalent to limit access to the witness pod.
 
-**Cedar forbid rules are non-bypassable safety floors.** The embedded policy includes `forbid/unless` rules for `read:entries` (auditors group) and `publish`/`publish:artifact` (publishers group / target trust). Directory-added policies can add permits for other actions but cannot override these floors.
+**Two-layer Cedar authorization for publish.** Middleware evaluates `Action::"publish"` (requires publishers group) as a coarse identity-level gate. The ingest handler then evaluates a sub-action — `publish:artifact` (target-scoped trust), `publish:registration` (any publisher), or `publish:policy` (any publisher) — based on artifact type. The sub-actions are only reachable after the middleware gate passes.
+
+**Cedar forbid rules are non-bypassable safety floors.** The embedded policy includes `forbid/unless` rules for `read:entries` (auditors group), `publish` (publishers group), and `publish:artifact` (target trust). Directory-added policies can add permits for other actions but cannot override these floors.
 
 ## Alternatives Considered
 

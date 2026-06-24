@@ -42,15 +42,20 @@ func SessionFrom(ctx context.Context) (*Session, bool) {
 	return s, ok
 }
 
+// Authorizer evaluates Cedar authorization requests.
+type Authorizer interface {
+	IsAuthorized(principal cedar.EntityUID, principalAttrs map[string]cedar.Value, action cedar.EntityUID, resource cedar.EntityUID, resourceAttrs map[string]cedar.Value) (bool, error)
+}
+
 // Handler provides auth middleware and identity endpoints. Identity
 // is established by OAuth2 Proxy via X-Forwarded-* headers.
 type Handler struct {
-	authorizer *authz.Authorizer
+	authorizer Authorizer
 }
 
 // NewHandler creates an auth handler. OAuth2 Proxy handles OIDC externally;
 // the handler only reads proxy-injected headers. The authorizer must not be nil.
-func NewHandler(authorizer *authz.Authorizer) *Handler {
+func NewHandler(authorizer Authorizer) *Handler {
 	return &Handler{authorizer: authorizer}
 }
 
@@ -80,7 +85,6 @@ a:hover{background:#3b8ea5;color:#fff}
 
 // Middleware reads X-Forwarded-* headers from OAuth2 Proxy and injects a
 // Session into the request context. Uses Cedar authorization for access control.
-// Falls back to simple authenticated-only checks if no authorizer is configured.
 func (h *Handler) Middleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -141,22 +145,26 @@ func (h *Handler) Middleware() echo.MiddlewareFunc {
 				authRequestTotal.Add("error", 1)
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "authorization error"})
 			}
+			reqID := c.Response().Header().Get(echo.HeaderXRequestID)
+
 			if !allowed {
 				slog.Warn("authorization denied",
 					"principal", email,
 					"action", action.ID,
 					"resource", resource.ID,
 					"decision", "deny",
+					"request_id", reqID,
 				)
 				authRequestTotal.Add("denied", 1)
 				return c.JSON(http.StatusForbidden, map[string]string{"error": "access denied"})
 			}
 
-			slog.Info("authorization permitted",
+			slog.Debug("authorization permitted",
 				"principal", email,
 				"action", action.ID,
 				"resource", resource.ID,
 				"decision", "allow",
+				"request_id", reqID,
 			)
 
 			// Inject session into context and proceed
