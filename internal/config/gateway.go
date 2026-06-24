@@ -83,7 +83,7 @@ func GatewayFromEnv() (*GatewayConfig, error) {
 		TesseraWitnessTimeout:     envDuration("TESSERA_WITNESS_TIMEOUT", 5*time.Second),
 		TesseraWitnessFailOpen:    os.Getenv("TESSERA_WITNESS_FAIL_OPEN") == "true",
 		JWTIssuers:                splitComma(os.Getenv("JWT_ISSUERS")),
-		JWTAudience:               os.Getenv("JWT_AUDIENCE"),
+		JWTAudience:               envOr("JWT_AUDIENCE", "complytime"),
 		CORSOrigins:               splitComma(os.Getenv("CORS_ORIGINS")),
 		BlobEndpoint:              os.Getenv("BLOB_ENDPOINT"),
 		BlobBucket:                os.Getenv("BLOB_BUCKET"),

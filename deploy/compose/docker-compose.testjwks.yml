@@ -24,3 +24,4 @@ services:
       - "9090:9090"
     environment:
       TESTJWKS_ISSUER: "http://testjwks:9090"
+      TESTJWKS_ALLOW_UNSAFE: "true"

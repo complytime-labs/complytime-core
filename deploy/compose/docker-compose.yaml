@@ -16,11 +16,13 @@ services:
     environment:
       PORT: "8080"
       INTERNAL_PORT: "8081"
+      # 0.0.0.0 required for witness container to reach :8081 via Docker network.
+      # In Kubernetes, apply a NetworkPolicy restricting :8081 to witness pods only.
       INTERNAL_LISTEN_HOST: "0.0.0.0"
       NATS_URL: nats://nats:4222
       CORS_ORIGINS: ""
       JWT_ISSUERS: ""
-      JWT_AUDIENCE: "complytime-core"
+      JWT_AUDIENCE: "complytime"
       TESSERA_CHECKPOINT_INTERVAL: "5s"
       TESSERA_PATH: /data/tessera
       TESSERA_SIGNER_KEY_PATH: /data/signer/.signer.key
@@ -56,7 +58,7 @@ services:
       - witnessdata:/data
 
   nats:
-    image: nats:2-alpine
+    image: nats:2.14-alpine
     command: ["-js", "-sd", "/data"]
     ports:
       - "4222:4222"
