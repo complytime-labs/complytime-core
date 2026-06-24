@@ -143,9 +143,22 @@ func (h *Handler) Middleware() echo.MiddlewareFunc {
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "authorization error"})
 			}
 			if !allowed {
+				slog.Warn("authorization denied",
+					"principal", email,
+					"action", action.ID,
+					"resource", resource.ID,
+					"decision", "deny",
+				)
 				authRequestTotal.Add("denied", 1)
 				return c.JSON(http.StatusForbidden, map[string]string{"error": "access denied"})
 			}
+
+			slog.Info("authorization permitted",
+				"principal", email,
+				"action", action.ID,
+				"resource", resource.ID,
+				"decision", "allow",
+			)
 
 			// Inject session into context and proceed
 			ctx := context.WithValue(r.Context(), sessionKey, sess)
