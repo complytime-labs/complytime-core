@@ -96,8 +96,10 @@ func (a *Authorizer) loadPolicies(policyDir string) error {
 			return fmt.Errorf("failed to read policy directory: %w", readErr)
 		}
 
-		// Combine all .cedar files
-		var combined []byte
+		// Always start with embedded defaults
+		combined := append([]byte{}, defaultPolicies...)
+		combined = append(combined, '\n')
+
 		for _, entry := range entries {
 			if entry.IsDir() || filepath.Ext(entry.Name()) != ".cedar" {
 				continue
@@ -110,12 +112,7 @@ func (a *Authorizer) loadPolicies(policyDir string) error {
 			combined = append(combined, '\n')
 		}
 
-		if len(combined) == 0 {
-			// No .cedar files found, use defaults
-			ps, err = cedar.NewPolicySetFromBytes("base.cedar", defaultPolicies)
-		} else {
-			ps, err = cedar.NewPolicySetFromBytes("combined.cedar", combined)
-		}
+		ps, err = cedar.NewPolicySetFromBytes("combined.cedar", combined)
 	}
 
 	if err != nil {

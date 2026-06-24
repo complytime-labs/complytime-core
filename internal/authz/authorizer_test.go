@@ -202,12 +202,14 @@ func TestIsAuthorized_Submit_WithMatchingPublisherTrust(t *testing.T) {
 func TestIsAuthorized_Submit_WithoutMatchingPublisherTrust(t *testing.T) {
 	tmpDir := t.TempDir()
 	policyFile := filepath.Join(tmpDir, "submit.cedar")
-	policy := `permit(
+	// Use forbid to restrict submit when publisher trust doesn't match.
+	// This overrides the embedded permit(principal, action == Action::"submit", resource).
+	policy := `forbid(
   principal,
   action == Action::"submit",
   resource
 ) when {
-  resource has trustedPublishers && resource.trustedPublishers.contains(principal.issuer)
+  resource has trustedPublishers && !resource.trustedPublishers.contains(principal.issuer)
 };`
 	if err := os.WriteFile(policyFile, []byte(policy), 0600); err != nil {
 		t.Fatal(err)
@@ -283,5 +285,42 @@ func TestReload_SwapsAtomically(t *testing.T) {
 	newPS := a.policies.Load()
 	if oldPS == newPS {
 		t.Error("policy set should have been swapped")
+	}
+}
+
+func TestLoadPolicies_MergesWithEmbeddedDefaults(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Write a policy that adds a new action (doesn't exist in embedded defaults)
+	extraPolicy := `permit(principal, action == Action::"custom:action", resource);`
+	if err := os.WriteFile(filepath.Join(tmpDir, "extra.cedar"), []byte(extraPolicy), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	a, err := NewAuthorizer(tmpDir)
+	if err != nil {
+		t.Fatalf("NewAuthorizer failed: %v", err)
+	}
+
+	// The custom action from directory should be permitted
+	principal := cedar.NewEntityUID("Identity", "test@example.com")
+	resource := cedar.NewEntityUID("Resource", "system")
+	customAction := cedar.NewEntityUID("Action", "custom:action")
+
+	allowed, err := a.IsAuthorized(principal, nil, customAction, resource, nil)
+	if err != nil {
+		t.Fatalf("IsAuthorized failed: %v", err)
+	}
+	if !allowed {
+		t.Error("custom:action from directory policy should be permitted")
+	}
+
+	// The embedded read:status should ALSO be permitted (merged, not replaced)
+	statusAction := cedar.NewEntityUID("Action", "read:status")
+	allowed, err = a.IsAuthorized(principal, nil, statusAction, resource, nil)
+	if err != nil {
+		t.Fatalf("IsAuthorized failed: %v", err)
+	}
+	if !allowed {
+		t.Error("read:status from embedded policy should still be permitted after merge")
 	}
 }
