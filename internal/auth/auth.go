@@ -49,8 +49,7 @@ type Handler struct {
 }
 
 // NewHandler creates an auth handler. OAuth2 Proxy handles OIDC externally;
-// the handler only reads proxy-injected headers. If authorizer is nil,
-// the middleware falls back to simple authenticated-only checks.
+// the handler only reads proxy-injected headers. The authorizer must not be nil.
 func NewHandler(authorizer *authz.Authorizer) *Handler {
 	return &Handler{authorizer: authorizer}
 }
