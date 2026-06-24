@@ -1,83 +1,78 @@
 # Public API Boundary
 
-**Status:** Accepted (revised 2026-06-23)
-**Date:** 2026-06-19
+**Status:** Accepted
+**Date:** 2026-06-23
 
 ## Decision
 
-All endpoints except `/healthz` require authentication via Cedar authorization. Routes under `/api/` and `/workbench/` are authenticated on the primary listener `:8080`. Transparency log read endpoints (`/checkpoint`, `/tile/*`, `/log/witnessed/:index`) are also authenticated on `:8080`. An internal listener on `:8081` serves tlog reads without authentication for the witness service only. Operational endpoints (`/healthz`) remain unauthenticated on both listeners.
+All endpoints except `/healthz` require authentication and Cedar authorization. The system uses two listeners:
+
+- **:8080 (primary)** — all routes require OAuth2 Proxy identity + Cedar policy permit
+- **:8081 (internal)** — tlog read endpoints only, no auth, bound to `127.0.0.1` by default
+
+Read access is split by sensitivity:
+
+- `read:checkpoint` — log metadata (any authenticated identity)
+- `read:entries` — evidence content (requires auditors group)
 
 ## Context
 
-The original decision treated transparency logs like Certificate Transparency (public reads). However, compliance evidence contains sensitive data—vulnerability scans, control assessments, security posture information. The relying parties (auditors, witnesses, tooling) are a known set who can authenticate.
+Compliance evidence contains sensitive data — vulnerability scans, control assessments, security posture information. The relying parties (auditors, witnesses, tooling) are a known set who can authenticate. Merkle tree integrity does not require public access; it requires that authorized verifiers can check the log independently.
 
-Authorization is enforced via Cedar policies (`.cedar` files in the repo with hot-reload). Dynamic entity data (publisher trust attributes) flows from NATS KV. The system uses two listeners:
+Authorization is enforced via Cedar policies (`.cedar` files with hot-reload). Dynamic entity data (publisher trust) flows from NATS KV. The omniwitness (third-party binary) cannot send auth headers, so it reads checkpoints via the internal listener.
 
-- **:8080 (primary, authenticated)** — Serves all routes; Cedar policies enforce read/write authorization
-- **:8081 (internal, unauthenticated)** — Serves only tlog read endpoints for the witness service (host-only, no network exposure)
+## Endpoints
 
-Read access is split by sensitivity:
-- `read:checkpoint` — Log metadata (new checkpoint available, size, timestamp), required for any authenticated identity
-- `read:entries` — Evidence content (security artifacts, assessment data), requires auditors group membership
+### Authenticated (:8080, Cedar policies)
 
-## Authenticated Endpoints (:8080, Cedar policies)
-
-| Path | Purpose | Authorization requirement |
-|:--|:--|:--|
-| `GET /checkpoint` | Cosigned checkpoint (signed note) | `read:checkpoint` (any authenticated identity) |
+| Path | Purpose | Action |
+| :-- | :-- | :-- |
+| `GET /checkpoint` | Cosigned checkpoint | `read:checkpoint` (any authenticated) |
 | `GET /tile/*` | Merkle tree tiles + entry bundles | `read:entries` (auditors group) |
-| `GET /log/witnessed/:index` | Witnessed status by log index | `read:checkpoint` (any authenticated identity) |
-| `GET /api/evidence/*` | Evidence queries | `read:entries` (auditors group) |
-| `POST /api/ingest` | Evidence submission (writes to log) | `submit` (any authenticated identity; publisher trust enforced at handler via JWT) |
-| `/api/targets/*` | Target management | `admin` |
-| `/api/users/*`, `/api/role-changes/*` | User administration | `admin` |
-| `/api/config` | Application config | `admin` for write, `read:checkpoint` for public read |
-| `/workbench/*` | UI proxy | `read:entries` (auditors group) |
+| `GET /log/witnessed/:index` | Witnessed status | `read:checkpoint` (any authenticated) |
+| `GET /api/system-info` | Service status | `read:status` (any authenticated) |
+| `GET /api/config` | Application config | `read:status` (any authenticated) |
+| `GET /api/ingest/jobs/:id` | Ingest job status | `read:status` (any authenticated) |
+| `POST /api/ingest` | Evidence submission | `submit` (any authenticated; publisher trust at handler via JWT) |
+| `POST /api/import` | OCI bundle import | `submit` (any authenticated) |
 
-## Unauthenticated Endpoints
+### Unauthenticated
 
 | Listener | Path | Purpose |
-|:--|:--|:--|
-| `:8080` and `:8081` | `GET /healthz` | Liveness probe (all health checks) |
-| `:8081` only | `GET /checkpoint` | Cosigned checkpoint for witness service |
-| `:8081` only | `GET /tile/*` | Merkle tree tiles for witness service |
-| `:8081` only | `GET /log/witnessed/:index` | Witnessed status for witness service |
+| :-- | :-- | :-- |
+| Both | `GET /healthz` | Liveness probe |
+| `:8081` only | `GET /checkpoint` | Checkpoint for witness |
+| `:8081` only | `GET /tile/*` | Tiles for witness |
+| `:8081` only | `GET /log/witnessed/:index` | Witnessed status for witness |
 
 ## Security Properties
 
 | Property | Threat | Control |
-|:--|:--|:--|
-| Log metadata protection | Checkpoint size and timing disclose log growth patterns (T-INFO-02) | Authenticated read via `read:checkpoint` (CTRL-AC-02) |
-| Evidence confidentiality | Unauthenticated reads expose vulnerability scans, control assessments (T-INFO-03) | Authenticated read via `read:entries`, auditors group required (CTRL-AC-03) |
-| Default-deny posture | Any new endpoint silently accessible without auth (T-SPOOF-03) | Cedar default-deny middleware (CTRL-AC-01) |
-| Ingestion integrity | Unauthenticated writes allow evidence flooding and spoofing | Cedar `submit` action required for `/api/ingest`, publisher trust enforced at handler via JWT issuer/subject matching (CTRL-CI-05), rate limiting (CTRL-OI-03) |
-| Witness availability | Public endpoints overwhelmed via DDoS (T-DOS-02) | Separate internal listener (:8081, CTRL-AC-04) for witnesses, bound to 127.0.0.1 by default; rate limiting on authenticated endpoints |
+| :-- | :-- | :-- |
+| Default-deny posture | New endpoints accessible without auth (T-SPOOF-03) | Cedar default-deny middleware (CTRL-AC-01) |
+| Log metadata protection | Checkpoint disclosure (T-INFO-02) | Authenticated `read:checkpoint` (CTRL-AC-02) |
+| Evidence confidentiality | Evidence content disclosure (T-INFO-03) | Authenticated `read:entries`, auditors group (CTRL-AC-03) |
+| Ingestion integrity | Evidence flooding and spoofing | Cedar `submit` + JWT publisher trust (CTRL-CI-05) + rate limiting (CTRL-OI-03) |
+| Witness isolation | Endpoint flooding (T-DOS-02) | Internal listener on 127.0.0.1 (CTRL-AC-04) |
 
-## Threat Model
+## Accepted Risks
 
-### Mitigated Threats (authenticated tlog reads)
+**Witness access pattern inference.** An observer on the internal network can infer witness activity from :8081 traffic. Accepted — the witness runs in controlled infrastructure.
 
-**T-INFO-02: Log metadata disclosure.** Previously accepted risk. Now mitigated by requiring `read:checkpoint` authorization to access `/checkpoint` on :8080. Witness service learns checkpoint size and timing via internal :8081 listener, which is acceptable (witness is trusted infrastructure).
-
-**T-INFO-03: Entry content disclosure.** Previously accepted risk. Now mitigated by requiring `read:entries` authorization (auditors group membership) to access `/tile/*` and evidence entries. Prevents unauthenticated clients from reading vulnerability assessments and security artifacts.
-
-### Accepted Risks
-
-**Witness endpoint access pattern inference.** An observer on the internal network can infer witness activity by observing :8081 traffic patterns (polling frequency, checkpoint size). This is accepted because the witness is deployed in controlled infrastructure and expected to be monitored.
-
-**Authenticated checkpoint timing.** Auditors with `read:checkpoint` authorization can still learn log growth rate. This is accepted because checkpoint reading is necessary for auditors to verify witness cosignatures independently.
+**Authenticated checkpoint timing.** Auditors with `read:checkpoint` can learn log growth rate. Accepted — checkpoint reading is necessary for verifying witness cosignatures.
 
 ## Alternatives Considered
 
 | Alternative | Why not |
-|:--|:--|
-| Unauthenticated tlog reads (original decision) | Disclosure of checkpoint metadata (T-INFO-02) and evidence content (T-INFO-03) to any attacker. Not acceptable for compliance evidence. |
-| Separate public/private log instances | Operational complexity; auditors need the same log for trust verification. |
-| Entry-level encryption + public log | Possible future enhancement for highly confidential evidence, but Cedar read authorization is simpler and sufficient today. |
-| Witness-in-band on :8080 authenticated endpoint | Witness would need to authenticate (bearer token or mTLS). More complex; dedicated :8081 listener is simpler and allows witness operation without credential management. |
+| :-- | :-- |
+| Unauthenticated tlog reads | Exposes compliance evidence to any network observer |
+| Separate public/private log instances | Operational complexity; auditors need the same log |
+| Entry-level encryption + public log | Simpler to authenticate reads; encryption is a future option for highly confidential evidence |
+| Witness on :8080 with credentials | Adds credential management complexity; dedicated internal listener is simpler |
 
 ## Related
 
-- [Transparency Ledger](transparency-ledger.md) — the log whose reads are public
-- [Anti-Equivocation Witnessing](anti-equivocation-witnessing.md) — witnesses and clients that consume public endpoints
-- STRIDE threat catalog: `internal/e2e/testdata/transparency-threats.yaml`
+- [Transparency Ledger](transparency-ledger.md)
+- [Anti-Equivocation Witnessing](anti-equivocation-witnessing.md)
+- Threat catalog: `internal/e2e/testdata/transparency-threats.yaml`
+- Control catalog: `internal/e2e/testdata/transparency-controls.yaml`
