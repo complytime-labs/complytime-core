@@ -33,8 +33,8 @@ Authorization is enforced via Cedar policies (`.cedar` files with hot-reload). D
 | `GET /api/system-info` | Service status | `read:status` (any authenticated) |
 | `GET /api/config` | Application config | `read:status` (any authenticated) |
 | `GET /api/ingest/jobs/:id` | Ingest job status | `read:status` (any authenticated) |
-| `POST /api/ingest` | Evidence submission | `submit` (any authenticated; publisher trust at handler via JWT) |
-| `POST /api/import` | OCI bundle import | `submit` (any authenticated) |
+| `POST /api/ingest` | Evidence submission | `publish` (publishers group; target-scoped trust via Cedar) |
+| `POST /api/import` | OCI bundle import | `publish` (publishers group) |
 
 ### Unauthenticated
 
@@ -52,7 +52,7 @@ Authorization is enforced via Cedar policies (`.cedar` files with hot-reload). D
 | Default-deny posture | New endpoints accessible without auth (T-SPOOF-03) | Cedar default-deny middleware (CTRL-AC-01) |
 | Log metadata protection | Checkpoint disclosure (T-INFO-02) | Authenticated `read:checkpoint` (CTRL-AC-02) |
 | Evidence confidentiality | Evidence content disclosure (T-INFO-03) | Authenticated `read:entries`, auditors group (CTRL-AC-03) |
-| Ingestion integrity | Evidence flooding and spoofing | Cedar `submit` + JWT publisher trust (CTRL-CI-05) + rate limiting (CTRL-OI-03) |
+| Ingestion integrity | Evidence flooding and spoofing | Cedar `publish` (publishers group + target-scoped trust via Cedar) (CTRL-CI-05) + rate limiting (CTRL-OI-03) |
 | Witness isolation | Endpoint flooding (T-DOS-02) | Internal listener on 127.0.0.1 (CTRL-AC-04) |
 
 ## Accepted Risks
@@ -60,6 +60,14 @@ Authorization is enforced via Cedar policies (`.cedar` files with hot-reload). D
 **Witness access pattern inference.** An observer on the internal network can infer witness activity from :8081 traffic. Accepted — the witness runs in controlled infrastructure.
 
 **Authenticated checkpoint timing.** Auditors with `read:checkpoint` can learn log growth rate. Accepted — checkpoint reading is necessary for verifying witness cosignatures.
+
+## Trust Assumptions
+
+**OAuth2 Proxy is the sole ingress to :8080.** The identity model depends on `X-Forwarded-*` headers set by the proxy. Port 8080 must not be directly exposed; the compose/k8s topology enforces this.
+
+**Internal listener (:8081) serves tiles without authentication.** Network access to this port is equivalent to `read:entries` authorization. The compose network restricts access to the witness container. In production deployments, use k8s network policies or equivalent to limit access to the witness pod.
+
+**Cedar forbid rules are non-bypassable safety floors.** The embedded policy includes `forbid/unless` rules for `read:entries` (auditors group) and `publish`/`publish:artifact` (publishers group / target trust). Directory-added policies can add permits for other actions but cannot override these floors.
 
 ## Alternatives Considered
 
