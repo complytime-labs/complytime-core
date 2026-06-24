@@ -35,12 +35,6 @@ type GatewayConfig struct {
 	// CORS
 	CORSOrigins []string
 
-	// OAuth2 Proxy
-	OAuth2ProxyEnabled bool
-
-	// Workbench
-	WorkbenchURL string
-
 	// Blob Storage (optional)
 	BlobEndpoint  string
 	BlobBucket    string
@@ -91,8 +85,6 @@ func GatewayFromEnv() (*GatewayConfig, error) {
 		JWTIssuers:                splitComma(os.Getenv("JWT_ISSUERS")),
 		JWTAudience:               os.Getenv("JWT_AUDIENCE"),
 		CORSOrigins:               splitComma(os.Getenv("CORS_ORIGINS")),
-		OAuth2ProxyEnabled:        os.Getenv("OAUTH2_PROXY_ENABLED") != "false",
-		WorkbenchURL:              envOr("WORKBENCH_URL", ""),
 		BlobEndpoint:              os.Getenv("BLOB_ENDPOINT"),
 		BlobBucket:                os.Getenv("BLOB_BUCKET"),
 		BlobAccessKey:             os.Getenv("BLOB_ACCESS_KEY"),
