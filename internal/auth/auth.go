@@ -113,15 +113,6 @@ func (h *Handler) Middleware() echo.MiddlewareFunc {
 				Groups: splitGroups(r.Header.Get("X-Forwarded-Groups")),
 			}
 
-			// If no authorizer configured, fall back to authenticated-only
-			if h.authorizer == nil {
-				ctx := context.WithValue(r.Context(), sessionKey, sess)
-				ctx = httputil.WithIdentity(ctx, email)
-				c.SetRequest(r.WithContext(ctx))
-				authRequestTotal.Add("authenticated", 1)
-				return next(c)
-			}
-
 			// Map route to Cedar action
 			action, ok := authz.MapRouteAction(r.Method, r.URL.Path)
 			if !ok {
@@ -139,13 +130,11 @@ func (h *Handler) Middleware() echo.MiddlewareFunc {
 				"email": cedar.String(email),
 				"name":  cedar.String(name),
 			}
-			if len(sess.Groups) > 0 {
-				groupSet := make([]cedar.Value, len(sess.Groups))
-				for i, g := range sess.Groups {
-					groupSet[i] = cedar.String(g)
-				}
-				principalAttrs["groups"] = cedar.NewSet(groupSet...)
+			groupSet := make([]cedar.Value, len(sess.Groups))
+			for i, g := range sess.Groups {
+				groupSet[i] = cedar.String(g)
 			}
+			principalAttrs["groups"] = cedar.NewSet(groupSet...)
 
 			// Check authorization
 			allowed, err := h.authorizer.IsAuthorized(principal, principalAttrs, action, resource, nil)

@@ -12,12 +12,21 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+func newTestAuthorizer(t *testing.T) *authz.Authorizer {
+	t.Helper()
+	a, err := authz.NewAuthorizer("")
+	if err != nil {
+		t.Fatalf("failed to create test authorizer: %v", err)
+	}
+	return a
+}
+
 func TestMiddleware_ProxyHeaders(t *testing.T) {
-	h := NewHandler(nil)
+	h := NewHandler(newTestAuthorizer(t))
 
 	e := echo.New()
 	e.Use(h.Middleware())
-	e.GET("/api/test", func(c echo.Context) error {
+	e.GET("/api/config", func(c echo.Context) error {
 		sess, ok := SessionFrom(c.Request().Context())
 		if !ok {
 			return c.String(http.StatusUnauthorized, "no session")
@@ -26,7 +35,7 @@ func TestMiddleware_ProxyHeaders(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
 	req.Header.Set("X-Forwarded-Email", "alice@example.com")
 	req.Header.Set("X-Forwarded-Preferred-Username", "alice")
 	req.Header.Set("X-Forwarded-User", "auth0|abc123")
@@ -46,16 +55,16 @@ func TestMiddleware_ProxyHeaders(t *testing.T) {
 }
 
 func TestMiddleware_NoHeaders_Returns401(t *testing.T) {
-	h := NewHandler(nil)
+	h := NewHandler(newTestAuthorizer(t))
 
 	e := echo.New()
 	e.Use(h.Middleware())
-	e.GET("/api/test", func(c echo.Context) error {
+	e.GET("/api/config", func(c echo.Context) error {
 		return c.NoContent(http.StatusOK)
 	})
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
 	e.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
@@ -64,7 +73,7 @@ func TestMiddleware_NoHeaders_Returns401(t *testing.T) {
 }
 
 func TestMiddleware_SkipsHealthz(t *testing.T) {
-	h := NewHandler(nil)
+	h := NewHandler(newTestAuthorizer(t))
 
 	e := echo.New()
 	e.Use(h.Middleware())
@@ -105,16 +114,16 @@ func TestMiddleware_APIConfigWithAuth(t *testing.T) {
 }
 
 func TestMiddleware_NoStaticToken(t *testing.T) {
-	h := NewHandler(nil)
+	h := NewHandler(newTestAuthorizer(t))
 
 	e := echo.New()
 	e.Use(h.Middleware())
-	e.GET("/api/test", func(c echo.Context) error {
+	e.GET("/api/config", func(c echo.Context) error {
 		return c.NoContent(http.StatusOK)
 	})
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
 	req.Header.Set("Authorization", "Bearer some-token")
 	e.ServeHTTP(rec, req)
 
@@ -308,36 +317,5 @@ func TestMiddleware_TlogEntriesAllowedWithGroup(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (read:entries allowed for auditors)", rec.Code)
-	}
-}
-
-func TestMiddleware_NilAuthorizerFallback(t *testing.T) {
-	h := NewHandler(nil)
-
-	e := echo.New()
-	e.Use(h.Middleware())
-	e.GET("/api/test", func(c echo.Context) error {
-		return c.NoContent(http.StatusOK)
-	})
-	e.GET("/checkpoint", func(c echo.Context) error {
-		return c.NoContent(http.StatusOK)
-	})
-
-	tests := []struct {
-		path string
-	}{
-		{"/api/test"},
-		{"/checkpoint"},
-	}
-
-	for _, tt := range tests {
-		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, tt.path, nil)
-		req.Header.Set("X-Forwarded-Email", "user@example.com")
-		e.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusOK {
-			t.Errorf("%s with nil authorizer: status = %d, want 200 (backward compat)", tt.path, rec.Code)
-		}
 	}
 }
