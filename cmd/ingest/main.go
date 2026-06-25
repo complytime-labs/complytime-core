@@ -18,6 +18,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/complytime-labs/complytime-core/internal/auth"
+	"github.com/complytime-labs/complytime-core/internal/version"
 	"github.com/complytime-labs/complytime-core/internal/authz"
 	eventbus "github.com/complytime-labs/complytime-core/internal/bus"
 	"github.com/complytime-labs/complytime-core/internal/config"
@@ -28,6 +29,8 @@ import (
 )
 
 func main() {
+	version.CheckFlags("complytime-ingest")
+
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

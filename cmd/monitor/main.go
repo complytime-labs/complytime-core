@@ -12,10 +12,13 @@ import (
 	"time"
 
 	"github.com/complytime-labs/complytime-core/internal/config"
+	"github.com/complytime-labs/complytime-core/internal/version"
 	"github.com/complytime-labs/complytime-core/internal/tessera"
 )
 
 func main() {
+	version.CheckFlags("monitor")
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
