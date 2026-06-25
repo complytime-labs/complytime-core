@@ -11,7 +11,7 @@ metadata:
       title: Test Policy
       version: "1.0.0"
 target:
-  id: tgt-test-001
+  id: pkg:generic/acme/test-app@v1
   name: Test Target
   type: Software
 evaluations:

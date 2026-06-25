@@ -7,7 +7,7 @@ metadata:
     name: platform-team
 
 target:
-  id: prod-cluster
+  id: pkg:generic/acme/prod-cluster@v1
   name: Production Kubernetes Cluster
   type: kubernetes-cluster
 

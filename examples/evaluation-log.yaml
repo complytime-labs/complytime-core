@@ -11,7 +11,7 @@ metadata:
       title: Sample Security Policy
       version: "1.0.0"
 target:
-  id: tgt-sample-001
+  id: pkg:generic/acme/sample-app@v1
   name: Sample Application
   type: Software
 evaluations:
