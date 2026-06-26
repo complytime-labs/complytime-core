@@ -2,7 +2,7 @@
 
 ## Dev Environment
 
-See [README.md](README.md) for prerequisites (Go, Docker/Podman).
+See [Getting Started](docs/getting-started.md) for prerequisites, setup, and configuration.
 
 **Local stack:**
 

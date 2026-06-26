@@ -8,7 +8,11 @@ RUN go mod download
 COPY . .
 
 ARG GOFIPS140=
-RUN GOFIPS140=${GOFIPS140} CGO_ENABLED=0 go build -o /complytime-ingest ./cmd/ingest/
+ARG VERSION=dev
+ARG COMMIT=unknown
+RUN GOFIPS140=${GOFIPS140} CGO_ENABLED=0 go build \
+    -ldflags "-X github.com/complytime-labs/complytime-core/internal/version.Version=${VERSION} -X github.com/complytime-labs/complytime-core/internal/version.Commit=${COMMIT}" \
+    -o /complytime-ingest ./cmd/ingest/
 
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:d093aa3e30dbadd3efe1310db061a14da60299baff8450a17fe0ccc514a16639
 

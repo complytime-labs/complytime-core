@@ -18,6 +18,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/complytime-labs/complytime-core/internal/auth"
+	"github.com/complytime-labs/complytime-core/internal/version"
 	"github.com/complytime-labs/complytime-core/internal/authz"
 	eventbus "github.com/complytime-labs/complytime-core/internal/bus"
 	"github.com/complytime-labs/complytime-core/internal/config"
@@ -28,6 +29,47 @@ import (
 )
 
 func main() {
+	version.CheckFlags(version.Info{
+		Name:        "complytime-ingest",
+		Description: "compliance artifact ingestion and transparency log service",
+		EnvHelp: `
+Environment variables:
+  NATS_URL                       NATS broker URL (required)
+  PORT                           HTTP listen port (default: 8080)
+  LISTEN_HOST                    HTTP listen address (default: 0.0.0.0)
+  INTERNAL_PORT                  Internal tlog listener port (default: 8081)
+  INTERNAL_LISTEN_HOST           Internal listener address (default: 127.0.0.1)
+
+  TESSERA_PATH                   Transparency log storage path (default: /data/tessera)
+  TESSERA_SIGNER_KEY_PATH        Ed25519 signing key for log entries
+  TESSERA_CHECKPOINT_INTERVAL    Checkpoint creation interval (default: 10m)
+  TESSERA_WITNESS_POLICY_PATH    Witness policy config file path
+  TESSERA_WITNESS_TIMEOUT        Witness API call timeout (default: 5s)
+  TESSERA_WITNESS_FAIL_OPEN      Allow ops if witness unavailable (default: false)
+
+  JWT_ISSUERS                    Comma-separated OIDC issuer URLs
+  JWT_AUDIENCE                   JWT audience claim (default: complytime)
+  CEDAR_POLICY_DIR               Directory containing .cedar policy files
+  CEDAR_POLL_INTERVAL            Policy reload interval (default: 30s)
+
+  INGEST_RATE_LIMIT              Requests per second (default: 10)
+  INGEST_RATE_BURST              Burst capacity (default: 20)
+  NATS_INGEST_MAX_DELIVER        Max delivery attempts per message (default: 5)
+  NATS_INGEST_ACK_WAIT           Ack wait before redelivery (default: 30s)
+
+  CORS_ORIGINS                   Comma-separated allowed CORS origins
+  REGISTRY_INSECURE              Allow HTTP OCI registries (default: false)
+  KNOWN_REGISTRIES               Comma-separated allowed OCI registries
+  KNOWN_ENGINES                  Comma-separated allowed container engines
+
+  BLOB_ENDPOINT                  S3-compatible endpoint (optional)
+  BLOB_BUCKET                    S3 bucket name
+  BLOB_ACCESS_KEY                S3 access key
+  BLOB_SECRET_KEY                S3 secret key
+  BLOB_USE_SSL                   Use TLS for blob storage (default: false)
+`,
+	})
+
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
