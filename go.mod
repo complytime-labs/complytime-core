@@ -17,7 +17,7 @@ require (
 	github.com/onsi/gomega v1.42.1
 	github.com/package-url/packageurl-go v0.1.6
 	github.com/stretchr/testify v1.11.1
-	github.com/transparency-dev/formats v0.1.0
+	github.com/transparency-dev/formats v0.1.1
 	github.com/transparency-dev/tessera v1.0.2
 	golang.org/x/mod v0.37.0
 	golang.org/x/time v0.15.0
@@ -26,6 +26,7 @@ require (
 )
 
 require (
+	filippo.io/mldsa v0.0.0-20260215214346-43d0283efc3e // indirect
 	github.com/Masterminds/semver/v3 v3.5.0 // indirect
 	github.com/antithesishq/antithesis-sdk-go v0.7.0-default-no-op // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
