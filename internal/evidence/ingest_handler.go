@@ -12,6 +12,7 @@ import (
 	"github.com/goccy/go-yaml"
 
 	"github.com/complytime-labs/complytime-core/internal/bus"
+	"github.com/complytime-labs/complytime-core/internal/targetid"
 )
 
 // ToEvidenceRecords converts ingest EvidenceRows to EvidenceRecords.
@@ -165,6 +166,10 @@ func ParseTargetRegistration(data []byte) (*TargetRegistrationYAML, error) {
 	if reg.Target.ID == "" {
 		return nil, fmt.Errorf("missing target.id")
 	}
+	if err := targetid.Validate(reg.Target.ID); err != nil {
+		return nil, err
+	}
+	reg.Target.ID = targetid.Normalize(reg.Target.ID)
 	return &reg, nil
 }
 
@@ -255,7 +260,7 @@ func DetectTargetID(data []byte) string {
 	if err := yaml.Unmarshal(data, &meta); err != nil {
 		return ""
 	}
-	return meta.Target.ID
+	return targetid.Normalize(meta.Target.ID)
 }
 
 // DetectPolicyID extracts the policy ID from a Gemara evidence artifact

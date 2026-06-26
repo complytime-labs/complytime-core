@@ -3,6 +3,7 @@ module github.com/complytime-labs/complytime-core
 go 1.25.8
 
 require (
+	github.com/cedar-policy/cedar-go v1.8.0
 	github.com/gemaraproj/go-gemara v0.7.0
 	github.com/goccy/go-yaml v1.19.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -14,6 +15,7 @@ require (
 	github.com/nats-io/nats.go v1.52.0
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
+	github.com/package-url/packageurl-go v0.1.6
 	github.com/stretchr/testify v1.11.1
 	github.com/transparency-dev/formats v0.1.0
 	github.com/transparency-dev/tessera v1.0.2
@@ -26,7 +28,6 @@ require (
 require (
 	github.com/Masterminds/semver/v3 v3.5.0 // indirect
 	github.com/antithesishq/antithesis-sdk-go v0.7.0-default-no-op // indirect
-	github.com/cedar-policy/cedar-go v1.8.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
