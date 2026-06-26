@@ -17,7 +17,28 @@ import (
 )
 
 func main() {
-	version.CheckFlags("monitor")
+	version.CheckFlags(version.Info{
+		Name:        "monitor",
+		Description: "transparency log verification and witness service",
+		EnvHelp: `
+Environment variables:
+  MONITOR_CONFIG_PATH    Path to witness config YAML (default: /etc/monitor/config.yaml)
+  MONITOR_STATE_PATH     Path to verification state file (default: /var/lib/monitor/state.json)
+  TESSERA_PATH           Transparency log storage path (default: /var/lib/tessera)
+
+The config YAML defines trusted publishers and polling behavior:
+
+  witness:
+    name: <identifier>
+    poll_interval: 30s
+    verification_timeout: 60s
+  trusted_publishers:
+    - name: <display name>
+      issuer: <OIDC issuer URL>
+      sub: <subject pattern, * suffix for glob>
+      allowed_types: [EvaluationLog, Policy, ...]
+`,
+	})
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
