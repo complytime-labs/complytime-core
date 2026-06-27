@@ -245,7 +245,8 @@ func resolvePublishAction(ctx context.Context, body []byte, claims *auth.JWTClai
 	// All other artifact types require target-scoped publisher trust
 	targetID := evidence.DetectTargetID(body)
 	if targetID == "" {
-		return cedar.NewEntityUID("Action", "publish:policy"), nil, nil
+		return cedar.EntityUID{}, nil, fmt.Errorf(
+			"evidence artifact type %q requires a target.id field", typeStr)
 	}
 
 	if store == nil {

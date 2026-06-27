@@ -89,14 +89,13 @@ func TestCheckPublisherTrust_GlobMatch(t *testing.T) {
 	assert.True(t, trusted)
 }
 
-func TestResolvePublishAction_NoTargetID_ReturnsPolicy(t *testing.T) {
+func TestResolvePublishAction_NoTargetID_ReturnsError(t *testing.T) {
 	body := []byte("metadata:\n  type: EvaluationLog\n  id: my-eval\n")
 	claims := &auth.JWTClaims{Iss: "https://issuer.example.com", Sub: "anyone"}
 
-	action, attrs, err := resolvePublishAction(context.Background(), body, claims, nil)
-	assert.NoError(t, err)
-	assert.Equal(t, "publish:policy", action.ID.String())
-	assert.Nil(t, attrs)
+	_, _, err := resolvePublishAction(context.Background(), body, claims, nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "requires a target.id field")
 }
 
 func TestResolvePublishAction_TargetRegistration_ReturnsRegistration(t *testing.T) {

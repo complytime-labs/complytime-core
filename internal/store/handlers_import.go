@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cedar-policy/cedar-go"
 	gemara "github.com/gemaraproj/go-gemara"
 	gemarabundle "github.com/gemaraproj/go-gemara/bundle"
 	"github.com/google/uuid"
@@ -19,6 +20,7 @@ import (
 	"github.com/complytime-labs/complytime-core/internal/attestation"
 	"github.com/complytime-labs/complytime-core/internal/auth"
 	"github.com/complytime-labs/complytime-core/internal/bus"
+	"github.com/complytime-labs/complytime-core/internal/evidence"
 	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
 
@@ -100,11 +102,48 @@ func ociImport(c echo.Context, s Stores, ref string, claims *auth.JWTClaims) err
 		Verified: true,
 	}
 
+	// Build Cedar principal from JWT claims and session groups
+	importPrincipal := cedar.NewEntityUID("Identity", cedar.String(claims.Sub))
+	var importPrincipalAttrs map[string]cedar.Value
+	if sess, ok := auth.SessionFrom(ctx); ok && len(sess.Groups) > 0 {
+		groupSet := make([]cedar.Value, len(sess.Groups))
+		for i, g := range sess.Groups {
+			groupSet[i] = cedar.String(g)
+		}
+		importPrincipalAttrs = map[string]cedar.Value{
+			"groups": cedar.NewSet(groupSet...),
+		}
+	}
+
 	var imported []requirements.OciImportedArtifact
 	for _, f := range allFiles {
 		detected, err := gemara.DetectType(f.Data)
 		if err != nil {
 			slog.Warn("skip unrecognized artifact", "name", f.Name, "error", err)
+			continue
+		}
+
+		cedarAction, resourceAttrs, authErr := resolvePublishAction(ctx, f.Data, claims, s.TrustedPublishers)
+		if authErr != nil {
+			slog.Warn("import artifact authorization failed",
+				"name", f.Name, "type", detected.String(), "error", authErr)
+			continue
+		}
+
+		resource := cedar.NewEntityUID("Resource", "system")
+		if targetID := evidence.DetectTargetID(f.Data); targetID != "" {
+			resource = cedar.NewEntityUID("Target", cedar.String(targetID))
+		}
+
+		allowed, cedarErr := s.Authorizer.IsAuthorized(importPrincipal, importPrincipalAttrs, cedarAction, resource, resourceAttrs)
+		if cedarErr != nil {
+			slog.Error("import cedar authorization error", "name", f.Name, "error", cedarErr)
+			continue
+		}
+		if !allowed {
+			slog.Warn("import artifact authorization denied",
+				"name", f.Name, "type", detected.String(),
+				"principal", claims.Sub, "action", cedarAction.ID)
 			continue
 		}
 
