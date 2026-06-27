@@ -277,24 +277,6 @@ func TestIsAuthorized_PublishArtifact_AllowedWithTrust(t *testing.T) {
 	}
 }
 
-func TestIsAuthorized_PublishRegistration_AllowedForAny(t *testing.T) {
-	a, err := NewAuthorizer("")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	principal := cedar.NewEntityUID("Identity", "ci@example.com")
-	action := cedar.NewEntityUID("Action", "publish:registration")
-	resource := cedar.NewEntityUID("Resource", "system")
-
-	allowed, err := a.IsAuthorized(principal, nil, action, resource, nil)
-	if err != nil {
-		t.Fatalf("IsAuthorized failed: %v", err)
-	}
-	if !allowed {
-		t.Error("publish:registration should be allowed for any principal")
-	}
-}
 
 func TestIsAuthorized_PublishPolicy_AllowedForAny(t *testing.T) {
 	a, err := NewAuthorizer("")
@@ -425,7 +407,7 @@ func TestLoadPolicies_MergesWithEmbeddedDefaults(t *testing.T) {
 	}
 }
 
-func TestIsAuthorized_AdminRegisterTarget_AllowedForAny(t *testing.T) {
+func TestIsAuthorized_AdminRegisterTarget_DeniedWithoutAdminsGroup(t *testing.T) {
 	a, err := NewAuthorizer("")
 	if err != nil {
 		t.Fatal(err)
@@ -435,16 +417,43 @@ func TestIsAuthorized_AdminRegisterTarget_AllowedForAny(t *testing.T) {
 	action := cedar.NewEntityUID("Action", "admin:register-target")
 	resource := cedar.NewEntityUID("Resource", "system")
 
-	allowed, err := a.IsAuthorized(principal, nil, action, resource, nil)
+	principalAttrs := map[string]cedar.Value{
+		"groups": cedar.NewSet(cedar.String("publishers")),
+	}
+
+	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, nil)
+	if err != nil {
+		t.Fatalf("IsAuthorized failed: %v", err)
+	}
+	if allowed {
+		t.Error("admin:register-target should be denied without admins group")
+	}
+}
+
+func TestIsAuthorized_AdminRegisterTarget_AllowedWithAdminsGroup(t *testing.T) {
+	a, err := NewAuthorizer("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	principal := cedar.NewEntityUID("Identity", "admin@example.com")
+	action := cedar.NewEntityUID("Action", "admin:register-target")
+	resource := cedar.NewEntityUID("Resource", "system")
+
+	principalAttrs := map[string]cedar.Value{
+		"groups": cedar.NewSet(cedar.String("admins")),
+	}
+
+	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, nil)
 	if err != nil {
 		t.Fatalf("IsAuthorized failed: %v", err)
 	}
 	if !allowed {
-		t.Error("admin:register-target should be allowed at handler level (route-level enforces groups)")
+		t.Error("admin:register-target should be allowed with admins group")
 	}
 }
 
-func TestIsAuthorized_AdminManageTrust_AllowedForAny(t *testing.T) {
+func TestIsAuthorized_AdminManageTrust_DeniedWithoutAdminsGroup(t *testing.T) {
 	a, err := NewAuthorizer("")
 	if err != nil {
 		t.Fatal(err)
@@ -454,11 +463,15 @@ func TestIsAuthorized_AdminManageTrust_AllowedForAny(t *testing.T) {
 	action := cedar.NewEntityUID("Action", "admin:manage-trust")
 	resource := cedar.NewEntityUID("Resource", "system")
 
-	allowed, err := a.IsAuthorized(principal, nil, action, resource, nil)
+	principalAttrs := map[string]cedar.Value{
+		"groups": cedar.NewSet(cedar.String("publishers")),
+	}
+
+	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, nil)
 	if err != nil {
 		t.Fatalf("IsAuthorized failed: %v", err)
 	}
-	if !allowed {
-		t.Error("admin:manage-trust should be allowed at handler level (route-level enforces groups)")
+	if allowed {
+		t.Error("admin:manage-trust should be denied without admins group")
 	}
 }

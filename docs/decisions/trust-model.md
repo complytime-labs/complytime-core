@@ -32,6 +32,8 @@ Every Tessera entry is an in-toto v1 Statement (JSON) with predicate type `https
 
 This ensures publisher identity is durably stored in the immutable log, not carried ephemerally through NATS messages. The `in-toto/attestation` v1.2.0 SDK is used with `protojson` serialization for spec-compliant JSON output.
 
+The `ingestedAt` timestamp is server-clock-asserted — it records when core received the submission, not when the evidence was produced. Witnessed timestamps (externally attested) arrive at Tier 2+ with DSSE-signed attestations.
+
 For DSSE-signed submissions (future — Phase 2), the entire DSSE envelope is stored as the Tessera entry. Core verifies the signature and records both signing identity (publisher) and channel identity.
 
 ## Trust Tiers

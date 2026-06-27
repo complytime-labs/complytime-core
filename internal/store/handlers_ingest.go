@@ -91,7 +91,19 @@ func IngestAsyncHandler(pub IngestPublisher, tracker *IngestTracker, appender Te
 			resource = cedar.NewEntityUID("Target", cedar.String(targetID))
 		}
 
-		allowed, err := authorizer.IsAuthorized(principal, nil, cedarAction, resource, resourceAttrs)
+		// Pass groups from session context for Cedar group-based policies
+		var principalAttrs map[string]cedar.Value
+		if sess, ok := auth.SessionFrom(ctx); ok && len(sess.Groups) > 0 {
+			groupSet := make([]cedar.Value, len(sess.Groups))
+			for i, g := range sess.Groups {
+				groupSet[i] = cedar.String(g)
+			}
+			principalAttrs = map[string]cedar.Value{
+				"groups": cedar.NewSet(groupSet...),
+			}
+		}
+
+		allowed, err := authorizer.IsAuthorized(principal, principalAttrs, cedarAction, resource, resourceAttrs)
 		if err != nil {
 			slog.Error("cedar authorization error", "error", err)
 			httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
