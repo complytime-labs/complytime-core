@@ -6,12 +6,10 @@
 
 set -euo pipefail
 
-for cmd in go; do
-    if ! command -v "$cmd" &>/dev/null; then
-        echo "ERROR: $cmd is required but not found in PATH" >&2
-        exit 1
-    fi
-done
+if ! command -v go &>/dev/null; then
+    echo "ERROR: go is required but not found in PATH" >&2
+    exit 1
+fi
 
 OUTDIR="${1:-deploy/compose/witness-config}"
 mkdir -p "$OUTDIR"
