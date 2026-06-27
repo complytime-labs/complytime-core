@@ -306,16 +306,17 @@ controls:
   - id: CTRL-OI-04
     title: Certification Events Durable in NATS JetStream
     objective: >-
-      Certification results (trust signals) are published to durable NATS
-      JetStream streams so downstream subscribers can persist and query them.
-      The ingest service does not store certification results locally.
+      STALE: Certification pipeline removed. Trust signals and verification
+      attestations will be redesigned on the new trust model. Original
+      objective: certification results published to durable NATS JetStream
+      streams for downstream persistence.
     group: operational-integrity
     threats:
       - reference-id: tlog-threats
         entries:
           - reference-id: tlog-threats
             remarks: Mitigates T-REP-04 (certification results not persisted)
-    state: Draft
+    state: Inactive
     assessment-requirements:
       - id: CTRL-OI-04.1
         text: >-
@@ -514,12 +515,12 @@ controls:
         applicability: [all]
         state: Active
   - id: CTRL-AC-07
-    title: Trust Modification Authorization
+    title: Admin Group for Target Registration
     objective: >-
-      Modification of trusted publisher lists for existing targets requires
-      the caller to be an existing trusted publisher for that target. New
-      target registrations with no prior publishers are exempt. This prevents
-      privilege escalation from target registration to evidence publication.
+      TargetRegistration artifacts require the admins group via Cedar
+      admin:register-target action with a forbid safety floor. This
+      separates namespace management from evidence publishing, preventing
+      privilege escalation from publisher to administrator.
     group: access-control
     threats:
       - reference-id: tlog-threats
@@ -530,26 +531,23 @@ controls:
     assessment-requirements:
       - id: CTRL-AC-07.1
         text: >-
-          A TargetRegistration that adds trusted publishers to a target with
-          existing publishers MUST be rejected if the caller is not an existing
-          trusted publisher for that target.
+          A TargetRegistration submitted without the admins group MUST
+          be denied by the Cedar admin:register-target forbid safety floor.
         applicability: [all]
         state: Active
       - id: CTRL-AC-07.2
         text: >-
-          A TargetRegistration that adds trusted publishers to a new target
-          (no existing publishers) MUST be accepted from any authenticated
-          publisher.
+          A TargetRegistration submitted with the admins group MUST
+          proceed to handler-level processing.
         applicability: [all]
         state: Active
   - id: CTRL-AC-08
-    title: Import Path Compensating Controls
+    title: Import Path Authorization
     objective: >-
-      Until handler-level Cedar publish:artifact evaluation is added to
-      POST /api/import, the publishers group MUST be restricted to operators
-      trusted across all targets. Imported artifacts enter the append-only
-      log and are detectable by the content monitor. This is a compensating
-      control for T-SPOOF-04 (import path bypasses target-scoped trust).
+      The import handler (POST /api/import) requires JWT Bearer
+      authentication and evaluates Cedar publish/admin actions per
+      artifact, matching the ingest handler's authorization model.
+      Publisher identity is derived from JWT claims.
     group: access-control
     threats:
       - reference-id: tlog-threats
@@ -560,15 +558,64 @@ controls:
     assessment-requirements:
       - id: CTRL-AC-08.1
         text: >-
-          The publishers group membership MUST be limited to operators
-          authorized to publish evidence for all targets until per-target
-          Cedar authorization is added to the import handler.
+          POST /api/import without a valid JWT Bearer token MUST
+          receive HTTP 401.
         applicability: [all]
         state: Active
       - id: CTRL-AC-08.2
         text: >-
-          Artifacts imported via POST /api/import MUST be appended to
-          the transparency log with a traceable synthetic publisher
-          identity (import:<reference>).
+          Each artifact in an imported OCI bundle MUST be evaluated
+          against Cedar publish/admin actions with the caller's
+          JWT-verified identity before Tessera append.
+        applicability: [all]
+        state: Active
+  - id: CTRL-CI-06
+    title: Ingest Boundary Gemara Validation
+    objective: >-
+      The ingest handler validates that submitted artifacts are
+      recognized Gemara types before wrapping and appending to Tessera.
+      Currently performs type detection only; full schema validation
+      is deferred to the content monitor.
+    group: content-integrity
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-TAMP-06 (invalid artifacts permanently logged)
+    state: Draft
+    assessment-requirements:
+      - id: CTRL-CI-06.1
+        text: >-
+          The ingest handler MUST reject submissions that do not contain
+          a recognized metadata.type field.
+        applicability: [all]
+        state: Draft
+  - id: CTRL-CI-07
+    title: In-toto Receipt Publisher Identity Binding
+    objective: >-
+      The ingest handler wraps each Gemara artifact with the verified
+      publisher identity (JWT issuer, subject, authentication method)
+      as an in-toto v1 Statement before Tessera append. This binds
+      publisher identity to the log entry durably, preventing identity
+      loss after NATS message acknowledgment.
+    group: content-integrity
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-REP-05 (ephemeral publisher identity)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-CI-07.1
+        text: >-
+          Every Tessera entry appended by the ingest handler MUST be
+          an in-toto v1 Statement containing the publisher's issuer
+          and subject in the predicate.
+        applicability: [all]
+        state: Active
+      - id: CTRL-CI-07.2
+        text: >-
+          The in-toto Statement MUST include a SHA-256 content digest
+          in the subject that matches the hash of the wrapped artifact.
         applicability: [all]
         state: Active

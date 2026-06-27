@@ -192,10 +192,11 @@ threats:
   - id: T-REP-04
     title: Certification results not locally persisted
     description: >-
-      Trust signals (schema, provenance, executor checks) are published as
-      NATS events but not stored by the ingest service. If no downstream
-      subscriber persists them, certification state is lost and cannot be
-      audited after the fact.
+      STALE: Certification pipeline removed. Trust signals and verification
+      attestations will be redesigned on the new trust model. Original
+      threat: trust signals published as NATS events but not stored by the
+      ingest service; if no downstream subscriber persists them,
+      certification state is lost.
     group: repudiation
     capabilities:
       - reference-id: tlog-capabilities
@@ -315,13 +316,41 @@ threats:
   - id: T-SPOOF-04
     title: Import path bypasses publisher trust
     description: >-
-      The OCI bundle import endpoint (POST /api/import) processes artifacts
-      with a synthetic publisher identity and no target-scoped trust check.
-      An authenticated user can import evidence for any target, bypassing
-      the publisher authorization model enforced on the ingest endpoint.
+      MITIGATED: The import handler now requires JWT authentication and
+      evaluates Cedar publish/admin actions per artifact, matching the
+      ingest handler's authorization model.
     group: spoofing
     capabilities:
       - reference-id: tlog-capabilities
         entries:
           - reference-id: tlog-capabilities
             remarks: Evidence ingestion
+  - id: T-TAMP-06
+    title: Invalid artifacts permanently logged
+    description: >-
+      The ingest handler performs type detection (metadata.type string
+      matching) but not schema validation. Malformed Gemara artifacts —
+      invalid YAML, missing required fields, wrong structure — are wrapped
+      as in-toto Statements and appended to the append-only log where they
+      cannot be removed. The monitor performs post-logging validation but
+      bad entries persist in Tessera permanently.
+    group: tampering
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Evidence ingestion
+  - id: T-REP-05
+    title: Ephemeral publisher identity
+    description: >-
+      Without binding publisher identity to the Tessera log entry, the
+      verified JWT claims (issuer, subject) exist only in the NATS
+      IngestRef message during async processing. After the worker acks
+      the message, there is no durable record of who submitted the
+      evidence. Non-repudiation of submission is impossible.
+    group: repudiation
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Publisher identity verification

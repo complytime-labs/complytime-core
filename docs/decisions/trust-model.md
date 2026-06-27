@@ -10,10 +10,10 @@ complytime-core is a **private Gemara evidence gateway** — not a generic trans
 
 ## Core Responsibilities
 
-1. **Authenticate** — OIDC/JWT verification at the ingest boundary
+1. **Authenticate** — OIDC/JWT verification at the ingest boundary (two paths: direct JWT Bearer for headless/M2M callers, OAuth2 Proxy headers for browser callers)
 2. **Authorize** — Cedar policies for channel access (publishers, auditors, admins groups) with forbid safety floors
-3. **Validate** — only well-formed Gemara artifacts accepted
-4. **Attest** — wrap content + verified publisher identity as in-toto v1 Statement before logging
+3. **Validate** — type detection at ingest boundary; full schema validation deferred to content monitor
+4. **Wrap** — bind content + verified publisher identity as an unsigned in-toto v1 Statement (receipt, not attestation — DSSE signing comes at Tier 2+)
 5. **Log** — append to Tessera (immutable, tamper-evident, witness-cosigned)
 6. **Notify** — publish events to NATS for downstream consumers
 
