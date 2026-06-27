@@ -17,6 +17,11 @@ type TesseraAppender interface {
 	Add(ctx context.Context, entry []byte) (uint64, error)
 }
 
+// TesseraReader fetches raw entries from the transparency log by index.
+type TesseraReader interface {
+	Read(ctx context.Context, index uint64) ([]byte, error)
+}
+
 // EventPublisher emits NATS events for evidence, policies, and targets.
 type EventPublisher interface {
 	PublishEvidence(policyID string, count int)
@@ -41,6 +46,7 @@ type Stores struct {
 	IngestTracker     *IngestTracker
 	IngestPublisher   IngestPublisher
 	TesseraAppender   TesseraAppender
+	TesseraReader     TesseraReader
 	JWTVerifier       JWTVerifier
 	Authorizer        auth.Authorizer
 	IngestRateLimit   httputil.RateLimitOptions

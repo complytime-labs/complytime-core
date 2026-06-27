@@ -133,6 +133,14 @@ Environment variables:
 	}()
 	slog.Info("tessera client ready", "path", cfg.TesseraPath)
 
+	// Initialize Tessera reader for entry retrieval
+	tesseraReader := tessera.NewReader(cfg.TesseraPath)
+	defer func() {
+		if err := tesseraReader.Close(); err != nil {
+			slog.Warn("tessera reader close failed", "error", err)
+		}
+	}()
+
 	// Initialize JWT verifier
 	if len(cfg.JWTIssuers) == 0 {
 		slog.Warn("JWT_ISSUERS not configured — trusted publisher ingestion will be unavailable")
@@ -158,6 +166,7 @@ Environment variables:
 		IngestTracker:     ingestTracker,
 		IngestPublisher:   bus,
 		TesseraAppender:   tesseraClient,
+		TesseraReader:     tesseraReader,
 		JWTVerifier:       jwtVerifier,
 		Authorizer:        authorizer,
 		IngestRateLimit: httputil.RateLimitOptions{

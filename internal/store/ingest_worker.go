@@ -18,11 +18,6 @@ import (
 	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
 
-// TesseraReader fetches raw entries from the transparency log by index.
-type TesseraReader interface {
-	Read(ctx context.Context, index uint64) ([]byte, error)
-}
-
 type ingestOutcome int
 
 const (

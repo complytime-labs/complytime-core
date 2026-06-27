@@ -22,6 +22,7 @@ var routeMappings = []routeMapping{
 	{"GET", "/api/system-info", false, "read:status"},
 	{"GET", "/api/config", false, "read:status"},
 	{"GET", "/api/ingest/jobs/", true, "read:status"},
+	{"GET", "/api/entry/", true, "read:entries"},
 	{"POST", "/api/ingest", false, "publish"},
 	{"POST", "/api/import", false, "publish"},
 }

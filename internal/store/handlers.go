@@ -14,4 +14,5 @@ func jsonError(c echo.Context, code int, msg string) error {
 func Register(g *echo.Group, s Stores) {
 	registerIngestRoutes(g, s)
 	registerImportRoute(g, s)
+	registerEntryRoute(g, s)
 }
