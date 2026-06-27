@@ -1,8 +1,9 @@
 # Trust Signals Replace Binary Certified Flag
 
-**Status:** Accepted  
+**Status:** Superseded by [Trust Model](trust-model.md)  
 **Date:** 2026-06-01  
-**Supersedes:** Binary `certified` boolean column
+**Supersedes:** Binary `certified` boolean column  
+**Superseded by:** [Trust Model: Private Gemara Evidence Gateway](trust-model.md) — PostgreSQL and certification pipeline removed; trust signals will be redesigned on the new model.
 
 ## Decision
 
