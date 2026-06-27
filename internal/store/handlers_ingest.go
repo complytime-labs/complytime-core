@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
+	"github.com/complytime-labs/complytime-core/internal/attestation"
 	"github.com/complytime-labs/complytime-core/internal/auth"
 	"github.com/complytime-labs/complytime-core/internal/bus"
 	"github.com/complytime-labs/complytime-core/internal/consts"
@@ -117,7 +118,24 @@ func IngestAsyncHandler(pub IngestPublisher, tracker *IngestTracker, appender Te
 			"decision", "allow",
 		)
 
-		logIndex, err := appender.Add(ctx, body)
+		// Wrap content as in-toto receipt before Tessera append
+		publisher := attestation.PublisherMeta{
+			Issuer:  claims.Iss,
+			Subject: claims.Sub,
+			Method:  "jwt-channel",
+		}
+		targetID := evidence.DetectTargetID(body)
+		artifactType := evidence.DetectArtifactTypeString(body)
+		wrappedEntry, wrapErr := attestation.WrapAsReceipt(body, publisher, artifactType, targetID)
+		if wrapErr != nil {
+			slog.Error("attestation wrapping failed", "error", wrapErr)
+			httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
+				"errors": []string{"internal error — failed to create attestation receipt"},
+			})
+			return
+		}
+
+		logIndex, err := appender.Add(ctx, wrappedEntry)
 		if err != nil {
 			slog.Error("tessera append failed", "error", err)
 			httputil.WriteJSON(w, http.StatusServiceUnavailable, map[string]any{

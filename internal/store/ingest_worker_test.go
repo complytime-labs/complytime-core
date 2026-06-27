@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/complytime-labs/complytime-core/internal/attestation"
 	"github.com/complytime-labs/complytime-core/internal/bus"
 )
 
@@ -477,3 +478,34 @@ target:
 	require.NoError(t, err)
 	assert.Len(t, pubs, 1, "publisher should not have been removed")
 }
+
+func TestIngestWorker_WrappedEntry(t *testing.T) {
+	yaml := []byte(`metadata:
+  type: EvaluationLog
+  id: eval-wrapped-001
+target:
+  id: pkg:oci/acme/myapp
+  name: Test App
+  type: Software
+evaluations:
+  - control:
+      entry-id: AC-1
+    assessment-logs:
+      - result: Passed
+        start: "2026-01-01T00:00:00Z"`)
+
+	pub := attestation.PublisherMeta{
+		Issuer:  "https://example.com",
+		Subject: "test-user",
+		Method:  "jwt-channel",
+	}
+	wrapped, err := attestation.WrapAsReceipt(yaml, pub, "EvaluationLog", "pkg:oci/acme/myapp")
+	require.NoError(t, err)
+
+	// Verify Unwrap extracts the original YAML
+	content, stmt, err := attestation.Unwrap(wrapped)
+	require.NoError(t, err)
+	require.NotNil(t, stmt)
+	require.Equal(t, string(yaml), string(content))
+}
+

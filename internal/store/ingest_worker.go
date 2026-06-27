@@ -12,6 +12,7 @@ import (
 	gemara "github.com/gemaraproj/go-gemara"
 	"github.com/nats-io/nats.go/jetstream"
 
+	"github.com/complytime-labs/complytime-core/internal/attestation"
 	"github.com/complytime-labs/complytime-core/internal/bus"
 	"github.com/complytime-labs/complytime-core/internal/evidence"
 	"github.com/complytime-labs/complytime-core/internal/requirements"
@@ -46,7 +47,7 @@ func IngestWorker(
 		_ = msg.InProgress()
 		slog.Info("async ingest started", "job_id", ref.JobID, "log_index", ref.LogIndex)
 
-		yaml, err := reader.Read(ctx, ref.LogIndex)
+		raw, err := reader.Read(ctx, ref.LogIndex)
 		if err != nil {
 			if isNotYetIntegrated(err) {
 				slog.Warn("tessera entry not yet integrated, will retry",
@@ -56,6 +57,15 @@ func IngestWorker(
 			}
 			tracker.Fail(ref.JobID, fmt.Sprintf("tessera read failed: %v", err))
 			slog.Error("async ingest: tessera read failed", "job_id", ref.JobID, "error", err)
+			_ = msg.Term()
+			return
+		}
+
+		// Unwrap in-toto statement if present
+		yaml, _, unwrapErr := attestation.Unwrap(raw)
+		if unwrapErr != nil {
+			slog.Error("entry unwrap failed", "log_index", ref.LogIndex, "error", unwrapErr)
+			tracker.Fail(ref.JobID, fmt.Sprintf("unwrap failed: %v", unwrapErr))
 			_ = msg.Term()
 			return
 		}

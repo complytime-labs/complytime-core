@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
+	"github.com/complytime-labs/complytime-core/internal/attestation"
 	"github.com/complytime-labs/complytime-core/internal/bus"
 	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
@@ -91,7 +92,19 @@ func ociImport(c echo.Context, s Stores, ref string) error {
 			continue
 		}
 
-		logIndex, err := s.TesseraAppender.Add(ctx, f.Data)
+		publisher := attestation.PublisherMeta{
+			Issuer:  identity.Issuer,
+			Subject: identity.Sub,
+			Method:  "import",
+		}
+		artifactType := detected.String()
+		wrappedEntry, wrapErr := attestation.WrapAsReceipt(f.Data, publisher, artifactType, "")
+		if wrapErr != nil {
+			slog.Error("attestation wrapping failed", "name", f.Name, "error", wrapErr)
+			continue
+		}
+
+		logIndex, err := s.TesseraAppender.Add(ctx, wrappedEntry)
 		if err != nil {
 			slog.Error("tessera append failed", "name", f.Name, "error", err)
 			continue
