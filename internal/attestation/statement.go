@@ -1,23 +1,21 @@
-// internal/attestation/statement.go
+// SPDX-License-Identifier: Apache-2.0
+
 package attestation
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
+
+	v1 "github.com/in-toto/attestation/go/v1"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
-const (
-	StatementTypeV1      = "https://in-toto.io/Statement/v1"
-	PredicateTypeReceipt = "https://complytime.dev/gemara-receipt/v1"
-)
-
-type Subject struct {
-	Name   string            `json:"name"`
-	Digest map[string]string `json:"digest"`
-}
+const PredicateTypeReceipt = "https://complytime.dev/gemara-receipt/v1"
 
 type PublisherMeta struct {
 	Issuer  string `json:"issuer"`
@@ -32,13 +30,6 @@ type ReceiptPredicate struct {
 	IngestedAt   time.Time     `json:"ingestedAt"`
 }
 
-type Statement struct {
-	Type          string           `json:"_type"`
-	Subject       []Subject        `json:"subject"`
-	PredicateType string           `json:"predicateType"`
-	Predicate     ReceiptPredicate `json:"predicate"`
-}
-
 func WrapAsReceipt(content []byte, publisher PublisherMeta, artifactType, targetID string) ([]byte, error) {
 	hash := sha256.Sum256(content)
 	subjectName := targetID
@@ -46,52 +37,105 @@ func WrapAsReceipt(content []byte, publisher PublisherMeta, artifactType, target
 		subjectName = "unknown"
 	}
 
-	stmt := Statement{
-		Type: StatementTypeV1,
-		Subject: []Subject{{
+	pred := ReceiptPredicate{
+		Content:      string(content),
+		Publisher:    publisher,
+		ArtifactType: artifactType,
+		IngestedAt:   time.Now().UTC(),
+	}
+
+	predJSON, err := json.Marshal(pred)
+	if err != nil {
+		return nil, fmt.Errorf("marshal predicate: %w", err)
+	}
+
+	predStruct := &structpb.Struct{}
+	if err := protojson.Unmarshal(predJSON, predStruct); err != nil {
+		return nil, fmt.Errorf("convert predicate to struct: %w", err)
+	}
+
+	stmt := &v1.Statement{
+		Type: v1.StatementTypeUri,
+		Subject: []*v1.ResourceDescriptor{{
 			Name:   subjectName,
 			Digest: map[string]string{"sha256": hex.EncodeToString(hash[:])},
 		}},
 		PredicateType: PredicateTypeReceipt,
-		Predicate: ReceiptPredicate{
-			Content:      string(content),
-			Publisher:    publisher,
-			ArtifactType: artifactType,
-			IngestedAt:   time.Now().UTC(),
-		},
+		Predicate:     predStruct,
 	}
 
-	data, err := json.Marshal(stmt)
+	data, err := protojson.Marshal(stmt)
 	if err != nil {
 		return nil, fmt.Errorf("marshal statement: %w", err)
 	}
 	return data, nil
 }
 
-func Unwrap(data []byte) ([]byte, *Statement, error) {
-	data = trimLeadingWhitespace(data)
-	if len(data) == 0 {
+// UnwrappedStatement holds the parsed in-toto statement metadata after unwrapping.
+type UnwrappedStatement struct {
+	Type          string
+	SubjectName   string
+	SubjectDigest map[string]string
+	PredicateType string
+	Publisher     PublisherMeta
+	ArtifactType  string
+}
+
+func Unwrap(data []byte) ([]byte, *UnwrappedStatement, error) {
+	trimmed := bytes.TrimLeft(data, " \t\n\r")
+	if len(trimmed) == 0 {
 		return nil, nil, fmt.Errorf("empty entry")
 	}
 
-	if data[0] != '{' {
+	if trimmed[0] != '{' {
 		return data, nil, nil
 	}
 
-	var stmt Statement
-	if err := json.Unmarshal(data, &stmt); err != nil {
+	stmt := &v1.Statement{}
+	if err := protojson.Unmarshal(trimmed, stmt); err != nil {
 		return data, nil, nil
 	}
-	if stmt.Type != StatementTypeV1 {
+	if stmt.GetType() != v1.StatementTypeUri {
 		return data, nil, nil
 	}
 
-	return []byte(stmt.Predicate.Content), &stmt, nil
-}
-
-func trimLeadingWhitespace(data []byte) []byte {
-	for len(data) > 0 && (data[0] == ' ' || data[0] == '\t' || data[0] == '\n' || data[0] == '\r') {
-		data = data[1:]
+	predFields := stmt.GetPredicate().GetFields()
+	if predFields == nil {
+		return data, nil, fmt.Errorf("statement has no predicate")
 	}
-	return data
+
+	contentVal := predFields["content"]
+	if contentVal == nil {
+		return data, nil, fmt.Errorf("predicate has no content field")
+	}
+	content := contentVal.GetStringValue()
+
+	unwrapped := &UnwrappedStatement{
+		Type:          stmt.GetType(),
+		PredicateType: stmt.GetPredicateType(),
+	}
+
+	if len(stmt.GetSubject()) > 0 {
+		unwrapped.SubjectName = stmt.GetSubject()[0].GetName()
+		unwrapped.SubjectDigest = stmt.GetSubject()[0].GetDigest()
+	}
+
+	pubVal := predFields["publisher"]
+	if pubVal != nil {
+		pubFields := pubVal.GetStructValue().GetFields()
+		if pubFields != nil {
+			unwrapped.Publisher = PublisherMeta{
+				Issuer:  pubFields["issuer"].GetStringValue(),
+				Subject: pubFields["subject"].GetStringValue(),
+				Method:  pubFields["method"].GetStringValue(),
+			}
+		}
+	}
+
+	artVal := predFields["artifactType"]
+	if artVal != nil {
+		unwrapped.ArtifactType = artVal.GetStringValue()
+	}
+
+	return []byte(content), unwrapped, nil
 }

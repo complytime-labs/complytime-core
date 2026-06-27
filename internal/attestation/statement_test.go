@@ -1,9 +1,12 @@
-// internal/attestation/statement_test.go
+// SPDX-License-Identifier: Apache-2.0
+
 package attestation_test
 
 import (
-	"encoding/json"
 	"testing"
+
+	v1 "github.com/in-toto/attestation/go/v1"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/complytime-labs/complytime-core/internal/attestation"
 )
@@ -21,31 +24,34 @@ func TestWrapAsReceipt(t *testing.T) {
 		t.Fatalf("WrapAsReceipt failed: %v", err)
 	}
 
-	var stmt attestation.Statement
-	if err := json.Unmarshal(wrapped, &stmt); err != nil {
+	var stmt v1.Statement
+	if err := protojson.Unmarshal(wrapped, &stmt); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
 
-	if stmt.Type != "https://in-toto.io/Statement/v1" {
-		t.Errorf("got type %q, want in-toto v1", stmt.Type)
+	if stmt.GetType() != v1.StatementTypeUri {
+		t.Errorf("got type %q, want %q", stmt.GetType(), v1.StatementTypeUri)
 	}
-	if stmt.PredicateType != "https://complytime.dev/gemara-receipt/v1" {
-		t.Errorf("got predicateType %q", stmt.PredicateType)
+	if stmt.GetPredicateType() != "https://complytime.dev/gemara-receipt/v1" {
+		t.Errorf("got predicateType %q", stmt.GetPredicateType())
 	}
-	if len(stmt.Subject) != 1 {
-		t.Fatalf("got %d subjects, want 1", len(stmt.Subject))
+	if len(stmt.GetSubject()) != 1 {
+		t.Fatalf("got %d subjects, want 1", len(stmt.GetSubject()))
 	}
-	if stmt.Subject[0].Name != "pkg:oci/acme/myapp" {
-		t.Errorf("got subject name %q", stmt.Subject[0].Name)
+	if stmt.GetSubject()[0].GetName() != "pkg:oci/acme/myapp" {
+		t.Errorf("got subject name %q", stmt.GetSubject()[0].GetName())
 	}
-	if stmt.Subject[0].Digest["sha256"] == "" {
+	if stmt.GetSubject()[0].GetDigest()["sha256"] == "" {
 		t.Error("missing sha256 digest")
 	}
-	if stmt.Predicate.ArtifactType != "EvaluationLog" {
-		t.Errorf("got artifact type %q", stmt.Predicate.ArtifactType)
+
+	predFields := stmt.GetPredicate().GetFields()
+	if predFields["artifactType"].GetStringValue() != "EvaluationLog" {
+		t.Errorf("got artifact type %q", predFields["artifactType"].GetStringValue())
 	}
-	if stmt.Predicate.Publisher.Issuer != pub.Issuer {
-		t.Errorf("got publisher issuer %q", stmt.Predicate.Publisher.Issuer)
+	pubFields := predFields["publisher"].GetStructValue().GetFields()
+	if pubFields["issuer"].GetStringValue() != pub.Issuer {
+		t.Errorf("got publisher issuer %q", pubFields["issuer"].GetStringValue())
 	}
 }
 
@@ -69,8 +75,8 @@ func TestUnwrap(t *testing.T) {
 	if string(unwrapped) != string(content) {
 		t.Errorf("content mismatch: got %q", string(unwrapped))
 	}
-	if stmt.Predicate.Publisher.Subject != "test-user" {
-		t.Errorf("publisher mismatch: got %q", stmt.Predicate.Publisher.Subject)
+	if stmt.Publisher.Subject != "test-user" {
+		t.Errorf("publisher mismatch: got %q", stmt.Publisher.Subject)
 	}
 }
 

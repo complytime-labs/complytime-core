@@ -8,6 +8,7 @@ require (
 	github.com/goccy/go-yaml v1.19.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
+	github.com/in-toto/attestation v1.2.0
 	github.com/labstack/echo/v4 v4.15.4
 	github.com/lestrrat-go/jwx/v2 v2.1.6
 	github.com/minio/minio-go/v7 v7.2.0
@@ -21,6 +22,7 @@ require (
 	github.com/transparency-dev/tessera v1.0.2
 	golang.org/x/mod v0.37.0
 	golang.org/x/time v0.15.0
+	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 	oras.land/oras-go/v2 v2.6.1
 )
