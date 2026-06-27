@@ -73,29 +73,6 @@ type EvidenceFilter struct {
 	Offset        int
 }
 
-// CertificationRow represents a single certification verdict.
-type CertificationRow struct {
-	EvidenceID       string    `json:"evidence_id"`
-	Certifier        string    `json:"certifier"`
-	CertifierVersion string    `json:"certifier_version"`
-	Result           string    `json:"result"`
-	Reason           string    `json:"reason"`
-	CertifiedAt      time.Time `json:"certified_at,omitempty"`
-}
-
-// EvidenceRowLite is a lightweight evidence projection for the certifier pipeline.
-type EvidenceRowLite struct {
-	EvidenceID       string    `json:"evidence_id"`
-	TargetID         string    `json:"target_id"`
-	RuleID           string    `json:"rule_id"`
-	EvalResult       string    `json:"eval_result"`
-	ComplianceStatus string    `json:"compliance_status"`
-	EngineName       string    `json:"engine_name"`
-	SourceRegistry   string    `json:"source_registry"`
-	AttestationRef   string    `json:"attestation_ref"`
-	CollectedAt      time.Time `json:"collected_at"`
-}
-
 // WitnessEvidenceRow contains publisher data for witness verification.
 type WitnessEvidenceRow struct {
 	EvidenceID      string

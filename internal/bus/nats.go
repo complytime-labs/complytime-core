@@ -277,7 +277,6 @@ func (b *Bus) ConsumeIngest(ctx context.Context, handler IngestMsgHandler) (jets
 }
 
 // SubscribeEvidence subscribes to all evidence events (core.evidence.>).
-// The gateway uses this for the in-process certifier pipeline.
 func (b *Bus) SubscribeEvidence(handler func(EvidenceEvent)) (*nats.Subscription, error) {
 	if b == nil || b.conn == nil {
 		return nil, nil
