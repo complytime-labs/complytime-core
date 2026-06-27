@@ -7,10 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 )
+
+const clockSkewLeeway = 30 * time.Second
 
 // JWTClaims represents the standard JWT claims we extract and validate
 type JWTClaims struct {
@@ -114,7 +117,8 @@ func (v *JWTVerifier) Verify(ctx context.Context, tokenString string) (*JWTClaim
 	// Verify the signature using the raw key with algorithm restriction
 	parsedToken, err = jwt.ParseWithClaims(tokenString, jwt.MapClaims{}, func(token *jwt.Token) (interface{}, error) {
 		return rawKey, nil
-	}, jwt.WithValidMethods([]string{"ES256", "ES384", "ES512", "RS256", "RS384", "RS512"}))
+	}, jwt.WithValidMethods([]string{"ES256", "ES384", "ES512", "RS256", "RS384", "RS512"}),
+		jwt.WithLeeway(clockSkewLeeway))
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
 			return nil, fmt.Errorf("token is expired: %w", err)
@@ -160,6 +164,11 @@ func (v *JWTVerifier) Verify(ctx context.Context, tokenString string) (*JWTClaim
 		case float64:
 			iat = int64(iatVal)
 		}
+	}
+
+	// Reject tokens issued in the future (beyond clock skew tolerance)
+	if iat > 0 && time.Unix(iat, 0).After(time.Now().Add(clockSkewLeeway)) {
+		return nil, fmt.Errorf("token issued in the future: iat %d", iat)
 	}
 
 	// Validate audience if configured

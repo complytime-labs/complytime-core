@@ -315,6 +315,107 @@ func TestJWTVerifierAudienceMismatch(t *testing.T) {
 	require.Contains(t, err.Error(), "audience mismatch")
 }
 
+func TestJWTVerifierClockSkewTolerance(t *testing.T) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	x := base64.RawURLEncoding.EncodeToString(privateKey.X.Bytes())
+	y := base64.RawURLEncoding.EncodeToString(privateKey.Y.Bytes())
+
+	jwksResponse := map[string]interface{}{
+		"keys": []map[string]interface{}{{
+			"kty": "EC", "crv": "P-256",
+			"x": x, "y": y,
+			"kid": "test-key-id", "alg": "ES256", "use": "sig",
+		}},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(jwksResponse)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	verifier := NewJWTVerifier(ctx, []string{server.URL}, "")
+
+	t.Run("within leeway", func(t *testing.T) {
+		claims := jwt.RegisteredClaims{
+			Issuer:    server.URL,
+			Subject:   "test-user",
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-15 * time.Second)),
+			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-2 * time.Minute)),
+		}
+		token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
+		token.Header["kid"] = "test-key-id"
+		tokenString, err := token.SignedString(privateKey)
+		require.NoError(t, err)
+
+		jwtClaims, err := verifier.Verify(ctx, tokenString)
+		require.NoError(t, err)
+		require.NotNil(t, jwtClaims)
+	})
+
+	t.Run("outside leeway", func(t *testing.T) {
+		claims := jwt.RegisteredClaims{
+			Issuer:    server.URL,
+			Subject:   "test-user",
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-60 * time.Second)),
+			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-2 * time.Minute)),
+		}
+		token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
+		token.Header["kid"] = "test-key-id"
+		tokenString, err := token.SignedString(privateKey)
+		require.NoError(t, err)
+
+		jwtClaims, err := verifier.Verify(ctx, tokenString)
+		require.Error(t, err)
+		require.Nil(t, jwtClaims)
+		require.Contains(t, err.Error(), "expired")
+	})
+}
+
+func TestJWTVerifierFutureIat(t *testing.T) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	x := base64.RawURLEncoding.EncodeToString(privateKey.X.Bytes())
+	y := base64.RawURLEncoding.EncodeToString(privateKey.Y.Bytes())
+
+	jwksResponse := map[string]interface{}{
+		"keys": []map[string]interface{}{{
+			"kty": "EC", "crv": "P-256",
+			"x": x, "y": y,
+			"kid": "test-key-id", "alg": "ES256", "use": "sig",
+		}},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(jwksResponse)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	verifier := NewJWTVerifier(ctx, []string{server.URL}, "")
+
+	claims := jwt.RegisteredClaims{
+		Issuer:    server.URL,
+		Subject:   "test-user",
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(2 * time.Hour)),
+		IssuedAt:  jwt.NewNumericDate(time.Now().Add(60 * time.Second)),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
+	token.Header["kid"] = "test-key-id"
+	tokenString, err := token.SignedString(privateKey)
+	require.NoError(t, err)
+
+	jwtClaims, err := verifier.Verify(ctx, tokenString)
+	require.Error(t, err)
+	require.Nil(t, jwtClaims)
+	require.Contains(t, err.Error(), "future")
+}
+
 func TestJWTVerifierAudienceNotConfigured(t *testing.T) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
