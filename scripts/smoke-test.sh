@@ -14,9 +14,21 @@
 
 set -euo pipefail
 
+for cmd in curl grep sed; do
+    if ! command -v "$cmd" &>/dev/null; then
+        echo "ERROR: $cmd is required but not found in PATH" >&2
+        exit 1
+    fi
+done
+
 GATEWAY="${GATEWAY_URL:-http://localhost:8080}"
 TESTJWKS="${TESTJWKS_URL:-http://localhost:9090}"
 EVIDENCE_FILE="${1:-internal/e2e/testdata/evaluation_log_sample.yaml}"
+
+if [[ ! -f "$EVIDENCE_FILE" ]]; then
+    echo "ERROR: evidence file not found: $EVIDENCE_FILE" >&2
+    exit 1
+fi
 
 pass() { echo "  PASS: $1"; }
 fail() { echo "  FAIL: $1"; exit 1; }
@@ -59,10 +71,10 @@ step 3 "Register target with trusted publisher"
 
 EVIDENCE_TARGET=$(python3 -c "
 import yaml, sys
-with open('$EVIDENCE_FILE') as f:
+with open(sys.argv[1]) as f:
     d = yaml.safe_load(f)
 print(d.get('target',{}).get('id','tgt-test-001'))
-" 2>/dev/null || echo "tgt-test-001")
+" "$EVIDENCE_FILE" 2>/dev/null || echo "tgt-test-001")
 
 TARGET_REG="metadata:
   type: TargetRegistration
