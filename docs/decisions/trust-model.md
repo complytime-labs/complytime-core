@@ -40,12 +40,12 @@ For DSSE-signed submissions (future — Phase 2), the entire DSSE envelope is st
 
 Not all compliance evidence requires the same provenance level:
 
-| Tier | Mechanism                          | Use case                                                 |
-| :--- | :--------------------------------- | :------------------------------------------------------- |
-| 0    | JWT + Tessera + witness            | Single-party direct submission (ISO 27001, SOC 2)        |
-| 1    | Unsigned in-toto receipt           | Durable channel identity in log                          |
-| 2    | DSSE-signed individual attestations | Multi-party flows (CRA: lab + manufacturer + reviewer)  |
-| 3    | Signed bundle attestation (AuditLog) | Certification-level assertions                         |
+| Tier | Mechanism                            | Use case                                      |
+| :--- | :----------------------------------- | :-------------------------------------------- |
+| 0    | JWT + Tessera + witness              | Single-party, direct submission               |
+| 1    | Unsigned in-toto receipt             | Durable channel identity in log               |
+| 2    | DSSE-signed individual attestations  | Multi-party, intermediary flows               |
+| 3    | Signed bundle attestation (AuditLog) | Certification-level assertions                |
 
 Each tier is independently useful. Currently Phase 0 implements Tiers 0-1.
 
