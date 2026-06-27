@@ -64,6 +64,7 @@ Rekor exposes data on public unauthenticated endpoints. Compliance evidence is o
 
 ## Related Decisions
 
+- [ADR-0014: Signed Evidence Attestation Pipeline](https://github.com/complytime/complytime/pull/31) — upstream ADR defining the delivery model (trust the payload, not the pipe). This trust model defines what the transparency-log sink does with the signed evidence ADR-0014 delivers.
 - [Transparency Ledger](transparency-ledger.md) — Tessera as the immutable log (still valid, entry format updated by this ADR)
 - [Content Verification Service](content-verification-service.md) — monitor role (content quality verification, distinct from witnessing)
 - [Anti-Equivocation Witnessing](anti-equivocation-witnessing.md) — witness cosignatures for non-equivocation
