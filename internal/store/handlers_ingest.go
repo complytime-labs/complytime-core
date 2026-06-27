@@ -40,7 +40,7 @@ type IngestPublisher interface {
 // YAML with a Bearer JWT token, verifies the JWT, appends to Tessera,
 // assigns a job ID, publishes an IngestRef to JetStream, and returns
 // 202 Accepted with the job ID and log_index for polling.
-func IngestAsyncHandler(pub IngestPublisher, tracker *IngestTracker, appender TesseraAppender, verifier JWTVerifier, trustedPubs requirements.TrustedPublisherStore, authorizer CedarAuthorizer) http.HandlerFunc {
+func IngestAsyncHandler(pub IngestPublisher, tracker *IngestTracker, appender TesseraAppender, verifier JWTVerifier, trustedPubs requirements.TrustedPublisherStore, authorizer auth.Authorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
