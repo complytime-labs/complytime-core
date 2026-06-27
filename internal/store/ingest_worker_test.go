@@ -508,4 +508,3 @@ evaluations:
 	require.NotNil(t, stmt)
 	require.Equal(t, string(yaml), string(content))
 }
-

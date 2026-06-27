@@ -33,11 +33,9 @@ func EntryHandler(reader TesseraReader) echo.HandlerFunc {
 			return jsonError(c, http.StatusNotFound, "entry not found")
 		}
 
-		contentType := "application/octet-stream"
+		contentType := "application/x-yaml"
 		if len(data) > 0 && data[0] == '{' {
 			contentType = "application/json"
-		} else {
-			contentType = "application/x-yaml"
 		}
 
 		return c.Blob(http.StatusOK, contentType, data)

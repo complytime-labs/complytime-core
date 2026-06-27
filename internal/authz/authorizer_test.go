@@ -277,7 +277,6 @@ func TestIsAuthorized_PublishArtifact_AllowedWithTrust(t *testing.T) {
 	}
 }
 
-
 func TestIsAuthorized_PublishPolicy_AllowedForAny(t *testing.T) {
 	a, err := NewAuthorizer("")
 	if err != nil {
