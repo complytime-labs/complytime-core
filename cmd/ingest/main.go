@@ -242,11 +242,14 @@ Environment variables:
 		return c.String(http.StatusOK, "ok")
 	})
 
-	tessera.RegisterTilesAPI(e, cfg.TesseraPath)
-	tessera.RegisterWitnessedStatus(e, cfg.TesseraPath)
-
 	authHandler.Register(e)
 	e.Use(authHandler.Middleware())
+
+	// Tlog tiles on the public listener require authentication.
+	// Compliance evidence is organizational data — not public like CT.
+	// Witnesses use the internal listener (port 8081) for unauthenticated reads.
+	tessera.RegisterTilesAPI(e, cfg.TesseraPath)
+	tessera.RegisterWitnessedStatus(e, cfg.TesseraPath)
 
 	e.GET("/healthz", func(c echo.Context) error {
 		if bus.Conn().Status().String() != "CONNECTED" {
