@@ -425,7 +425,7 @@ func TestLoadPolicies_MergesWithEmbeddedDefaults(t *testing.T) {
 	}
 }
 
-func TestIsAuthorized_AdminRegisterTarget_DeniedWithoutAdminsGroup(t *testing.T) {
+func TestIsAuthorized_AdminRegisterTarget_AllowedForAny(t *testing.T) {
 	a, err := NewAuthorizer("")
 	if err != nil {
 		t.Fatal(err)
@@ -435,43 +435,16 @@ func TestIsAuthorized_AdminRegisterTarget_DeniedWithoutAdminsGroup(t *testing.T)
 	action := cedar.NewEntityUID("Action", "admin:register-target")
 	resource := cedar.NewEntityUID("Resource", "system")
 
-	principalAttrs := map[string]cedar.Value{
-		"groups": cedar.NewSet(cedar.String("publishers")),
-	}
-
-	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, nil)
-	if err != nil {
-		t.Fatalf("IsAuthorized failed: %v", err)
-	}
-	if allowed {
-		t.Error("admin:register-target should be denied without admins group")
-	}
-}
-
-func TestIsAuthorized_AdminRegisterTarget_AllowedWithAdminsGroup(t *testing.T) {
-	a, err := NewAuthorizer("")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	principal := cedar.NewEntityUID("Identity", "admin@example.com")
-	action := cedar.NewEntityUID("Action", "admin:register-target")
-	resource := cedar.NewEntityUID("Resource", "system")
-
-	principalAttrs := map[string]cedar.Value{
-		"groups": cedar.NewSet(cedar.String("admins")),
-	}
-
-	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, nil)
+	allowed, err := a.IsAuthorized(principal, nil, action, resource, nil)
 	if err != nil {
 		t.Fatalf("IsAuthorized failed: %v", err)
 	}
 	if !allowed {
-		t.Error("admin:register-target should be allowed with admins group")
+		t.Error("admin:register-target should be allowed at handler level (route-level enforces groups)")
 	}
 }
 
-func TestIsAuthorized_AdminManageTrust_DeniedWithoutAdminsGroup(t *testing.T) {
+func TestIsAuthorized_AdminManageTrust_AllowedForAny(t *testing.T) {
 	a, err := NewAuthorizer("")
 	if err != nil {
 		t.Fatal(err)
@@ -481,15 +454,11 @@ func TestIsAuthorized_AdminManageTrust_DeniedWithoutAdminsGroup(t *testing.T) {
 	action := cedar.NewEntityUID("Action", "admin:manage-trust")
 	resource := cedar.NewEntityUID("Resource", "system")
 
-	principalAttrs := map[string]cedar.Value{
-		"groups": cedar.NewSet(cedar.String("publishers")),
-	}
-
-	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, nil)
+	allowed, err := a.IsAuthorized(principal, nil, action, resource, nil)
 	if err != nil {
 		t.Fatalf("IsAuthorized failed: %v", err)
 	}
-	if allowed {
-		t.Error("admin:manage-trust should be denied without admins group")
+	if !allowed {
+		t.Error("admin:manage-trust should be allowed at handler level (route-level enforces groups)")
 	}
 }
