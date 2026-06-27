@@ -316,14 +316,14 @@ controls:
         entries:
           - reference-id: tlog-threats
             remarks: Mitigates T-REP-04 (certification results not persisted)
-    state: Inactive
+    state: Deprecated
     assessment-requirements:
       - id: CTRL-OI-04.1
         text: >-
           Certification results MUST be published to a durable NATS JetStream
           stream with at-least-once delivery guarantees.
         applicability: [all]
-        state: Draft
+        state: Deprecated
   - id: CTRL-OI-02
     title: Zero-Egress Air-Gap Conformance
     objective: >-
@@ -570,26 +570,89 @@ controls:
         applicability: [all]
         state: Active
   - id: CTRL-CI-06
-    title: Ingest Boundary Gemara Validation
+    title: Ingest Boundary Gemara Type Detection
     objective: >-
-      The ingest handler validates that submitted artifacts are
-      recognized Gemara types before wrapping and appending to Tessera.
-      Currently performs type detection only; full schema validation
-      is deferred to the content monitor.
+      The ingest handler validates that submitted artifacts contain a
+      recognized Gemara metadata.type field before wrapping and appending
+      to Tessera. Recognized types are defined by the go-gemara SDK
+      (gemara.DetectType). Full schema validation is deferred to the
+      content monitor.
     group: content-integrity
     threats:
       - reference-id: tlog-threats
         entries:
           - reference-id: tlog-threats
             remarks: Mitigates T-TAMP-06 (invalid artifacts permanently logged)
-    state: Draft
+    state: Active
     assessment-requirements:
       - id: CTRL-CI-06.1
         text: >-
           The ingest handler MUST reject submissions that do not contain
-          a recognized metadata.type field.
+          a metadata.type field recognized by the go-gemara SDK type
+          detection (gemara.DetectType).
+        applicability: [all]
+        state: Active
+  - id: CTRL-OI-05
+    title: Witness Fail-Closed by Default
+    objective: >-
+      The witness fail-open flag defaults to false. When witnesses are
+      unreachable, checkpoints are not published, preventing silent
+      degradation of the anti-equivocation guarantee.
+    group: operational-integrity
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-TAMP-04 (silent witness degradation)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-OI-05.1
+        text: >-
+          TESSERA_WITNESS_FAIL_OPEN MUST default to false. Checkpoints
+          MUST NOT be published when witnesses are unreachable unless
+          explicitly overridden.
+        applicability: [all]
+        state: Active
+  - id: CTRL-OI-06
+    title: Witness Binary Integrity
+    objective: >-
+      The witness binary is pinned by commit hash or container digest
+      in deployment configurations. Supply chain compromise detection
+      depends on deployment-time verification.
+    group: operational-integrity
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-TAMP-05 (witness binary supply chain compromise)
+    state: Draft
+    assessment-requirements:
+      - id: CTRL-OI-06.1
+        text: >-
+          The witness binary or container image MUST be pinned by digest
+          in deployment configurations, not by mutable tag.
         applicability: [all]
         state: Draft
+  - id: CTRL-OI-07
+    title: Rate Limiter Per-IP Isolation
+    objective: >-
+      The ingest rate limiter derives client identity from the connection
+      remote address, not from client-controlled headers. X-Forwarded-For
+      is explicitly ignored to prevent bucket spoofing.
+    group: operational-integrity
+    threats:
+      - reference-id: tlog-threats
+        entries:
+          - reference-id: tlog-threats
+            remarks: Mitigates T-DOS-04 (rate limiter key spoofing)
+    state: Active
+    assessment-requirements:
+      - id: CTRL-OI-07.1
+        text: >-
+          The rate limiter MUST derive client identity from the TCP
+          connection remote address, ignoring X-Forwarded-For.
+        applicability: [all]
+        state: Active
   - id: CTRL-CI-07
     title: In-toto Receipt Publisher Identity Binding
     objective: >-

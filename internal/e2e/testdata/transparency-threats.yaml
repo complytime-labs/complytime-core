@@ -151,6 +151,19 @@ threats:
         entries:
           - reference-id: tlog-capabilities
             remarks: Checkpoint publication
+  - id: T-INFO-01
+    title: JWKS discovery requires network egress
+    description: >-
+      The JWT verifier fetches signing keys from external OIDC issuer JWKS
+      endpoints at startup and on cache refresh. In an air-gapped deployment,
+      this egress dependency prevents the ingest service from starting unless
+      an in-enclave OIDC IdP is configured.
+    group: information-disclosure
+    capabilities:
+      - reference-id: tlog-capabilities
+        entries:
+          - reference-id: tlog-capabilities
+            remarks: Publisher identity verification
   - id: T-INFO-02
     title: Unauthenticated checkpoint access reveals operational cadence
     description: >-
@@ -314,11 +327,11 @@ threats:
           - reference-id: tlog-capabilities
             remarks: Publisher identity verification
   - id: T-SPOOF-04
-    title: Import path bypasses publisher trust
+    title: Import path bypasses publisher trust (mitigated)
     description: >-
-      MITIGATED: The import handler now requires JWT authentication and
-      evaluates Cedar publish/admin actions per artifact, matching the
-      ingest handler's authorization model.
+      The import handler now requires JWT authentication and evaluates
+      Cedar publish/admin actions per artifact, matching the ingest
+      handler's authorization model. Mitigated by CTRL-AC-08.
     group: spoofing
     capabilities:
       - reference-id: tlog-capabilities
