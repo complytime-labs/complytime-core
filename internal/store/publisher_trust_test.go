@@ -67,8 +67,9 @@ func TestCheckPublisherTrust_Unauthorized(t *testing.T) {
 	claims := &auth.JWTClaims{Iss: "https://issuer.example.com", Sub: "repo:evil/attacker"}
 
 	trusted, err := isPublisherTrusted(ctx, claims, "tgt-1", store)
-	assert.NoError(t, err)
+	assert.Error(t, err)
 	assert.False(t, trusted)
+	assert.Contains(t, err.Error(), "publisher https://issuer.example.com/repo:evil/attacker is not trusted for target tgt-1")
 }
 
 func TestCheckPublisherTrust_GlobMatch(t *testing.T) {
@@ -119,7 +120,7 @@ func TestCheckPublisherTrust_EmptyAllowlist_Denies(t *testing.T) {
 	trusted, err := isPublisherTrusted(ctx, claims, "tgt-no-publishers", store)
 	assert.Error(t, err)
 	assert.False(t, trusted)
-	assert.Contains(t, err.Error(), "no trusted publishers configured")
+	assert.Contains(t, err.Error(), "no trusted publishers configured for target tgt-no-publishers")
 }
 
 func TestMatchPublisher_ExactMatch(t *testing.T) {

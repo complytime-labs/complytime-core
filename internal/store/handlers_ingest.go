@@ -105,8 +105,14 @@ func IngestAsyncHandler(pub IngestPublisher, tracker *IngestTracker, appender Te
 				"action", cedarAction.ID,
 				"decision", "deny",
 			)
+			msg := fmt.Sprintf("authorization denied for action %s — ", cedarAction.ID)
+			if cedarAction.ID == cedar.String("admin:register-target") || cedarAction.ID == cedar.String("admin:manage-trust") {
+				msg += "this operation requires the admins group"
+			} else {
+				msg += "ensure your identity is in the publishers group"
+			}
 			httputil.WriteJSON(w, http.StatusForbidden, map[string]any{
-				"errors": []string{"publisher not authorized"},
+				"errors": []string{msg},
 			})
 			return
 		}
@@ -254,7 +260,10 @@ func isPublisherTrusted(ctx context.Context, claims *auth.JWTClaims, targetID st
 	}
 
 	if len(pubs) == 0 {
-		return false, fmt.Errorf("no trusted publishers configured for target %s", targetID)
+		return false, fmt.Errorf(
+			"no trusted publishers configured for target %s — "+
+				"an admin must submit a TargetRegistration with trusted_publishers for this target",
+			targetID)
 	}
 
 	for _, p := range pubs {
@@ -263,7 +272,10 @@ func isPublisherTrusted(ctx context.Context, claims *auth.JWTClaims, targetID st
 		}
 	}
 
-	return false, nil
+	return false, fmt.Errorf(
+		"publisher %s/%s is not trusted for target %s — "+
+			"an admin must add this identity to the target's trusted_publishers list",
+		claims.Iss, claims.Sub, targetID)
 }
 
 // matchPublisher checks if a JWT issuer/subject matches a trusted publisher
