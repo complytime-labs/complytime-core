@@ -424,3 +424,72 @@ func TestLoadPolicies_MergesWithEmbeddedDefaults(t *testing.T) {
 		t.Error("read:status from embedded policy should still be permitted after merge")
 	}
 }
+
+func TestIsAuthorized_AdminRegisterTarget_DeniedWithoutAdminsGroup(t *testing.T) {
+	a, err := NewAuthorizer("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	principal := cedar.NewEntityUID("Identity", "user@example.com")
+	action := cedar.NewEntityUID("Action", "admin:register-target")
+	resource := cedar.NewEntityUID("Resource", "system")
+
+	principalAttrs := map[string]cedar.Value{
+		"groups": cedar.NewSet(cedar.String("publishers")),
+	}
+
+	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, nil)
+	if err != nil {
+		t.Fatalf("IsAuthorized failed: %v", err)
+	}
+	if allowed {
+		t.Error("admin:register-target should be denied without admins group")
+	}
+}
+
+func TestIsAuthorized_AdminRegisterTarget_AllowedWithAdminsGroup(t *testing.T) {
+	a, err := NewAuthorizer("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	principal := cedar.NewEntityUID("Identity", "admin@example.com")
+	action := cedar.NewEntityUID("Action", "admin:register-target")
+	resource := cedar.NewEntityUID("Resource", "system")
+
+	principalAttrs := map[string]cedar.Value{
+		"groups": cedar.NewSet(cedar.String("admins")),
+	}
+
+	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, nil)
+	if err != nil {
+		t.Fatalf("IsAuthorized failed: %v", err)
+	}
+	if !allowed {
+		t.Error("admin:register-target should be allowed with admins group")
+	}
+}
+
+func TestIsAuthorized_AdminManageTrust_DeniedWithoutAdminsGroup(t *testing.T) {
+	a, err := NewAuthorizer("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	principal := cedar.NewEntityUID("Identity", "user@example.com")
+	action := cedar.NewEntityUID("Action", "admin:manage-trust")
+	resource := cedar.NewEntityUID("Resource", "system")
+
+	principalAttrs := map[string]cedar.Value{
+		"groups": cedar.NewSet(cedar.String("publishers")),
+	}
+
+	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, nil)
+	if err != nil {
+		t.Fatalf("IsAuthorized failed: %v", err)
+	}
+	if allowed {
+		t.Error("admin:manage-trust should be denied without admins group")
+	}
+}

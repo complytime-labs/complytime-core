@@ -104,7 +104,7 @@ func TestResolvePublishAction_TargetRegistration_ReturnsRegistration(t *testing.
 
 	action, attrs, err := resolvePublishAction(context.Background(), body, claims, nil)
 	assert.NoError(t, err)
-	assert.Equal(t, "publish:registration", action.ID.String())
+	assert.Equal(t, "admin:register-target", action.ID.String())
 	assert.Nil(t, attrs)
 }
 

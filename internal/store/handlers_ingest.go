@@ -219,7 +219,7 @@ func resolvePublishAction(ctx context.Context, body []byte, claims *auth.JWTClai
 
 	switch typeStr {
 	case "TargetRegistration":
-		return cedar.NewEntityUID("Action", "publish:registration"), nil, nil
+		return cedar.NewEntityUID("Action", "admin:register-target"), nil, nil
 	case "Policy":
 		return cedar.NewEntityUID("Action", "publish:policy"), nil, nil
 	}
