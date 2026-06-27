@@ -17,6 +17,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/complytime-labs/complytime-core/internal/attestation"
+	"github.com/complytime-labs/complytime-core/internal/auth"
 	"github.com/complytime-labs/complytime-core/internal/bus"
 	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
@@ -32,7 +33,25 @@ func registerImportRoute(g *echo.Group, s Stores) {
 // See ADR #0034 — Unified Ingest Pipeline.
 func importArtifactHandler(s Stores) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		body, err := io.ReadAll(io.LimitReader(c.Request().Body, maxUnifiedImportBytes))
+		r := c.Request()
+		ctx := r.Context()
+
+		token := extractBearerToken(r)
+		if token == "" {
+			return c.JSON(http.StatusUnauthorized, map[string]string{
+				"error": "missing or invalid Authorization header — expected 'Bearer <token>'",
+			})
+		}
+
+		claims, err := s.JWTVerifier.Verify(ctx, token)
+		if err != nil {
+			slog.Warn("import jwt verification failed", "error", err)
+			return c.JSON(http.StatusForbidden, map[string]string{
+				"error": "JWT verification failed",
+			})
+		}
+
+		body, err := io.ReadAll(io.LimitReader(r.Body, maxUnifiedImportBytes))
 		if err != nil {
 			return jsonError(c, http.StatusBadRequest, "read body failed")
 		}
@@ -44,21 +63,13 @@ func importArtifactHandler(s Stores) echo.HandlerFunc {
 				"expected JSON body with \"reference\" field — "+
 					"for raw YAML, use POST /api/ingest")
 		}
-		return ociImport(c, s, strings.TrimSpace(probe.Reference))
+		return ociImport(c, s, strings.TrimSpace(probe.Reference), claims)
 	}
 }
 
 // ── OCI reference import ────────────────────────────────────────────────────
 
-func importPublisherIdentity(ref string) bus.PublisherIdentity {
-	return bus.PublisherIdentity{
-		Sub:    "import:" + ref,
-		Issuer: "complytime-gateway",
-		Type:   "import",
-	}
-}
-
-func ociImport(c echo.Context, s Stores, ref string) error {
+func ociImport(c echo.Context, s Stores, ref string, claims *auth.JWTClaims) error {
 	if s.Registry == nil {
 		return jsonError(c, http.StatusServiceUnavailable, "registry not configured")
 	}
@@ -82,7 +93,12 @@ func ociImport(c echo.Context, s Stores, ref string) error {
 		return jsonError(c, http.StatusServiceUnavailable, "tessera and NATS are required for import")
 	}
 
-	identity := importPublisherIdentity(ref)
+	identity := bus.PublisherIdentity{
+		Sub:      claims.Sub,
+		Issuer:   claims.Iss,
+		Type:     inferPublisherType(claims.Sub),
+		Verified: true,
+	}
 
 	var imported []requirements.OciImportedArtifact
 	for _, f := range allFiles {
