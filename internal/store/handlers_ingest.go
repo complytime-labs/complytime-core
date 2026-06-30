@@ -20,6 +20,7 @@ import (
 	"github.com/complytime-labs/complytime-core/internal/consts"
 	"github.com/complytime-labs/complytime-core/internal/evidence"
 	"github.com/complytime-labs/complytime-core/internal/httputil"
+	"github.com/complytime-labs/complytime-core/internal/receipt"
 	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
 
@@ -36,13 +37,16 @@ type IngestPublisher interface {
 	PublishIngest(ctx context.Context, ref bus.IngestRef) error
 }
 
-// IngestAsyncHandler returns an http.HandlerFunc that accepts raw Gemara
-// YAML with a Bearer JWT token, verifies the JWT, appends to Tessera,
-// assigns a job ID, publishes an IngestRef to JetStream, and returns
-// 202 Accepted with the job ID and log_index for polling.
+// IngestAsyncHandler returns an http.HandlerFunc implementing the 2-step ingest pipeline:
+//  1. Channel access: JWT verification, artifact type detection, per-target publisher
+//     authorization via Cedar publish:artifact
+//  2. Tessera append: format detection, normalization to canonical JSON, receipt
+//     wrapping (or DSSE pass-through), transparency log append
 func IngestAsyncHandler(pub IngestPublisher, tracker *IngestTracker, appender TesseraAppender, verifier JWTVerifier, trustedPubs requirements.TrustedPublisherStore, authorizer auth.Authorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
+
+		// ── Step 1: Channel access ──────────────────────────────────
 
 		token := extractBearerToken(r)
 		if token == "" {
@@ -61,20 +65,38 @@ func IngestAsyncHandler(pub IngestPublisher, tracker *IngestTracker, appender Te
 			return
 		}
 
-		body, err := io.ReadAll(io.LimitReader(r.Body, consts.MaxRequestBody))
+		body, err := io.ReadAll(io.LimitReader(r.Body, consts.MaxSubmissionBody+1))
 		if err != nil {
 			http.Error(w, "failed to read request body", http.StatusBadRequest)
 			return
 		}
 		if len(body) == 0 {
 			httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{
-				"errors": []string{"request body is empty — expected Gemara YAML"},
+				"errors": []string{"request body is empty"},
+			})
+			return
+		}
+		if int64(len(body)) > consts.MaxSubmissionBody {
+			httputil.WriteJSON(w, http.StatusRequestEntityTooLarge, map[string]any{
+				"errors": []string{fmt.Sprintf("submission exceeds %d byte limit", consts.MaxSubmissionBody)},
 			})
 			return
 		}
 
-		// Map artifact type to Cedar action
-		cedarAction, resourceAttrs, err := resolvePublishAction(ctx, body, claims, trustedPubs)
+		format := receipt.DetectFormat(r.Header.Get("Content-Type"))
+
+		// DSSE envelopes skip artifact detection — structural validation only
+		if format != receipt.FormatDSSE {
+			typeStr := evidence.DetectArtifactTypeString(body)
+			if typeStr == "TargetRegistration" {
+				httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{
+					"errors": []string{"target registration must use POST /api/admin/targets"},
+				})
+				return
+			}
+		}
+
+		cedarAction, resourceAttrs, err := resolvePublishAction(ctx, body, claims, trustedPubs, format)
 		if err != nil {
 			slog.Warn("publish authorization failed", "issuer", claims.Iss, "sub", claims.Sub, "error", err)
 			httputil.WriteJSON(w, http.StatusForbidden, map[string]any{
@@ -83,11 +105,12 @@ func IngestAsyncHandler(pub IngestPublisher, tracker *IngestTracker, appender Te
 			return
 		}
 
-		// Cedar authorization check
 		principal := cedar.NewEntityUID("Identity", cedar.String(claims.Sub))
 		resource := cedar.NewEntityUID("Resource", "system")
-		if targetID := evidence.DetectTargetID(body); targetID != "" {
-			resource = cedar.NewEntityUID("Target", cedar.String(targetID))
+		if format != receipt.FormatDSSE {
+			if targetID := evidence.DetectTargetID(body); targetID != "" {
+				resource = cedar.NewEntityUID("Target", cedar.String(targetID))
+			}
 		}
 
 		allowed, err := authorizer.IsAuthorized(principal, nil, cedarAction, resource, resourceAttrs)
@@ -110,14 +133,61 @@ func IngestAsyncHandler(pub IngestPublisher, tracker *IngestTracker, appender Te
 			return
 		}
 
-		// Info (not Debug) — publish events are low-volume and audit-relevant
 		slog.Info("publish authorization permitted",
 			"principal", claims.Sub,
 			"action", cedarAction.ID,
 			"decision", "allow",
 		)
 
-		logIndex, err := appender.Add(ctx, body)
+		// ── Step 2: Tessera append ──────────────────────────────────
+
+		now := time.Now().UTC()
+		var entryBytes []byte
+
+		if format == receipt.FormatDSSE {
+			if err := receipt.ValidateDSSE(body); err != nil {
+				httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{
+					"errors": []string{err.Error()},
+				})
+				return
+			}
+			entryBytes = body
+		} else {
+			jsonBytes, err := normalizeArtifact(body)
+			if err != nil {
+				httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{
+					"errors": []string{err.Error()},
+				})
+				return
+			}
+
+			canonical, digest, err := receipt.Canonicalize(jsonBytes)
+			if err != nil {
+				httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{
+					"errors": []string{fmt.Sprintf("canonicalize: %v", err)},
+				})
+				return
+			}
+
+			artifactType := evidence.DetectArtifactTypeString(body)
+			authorType := detectAuthorType(body)
+			publisher := receipt.Publisher{
+				Issuer:  claims.Iss,
+				Subject: claims.Sub,
+				Method:  "jwt-channel",
+			}
+
+			entryBytes, err = receipt.Wrap(canonical, digest, publisher, artifactType, authorType, now)
+			if err != nil {
+				slog.Error("receipt wrap failed", "error", err)
+				httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
+					"errors": []string{"internal error wrapping receipt"},
+				})
+				return
+			}
+		}
+
+		logIndex, err := appender.Add(ctx, entryBytes)
 		if err != nil {
 			slog.Error("tessera append failed", "error", err)
 			httputil.WriteJSON(w, http.StatusServiceUnavailable, map[string]any{
@@ -139,7 +209,7 @@ func IngestAsyncHandler(pub IngestPublisher, tracker *IngestTracker, appender Te
 				Type:     publisherType,
 				Verified: true,
 			},
-			Timestamp: time.Now().UTC(),
+			Timestamp: now,
 		}
 
 		if err := pub.PublishIngest(ctx, ref); err != nil {
@@ -195,21 +265,22 @@ func extractBearerToken(r *http.Request) string {
 	return parts[1]
 }
 
-// resolvePublishAction maps artifact type to Cedar action and resolves publisher trust.
-func resolvePublishAction(ctx context.Context, body []byte, claims *auth.JWTClaims, store requirements.TrustedPublisherStore) (cedar.EntityUID, map[string]cedar.Value, error) {
-	typeStr := evidence.DetectArtifactTypeString(body)
-
-	switch typeStr {
-	case "TargetRegistration":
-		return cedar.NewEntityUID("Action", "publish:registration"), nil, nil
-	case "Policy":
-		return cedar.NewEntityUID("Action", "publish:policy"), nil, nil
+// resolvePublishAction resolves Cedar action and publisher trust for all artifact types.
+// All ingest submissions use publish:artifact with per-target publisher trust.
+func resolvePublishAction(ctx context.Context, body []byte, claims *auth.JWTClaims, store requirements.TrustedPublisherStore, format receipt.Format) (cedar.EntityUID, map[string]cedar.Value, error) {
+	// DSSE envelopes: we don't parse their content for target extraction at ingest.
+	// Use publish:artifact with publisher_trusted=true (the DSSE producer is already
+	// authenticated via JWT channel, and signature verification happens at consumer edge).
+	if format == receipt.FormatDSSE {
+		resourceAttrs := map[string]cedar.Value{
+			"publisher_trusted": cedar.Boolean(true),
+		}
+		return cedar.NewEntityUID("Action", "publish:artifact"), resourceAttrs, nil
 	}
 
-	// All other artifact types require target-scoped publisher trust
 	targetID := evidence.DetectTargetID(body)
 	if targetID == "" {
-		return cedar.NewEntityUID("Action", "publish:policy"), nil, nil
+		return cedar.EntityUID{}, nil, fmt.Errorf("artifact missing target.id — all submissions must reference a target")
 	}
 
 	if store == nil {

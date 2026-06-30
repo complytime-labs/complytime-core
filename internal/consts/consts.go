@@ -8,6 +8,10 @@ const (
 	// MaxRequestBody is the maximum allowed HTTP request body size (8 MiB).
 	MaxRequestBody int64 = 8 << 20
 
+	// MaxSubmissionBody is the maximum submission content size (256 KiB).
+	// Gemara artifacts are structured summaries, not raw evidence.
+	MaxSubmissionBody int64 = 256 << 10
+
 	// HTTPClientTimeout is the default timeout for outbound HTTP clients.
 	HTTPClientTimeout = 15 * time.Second
 

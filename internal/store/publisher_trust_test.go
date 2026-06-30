@@ -13,8 +13,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cedar-policy/cedar-go"
+
 	"github.com/complytime-labs/complytime-core/internal/auth"
 	"github.com/complytime-labs/complytime-core/internal/bus"
+	"github.com/complytime-labs/complytime-core/internal/receipt"
 	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
 
@@ -88,24 +91,23 @@ func TestCheckPublisherTrust_GlobMatch(t *testing.T) {
 	assert.True(t, trusted)
 }
 
-func TestResolvePublishAction_NoTargetID_ReturnsPolicy(t *testing.T) {
+func TestResolvePublishAction_NoTargetID_ReturnsError(t *testing.T) {
 	body := []byte("metadata:\n  type: EvaluationLog\n  id: my-eval\n")
 	claims := &auth.JWTClaims{Iss: "https://issuer.example.com", Sub: "anyone"}
 
-	action, attrs, err := resolvePublishAction(context.Background(), body, claims, nil)
-	assert.NoError(t, err)
-	assert.Equal(t, "publish:policy", action.ID.String())
-	assert.Nil(t, attrs)
+	_, _, err := resolvePublishAction(context.Background(), body, claims, nil, receipt.FormatYAML)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "artifact missing target.id")
 }
 
-func TestResolvePublishAction_TargetRegistration_ReturnsRegistration(t *testing.T) {
-	body := []byte("metadata:\n  type: TargetRegistration\ntarget:\n  id: tgt-1\n")
+func TestResolvePublishAction_DSSE_ImplicitTrust(t *testing.T) {
+	body := []byte(`{"payload":"dGVzdA==","payloadType":"application/vnd.in-toto+json","signatures":[{"sig":"abc"}]}`)
 	claims := &auth.JWTClaims{Iss: "https://issuer.example.com", Sub: "anyone"}
 
-	action, attrs, err := resolvePublishAction(context.Background(), body, claims, nil)
+	action, attrs, err := resolvePublishAction(context.Background(), body, claims, nil, receipt.FormatDSSE)
 	assert.NoError(t, err)
-	assert.Equal(t, "publish:registration", action.ID.String())
-	assert.Nil(t, attrs)
+	assert.Equal(t, "publish:artifact", action.ID.String())
+	assert.Equal(t, cedar.Boolean(true), attrs["publisher_trusted"])
 }
 
 func TestCheckPublisherTrust_EmptyAllowlist_Denies(t *testing.T) {
