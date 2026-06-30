@@ -277,7 +277,7 @@ func TestIsAuthorized_PublishArtifact_AllowedWithTrust(t *testing.T) {
 	}
 }
 
-func TestIsAuthorized_PublishRegistration_AllowedForAny(t *testing.T) {
+func TestIsAuthorized_PublishRegistration_Denied(t *testing.T) {
 	a, err := NewAuthorizer("")
 	if err != nil {
 		t.Fatal(err)
@@ -291,12 +291,12 @@ func TestIsAuthorized_PublishRegistration_AllowedForAny(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IsAuthorized failed: %v", err)
 	}
-	if !allowed {
-		t.Error("publish:registration should be allowed for any principal")
+	if allowed {
+		t.Error("publish:registration should be denied (removed from policy)")
 	}
 }
 
-func TestIsAuthorized_PublishPolicy_AllowedForAny(t *testing.T) {
+func TestIsAuthorized_PublishPolicy_Denied(t *testing.T) {
 	a, err := NewAuthorizer("")
 	if err != nil {
 		t.Fatal(err)
@@ -310,8 +310,8 @@ func TestIsAuthorized_PublishPolicy_AllowedForAny(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IsAuthorized failed: %v", err)
 	}
-	if !allowed {
-		t.Error("publish:policy should be allowed for any principal")
+	if allowed {
+		t.Error("publish:policy should be denied (removed from policy)")
 	}
 }
 
@@ -356,6 +356,128 @@ func TestIsAuthorized_UnknownAction_Denied(t *testing.T) {
 	}
 	if allowed {
 		t.Error("unknown action should be denied")
+	}
+}
+
+func TestIsAuthorized_AdminRegisterTarget_DeniedWithoutAdminsGroup(t *testing.T) {
+	a, err := NewAuthorizer("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	principal := cedar.NewEntityUID("Identity", "user@example.com")
+	action := cedar.NewEntityUID("Action", "admin:register-target")
+	resource := cedar.NewEntityUID("Resource", "system")
+
+	principalAttrs := map[string]cedar.Value{
+		"email":  cedar.String("user@example.com"),
+		"groups": cedar.NewSet(),
+	}
+
+	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, nil)
+	if err != nil {
+		t.Fatalf("IsAuthorized failed: %v", err)
+	}
+	if allowed {
+		t.Error("admin:register-target should be denied without admins group")
+	}
+}
+
+func TestIsAuthorized_AdminRegisterTarget_AllowedWithAdminsGroup(t *testing.T) {
+	a, err := NewAuthorizer("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	principal := cedar.NewEntityUID("Identity", "admin@example.com")
+	action := cedar.NewEntityUID("Action", "admin:register-target")
+	resource := cedar.NewEntityUID("Resource", "system")
+
+	principalAttrs := map[string]cedar.Value{
+		"email":  cedar.String("admin@example.com"),
+		"groups": cedar.NewSet(cedar.String("admins")),
+	}
+
+	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, nil)
+	if err != nil {
+		t.Fatalf("IsAuthorized failed: %v", err)
+	}
+	if !allowed {
+		t.Error("admin:register-target should be allowed with admins group")
+	}
+}
+
+func TestIsAuthorized_AdminManageTrust_DeniedWithoutAdminsGroup(t *testing.T) {
+	a, err := NewAuthorizer("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	principal := cedar.NewEntityUID("Identity", "user@example.com")
+	action := cedar.NewEntityUID("Action", "admin:manage-trust")
+	resource := cedar.NewEntityUID("Resource", "system")
+
+	allowed, err := a.IsAuthorized(principal, nil, action, resource, nil)
+	if err != nil {
+		t.Fatalf("IsAuthorized failed: %v", err)
+	}
+	if allowed {
+		t.Error("admin:manage-trust should be denied without admins group")
+	}
+}
+
+func TestIsAuthorized_AdminManageTrust_AllowedWithAdminsGroup(t *testing.T) {
+	a, err := NewAuthorizer("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	principal := cedar.NewEntityUID("Identity", "admin@example.com")
+	action := cedar.NewEntityUID("Action", "admin:manage-trust")
+	resource := cedar.NewEntityUID("Resource", "system")
+
+	principalAttrs := map[string]cedar.Value{
+		"email":  cedar.String("admin@example.com"),
+		"groups": cedar.NewSet(cedar.String("admins")),
+	}
+
+	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, nil)
+	if err != nil {
+		t.Fatalf("IsAuthorized failed: %v", err)
+	}
+	if !allowed {
+		t.Error("admin:manage-trust should be allowed with admins group")
+	}
+}
+
+func TestIsAuthorized_AdminRegisterTarget_ForbidCannotBeOverridden(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Try to override the forbid with a blanket permit
+	override := `permit(principal, action == Action::"admin:register-target", resource);`
+	if err := os.WriteFile(filepath.Join(tmpDir, "override.cedar"), []byte(override), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	a, err := NewAuthorizer(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	principal := cedar.NewEntityUID("Identity", "attacker@example.com")
+	action := cedar.NewEntityUID("Action", "admin:register-target")
+	resource := cedar.NewEntityUID("Resource", "system")
+
+	principalAttrs := map[string]cedar.Value{
+		"email":  cedar.String("attacker@example.com"),
+		"groups": cedar.NewSet(),
+	}
+
+	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, nil)
+	if err != nil {
+		t.Fatalf("IsAuthorized failed: %v", err)
+	}
+	if allowed {
+		t.Error("forbid should prevent directory policy from overriding admins group requirement")
 	}
 }
 

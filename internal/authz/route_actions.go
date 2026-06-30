@@ -24,6 +24,7 @@ var routeMappings = []routeMapping{
 	{"GET", "/api/ingest/jobs/", true, "read:status"},
 	{"POST", "/api/ingest", false, "publish"},
 	{"POST", "/api/import", false, "publish"},
+	{"POST", "/api/admin/targets", false, "admin:register-target"},
 }
 
 // MapRouteAction maps HTTP method and path to a Cedar action entity UID.

@@ -16,12 +16,22 @@ when { principal has groups && principal.groups.contains("publishers") };
 forbid(principal, action == Action::"publish", resource)
 unless { principal has groups && principal.groups.contains("publishers") };
 
-// Publish sub-actions — evaluated at handler level
-permit(principal, action == Action::"publish:registration", resource);
-permit(principal, action == Action::"publish:policy", resource);
-
+// Publish artifact — per-target publisher trust (safety floor: forbid prevents override)
 permit(principal, action == Action::"publish:artifact", resource)
 when { resource has publisher_trusted && resource.publisher_trusted };
 
 forbid(principal, action == Action::"publish:artifact", resource)
 unless { resource has publisher_trusted && resource.publisher_trusted };
+
+// Admin — admins group required (safety floors)
+permit(principal, action == Action::"admin:register-target", resource)
+when { principal has groups && principal.groups.contains("admins") };
+
+forbid(principal, action == Action::"admin:register-target", resource)
+unless { principal has groups && principal.groups.contains("admins") };
+
+permit(principal, action == Action::"admin:manage-trust", resource)
+when { principal has groups && principal.groups.contains("admins") };
+
+forbid(principal, action == Action::"admin:manage-trust", resource)
+unless { principal has groups && principal.groups.contains("admins") };
