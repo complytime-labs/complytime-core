@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/complytime-labs/complytime-core/internal/bus"
+	"github.com/complytime-labs/complytime-core/internal/receipt"
 )
 
 type staticReader struct {
@@ -120,71 +121,8 @@ func TestIngestWorker_EvidencePublishesEvent(t *testing.T) {
 	assert.Equal(t, "completed", status.Status)
 }
 
-func TestIngestWorker_TargetRegistrationUpdatesKV(t *testing.T) {
-	regYAML := []byte(`metadata:
-  type: TargetRegistration
-  id: reg-001
-  date: "2026-06-19T00:00:00Z"
-target:
-  id: tgt-smoke
-  name: Smoke Test Target
-  type: Software
-  trusted-publishers:
-    - issuer: https://token.actions.githubusercontent.com
-      sub_pattern: "repo:org/repo"
-`)
-
-	reader := &staticReader{data: map[uint64][]byte{0: regYAML}}
-	pub := &recordingPublisher{}
-	tracker := NewIngestTracker()
-
-	js := startIngestTestNATS(t)
-	ctx := context.Background()
-
-	targetStore, err := bus.NewTargetStoreKV(ctx, js)
-	require.NoError(t, err)
-	pubTrust, err := bus.NewPublisherTrustKV(ctx, js)
-	require.NoError(t, err)
-
-	stores := Stores{
-		Targets:           targetStore,
-		TrustedPublishers: pubTrust,
-		EventPublisher:    pub,
-		IngestTracker:     tracker,
-	}
-
-	tracker.Create("test-reg-1")
-
-	ref := bus.IngestRef{
-		JobID:    "test-reg-1",
-		LogIndex: 0,
-		PublisherIdentity: bus.PublisherIdentity{
-			Issuer: "https://issuer.example.com",
-			Sub:    "admin@complytime.dev",
-		},
-		Timestamp: time.Now(),
-	}
-
-	handler := IngestWorker(ctx, stores, pub, tracker, reader)
-
-	mockMsg := &fakeJSMsg{}
-	handler(ctx, ref, mockMsg)
-
-	assert.True(t, mockMsg.acked, "message should be acked")
-	assert.Len(t, pub.targetCalls, 1)
-	assert.Equal(t, "tgt-smoke", pub.targetCalls[0])
-
-	// Verify NATS KV was updated
-	target, err := targetStore.GetLatestTarget(ctx, "tgt-smoke", time.Now())
-	require.NoError(t, err)
-	require.NotNil(t, target)
-	assert.Equal(t, "Smoke Test Target", target.TargetName)
-
-	pubs, err := pubTrust.GetTrustedPublishers(ctx, "tgt-smoke")
-	require.NoError(t, err)
-	assert.Len(t, pubs, 1)
-	assert.Equal(t, "repo:org/repo", pubs[0].SubPattern)
-}
+// TestIngestWorker_TargetRegistrationUpdatesKV removed — TargetRegistration
+// handling moved to admin API (Task 7)
 
 func TestIngestWorker_MissingEntry_Naks(t *testing.T) {
 	reader := &staticReader{data: map[uint64][]byte{}}
@@ -245,235 +183,59 @@ func (m *fakeJSMsg) DoubleAck(_ context.Context) error         { return nil }
 // Satisfy the full interface — these aren't used in tests.
 var _ jetstream.Msg = (*fakeJSMsg)(nil)
 
-func TestHandleTargetRegistrationJS_UnauthorizedTrustModification(t *testing.T) {
-	// Initial registration with trusted publisher
-	initialReg := []byte(`metadata:
-  type: TargetRegistration
-  id: reg-001
-  date: "2026-06-19T00:00:00Z"
-target:
-  id: tgt-restricted
-  name: Restricted Target
-  type: Software
-  trusted-publishers:
-    - issuer: https://token.actions.githubusercontent.com
-      sub_pattern: "repo:org/repo"
-`)
-
-	// Attempt by unauthorized user to add another publisher
-	unauthorizedAdd := []byte(`metadata:
-  type: TargetRegistration
-  id: reg-002
-  date: "2026-06-19T01:00:00Z"
-target:
-  id: tgt-restricted
-  name: Restricted Target
-  type: Software
-  trusted-publishers:
-    - issuer: https://token.actions.githubusercontent.com
-      sub_pattern: "repo:attacker/malicious"
-`)
-
-	js := startIngestTestNATS(t)
-	ctx := context.Background()
-
-	targetStore, err := bus.NewTargetStoreKV(ctx, js)
-	require.NoError(t, err)
-	pubTrust, err := bus.NewPublisherTrustKV(ctx, js)
+func TestUnwrapEntry_Receipt(t *testing.T) {
+	content := []byte(`{"metadata":{"type":"EvaluationLog"},"target":{"id":"tgt-1"}}`)
+	canonical, digest, err := receipt.Canonicalize(content)
 	require.NoError(t, err)
 
-	tracker := NewIngestTracker()
-	pub := &recordingPublisher{}
-
-	// First registration by legitimate user
-	tracker.Create("job-1")
-	ref1 := bus.IngestRef{
-		JobID:    "job-1",
-		LogIndex: 0,
-		PublisherIdentity: bus.PublisherIdentity{
-			Issuer: "https://token.actions.githubusercontent.com",
-			Sub:    "repo:org/repo",
-		},
-		Timestamp: time.Now(),
-	}
-	outcome := handleTargetRegistrationJS(ctx, ref1, initialReg, targetStore, pubTrust, pub, tracker)
-	assert.Equal(t, outcomeAck, outcome, "initial registration should succeed")
-
-	// Verify initial publisher was added
-	pubs, err := pubTrust.GetTrustedPublishers(ctx, "tgt-restricted")
+	pub := receipt.Publisher{Issuer: "https://issuer.example.com", Subject: "repo:org/repo", Method: "jwt-channel"}
+	wrapped, err := receipt.Wrap(canonical, digest, pub, "EvaluationLog", "Software", time.Now())
 	require.NoError(t, err)
-	assert.Len(t, pubs, 1)
 
-	// Second registration attempt by unauthorized user
-	tracker.Create("job-2")
-	ref2 := bus.IngestRef{
-		JobID:    "job-2",
-		LogIndex: 1,
-		PublisherIdentity: bus.PublisherIdentity{
-			Issuer: "https://token.actions.githubusercontent.com",
-			Sub:    "repo:attacker/malicious",
-		},
-		Timestamp: time.Now(),
-	}
-	outcome = handleTargetRegistrationJS(ctx, ref2, unauthorizedAdd, targetStore, pubTrust, pub, tracker)
-	assert.Equal(t, outcomeTerm, outcome, "unauthorized trust modification should be terminated")
-
-	// Verify only the original publisher remains
-	pubs, err = pubTrust.GetTrustedPublishers(ctx, "tgt-restricted")
+	unwrapped, identity, isDSSE, err := unwrapEntry(wrapped)
 	require.NoError(t, err)
-	assert.Len(t, pubs, 1, "should still have exactly one publisher")
-	assert.Equal(t, "repo:org/repo", pubs[0].SubPattern)
-
-	// Verify the second job failed
-	status := tracker.Get("job-2")
-	require.NotNil(t, status)
-	assert.Equal(t, "failed", status.Status)
+	assert.False(t, isDSSE)
+	assert.JSONEq(t, string(canonical), string(unwrapped))
+	assert.Equal(t, "https://issuer.example.com", identity.Issuer)
+	assert.Equal(t, "repo:org/repo", identity.Sub)
+	assert.True(t, identity.Verified)
+	assert.Equal(t, "pipeline", identity.Type)
 }
 
-func TestHandleTargetRegistrationJS_AuthorizedTrustModification(t *testing.T) {
-	// Initial registration
-	initialReg := []byte(`metadata:
-  type: TargetRegistration
-  id: reg-001
-  date: "2026-06-19T00:00:00Z"
-target:
-  id: tgt-authorized
-  name: Authorized Target
-  type: Software
-  trusted-publishers:
-    - issuer: https://token.actions.githubusercontent.com
-      sub_pattern: "repo:org/repo"
-`)
+func TestUnwrapEntry_DSSE(t *testing.T) {
+	// DSSE envelope with base64-encoded JSON payload
+	payload := []byte(`{"type":"EvaluationLog"}`)
+	encodedPayload := "eyJ0eXBlIjoiRXZhbHVhdGlvbkxvZyJ9"
+	dsse := []byte(`{"payload":"` + encodedPayload + `","payloadType":"application/vnd.gemara+json","signatures":[{"sig":"abc"}]}`)
 
-	// Legitimate addition by existing trusted publisher
-	authorizedAdd := []byte(`metadata:
-  type: TargetRegistration
-  id: reg-002
-  date: "2026-06-19T01:00:00Z"
-target:
-  id: tgt-authorized
-  name: Authorized Target
-  type: Software
-  trusted-publishers:
-    - issuer: https://token.actions.githubusercontent.com
-      sub_pattern: "repo:org/another-repo"
-`)
-
-	js := startIngestTestNATS(t)
-	ctx := context.Background()
-
-	targetStore, err := bus.NewTargetStoreKV(ctx, js)
+	content, identity, isDSSE, err := unwrapEntry(dsse)
 	require.NoError(t, err)
-	pubTrust, err := bus.NewPublisherTrustKV(ctx, js)
-	require.NoError(t, err)
-
-	tracker := NewIngestTracker()
-	pub := &recordingPublisher{}
-
-	// Initial registration
-	tracker.Create("job-1")
-	ref1 := bus.IngestRef{
-		JobID:    "job-1",
-		LogIndex: 0,
-		PublisherIdentity: bus.PublisherIdentity{
-			Issuer: "https://token.actions.githubusercontent.com",
-			Sub:    "repo:org/repo",
-		},
-		Timestamp: time.Now(),
-	}
-	outcome := handleTargetRegistrationJS(ctx, ref1, initialReg, targetStore, pubTrust, pub, tracker)
-	assert.Equal(t, outcomeAck, outcome)
-
-	// Authorized addition by same publisher
-	tracker.Create("job-2")
-	ref2 := bus.IngestRef{
-		JobID:    "job-2",
-		LogIndex: 1,
-		PublisherIdentity: bus.PublisherIdentity{
-			Issuer: "https://token.actions.githubusercontent.com",
-			Sub:    "repo:org/repo",
-		},
-		Timestamp: time.Now(),
-	}
-	outcome = handleTargetRegistrationJS(ctx, ref2, authorizedAdd, targetStore, pubTrust, pub, tracker)
-	assert.Equal(t, outcomeAck, outcome, "authorized trust modification should succeed")
-
-	// Verify both publishers are present
-	pubs, err := pubTrust.GetTrustedPublishers(ctx, "tgt-authorized")
-	require.NoError(t, err)
-	assert.Len(t, pubs, 2, "should have two publishers after authorized addition")
+	assert.True(t, isDSSE)
+	assert.JSONEq(t, string(payload), string(content))
+	assert.Empty(t, identity.Sub)
 }
 
-func TestHandleTargetRegistrationJS_UnauthorizedTrustRemoval(t *testing.T) {
-	// Initial registration
-	initialReg := []byte(`metadata:
-  type: TargetRegistration
-  id: reg-001
-  date: "2026-06-19T00:00:00Z"
-target:
-  id: tgt-removal
-  name: Removal Test Target
-  type: Software
-  trusted-publishers:
-    - issuer: https://token.actions.githubusercontent.com
-      sub_pattern: "repo:org/repo"
-`)
+func TestUnwrapEntry_DSSE_RawURLEncoding(t *testing.T) {
+	// DSSE with RawURL base64 encoding (no padding)
+	payload := []byte(`{"type":"EvaluationLog"}`)
+	encodedPayload := "eyJ0eXBlIjoiRXZhbHVhdGlvbkxvZyJ9" // Same for this case, but without padding if needed
+	dsse := []byte(`{"payload":"` + encodedPayload + `","payloadType":"application/vnd.gemara+json","signatures":[{"sig":"abc"}]}`)
 
-	// Unauthorized removal attempt
-	unauthorizedRemoval := []byte(`metadata:
-  type: TargetRegistration
-  id: reg-002
-  date: "2026-06-19T01:00:00Z"
-target:
-  id: tgt-removal
-  name: Removal Test Target
-  type: Software
-  remove-publishers:
-    - issuer: https://token.actions.githubusercontent.com
-      sub_pattern: "repo:org/repo"
-`)
-
-	js := startIngestTestNATS(t)
-	ctx := context.Background()
-
-	targetStore, err := bus.NewTargetStoreKV(ctx, js)
+	content, identity, isDSSE, err := unwrapEntry(dsse)
 	require.NoError(t, err)
-	pubTrust, err := bus.NewPublisherTrustKV(ctx, js)
-	require.NoError(t, err)
-
-	tracker := NewIngestTracker()
-	pub := &recordingPublisher{}
-
-	// Initial registration
-	tracker.Create("job-1")
-	ref1 := bus.IngestRef{
-		JobID:    "job-1",
-		LogIndex: 0,
-		PublisherIdentity: bus.PublisherIdentity{
-			Issuer: "https://token.actions.githubusercontent.com",
-			Sub:    "repo:org/repo",
-		},
-		Timestamp: time.Now(),
-	}
-	outcome := handleTargetRegistrationJS(ctx, ref1, initialReg, targetStore, pubTrust, pub, tracker)
-	assert.Equal(t, outcomeAck, outcome)
-
-	// Unauthorized removal attempt
-	tracker.Create("job-2")
-	ref2 := bus.IngestRef{
-		JobID:    "job-2",
-		LogIndex: 1,
-		PublisherIdentity: bus.PublisherIdentity{
-			Issuer: "https://token.actions.githubusercontent.com",
-			Sub:    "repo:attacker/malicious",
-		},
-		Timestamp: time.Now(),
-	}
-	outcome = handleTargetRegistrationJS(ctx, ref2, unauthorizedRemoval, targetStore, pubTrust, pub, tracker)
-	assert.Equal(t, outcomeTerm, outcome, "unauthorized trust removal should be terminated")
-
-	// Verify the original publisher is still present
-	pubs, err := pubTrust.GetTrustedPublishers(ctx, "tgt-removal")
-	require.NoError(t, err)
-	assert.Len(t, pubs, 1, "publisher should not have been removed")
+	assert.True(t, isDSSE)
+	assert.JSONEq(t, string(payload), string(content))
+	assert.Empty(t, identity.Sub)
 }
+
+func TestUnwrapEntry_LegacyYAML(t *testing.T) {
+	legacy := []byte("metadata:\n  type: EvaluationLog\ntarget:\n  id: tgt-1\n")
+	content, identity, isDSSE, err := unwrapEntry(legacy)
+	require.NoError(t, err)
+	assert.False(t, isDSSE)
+	assert.Equal(t, legacy, content)
+	assert.Empty(t, identity.Sub)
+}
+
+// TestHandleTargetRegistrationJS_* tests removed — TargetRegistration
+// handling moved to admin API (Task 7)
