@@ -54,7 +54,19 @@ func AdminRegisterTargetHandler(appender TesseraAppender, verifier JWTVerifier, 
 		action := cedar.NewEntityUID("Action", "admin:register-target")
 		resource := cedar.NewEntityUID("Resource", "system")
 
-		allowed, err := authorizer.IsAuthorized(principal, nil, action, resource, nil)
+		// Extract groups from middleware session (OAuth2 Proxy sets X-Forwarded-Groups)
+		var principalAttrs map[string]cedar.Value
+		if sess, ok := auth.SessionFrom(ctx); ok && len(sess.Groups) > 0 {
+			groupSet := make([]cedar.Value, len(sess.Groups))
+			for i, g := range sess.Groups {
+				groupSet[i] = cedar.String(g)
+			}
+			principalAttrs = map[string]cedar.Value{
+				"groups": cedar.NewSet(groupSet...),
+			}
+		}
+
+		allowed, err := authorizer.IsAuthorized(principal, principalAttrs, action, resource, nil)
 		if err != nil {
 			slog.Error("cedar admin authorization error", "error", err)
 			httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
