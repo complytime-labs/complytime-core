@@ -14,4 +14,6 @@ func jsonError(c echo.Context, code int, msg string) error {
 func Register(g *echo.Group, s Stores) {
 	registerIngestRoutes(g, s)
 	registerImportRoute(g, s)
+	adminGroup := g.Group("/admin")
+	registerAdminRoutes(adminGroup, s)
 }
