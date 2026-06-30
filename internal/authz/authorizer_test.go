@@ -407,49 +407,6 @@ func TestIsAuthorized_AdminRegisterTarget_AllowedWithAdminsGroup(t *testing.T) {
 	}
 }
 
-func TestIsAuthorized_AdminManageTrust_DeniedWithoutAdminsGroup(t *testing.T) {
-	a, err := NewAuthorizer("")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	principal := cedar.NewEntityUID("Identity", "user@example.com")
-	action := cedar.NewEntityUID("Action", "admin:manage-trust")
-	resource := cedar.NewEntityUID("Resource", "system")
-
-	allowed, err := a.IsAuthorized(principal, nil, action, resource, nil)
-	if err != nil {
-		t.Fatalf("IsAuthorized failed: %v", err)
-	}
-	if allowed {
-		t.Error("admin:manage-trust should be denied without admins group")
-	}
-}
-
-func TestIsAuthorized_AdminManageTrust_AllowedWithAdminsGroup(t *testing.T) {
-	a, err := NewAuthorizer("")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	principal := cedar.NewEntityUID("Identity", "admin@example.com")
-	action := cedar.NewEntityUID("Action", "admin:manage-trust")
-	resource := cedar.NewEntityUID("Resource", "system")
-
-	principalAttrs := map[string]cedar.Value{
-		"email":  cedar.String("admin@example.com"),
-		"groups": cedar.NewSet(cedar.String("admins")),
-	}
-
-	allowed, err := a.IsAuthorized(principal, principalAttrs, action, resource, nil)
-	if err != nil {
-		t.Fatalf("IsAuthorized failed: %v", err)
-	}
-	if !allowed {
-		t.Error("admin:manage-trust should be allowed with admins group")
-	}
-}
-
 func TestIsAuthorized_AdminRegisterTarget_ForbidCannotBeOverridden(t *testing.T) {
 	tmpDir := t.TempDir()
 	// Try to override the forbid with a blanket permit

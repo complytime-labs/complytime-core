@@ -29,9 +29,3 @@ when { principal has groups && principal.groups.contains("admins") };
 
 forbid(principal, action == Action::"admin:register-target", resource)
 unless { principal has groups && principal.groups.contains("admins") };
-
-permit(principal, action == Action::"admin:manage-trust", resource)
-when { principal has groups && principal.groups.contains("admins") };
-
-forbid(principal, action == Action::"admin:manage-trust", resource)
-unless { principal has groups && principal.groups.contains("admins") };

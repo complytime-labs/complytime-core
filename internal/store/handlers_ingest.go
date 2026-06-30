@@ -85,10 +85,18 @@ func IngestAsyncHandler(pub IngestPublisher, tracker *IngestTracker, appender Te
 
 		format := receipt.DetectFormat(r.Header.Get("Content-Type"))
 
-		// DSSE envelopes skip artifact detection — structural validation only
-		if format != receipt.FormatDSSE {
-			typeStr := evidence.DetectArtifactTypeString(body)
-			if typeStr == "TargetRegistration" {
+		// Reject TargetRegistration regardless of format
+		if format == receipt.FormatDSSE {
+			if payload, err := receipt.DecodeDSSEPayload(body); err == nil {
+				if evidence.DetectArtifactTypeString(payload) == "TargetRegistration" {
+					httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{
+						"errors": []string{"target registration must use POST /api/admin/targets"},
+					})
+					return
+				}
+			}
+		} else {
+			if evidence.DetectArtifactTypeString(body) == "TargetRegistration" {
 				httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{
 					"errors": []string{"target registration must use POST /api/admin/targets"},
 				})

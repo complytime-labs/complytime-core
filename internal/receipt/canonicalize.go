@@ -9,9 +9,11 @@ import (
 	"fmt"
 )
 
-// Canonicalize applies RFC 8785 (JSON Canonicalization Scheme) to JSON input.
-// Returns the canonical form and its SHA-256 hex digest. Uses json.Number
-// preservation to avoid float64 round-trip artifacts.
+// Canonicalize produces a deterministic JSON form by unmarshaling and
+// re-marshaling with sorted keys. Returns the canonical bytes and SHA-256
+// hex digest. Not a full RFC 8785 implementation (no ECMAScript number
+// normalization or UTF-16 sort order), but sufficient for same-artifact
+// digest stability within complytime-core.
 func Canonicalize(jsonData []byte) ([]byte, string, error) {
 	var generic any
 	dec := json.NewDecoder(bytes.NewReader(jsonData))
