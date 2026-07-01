@@ -49,7 +49,7 @@ func TestIngestPipeline_EndToEnd(t *testing.T) {
 	pubTrust, err := bus.NewPublisherTrustKV(ctx, js)
 	require.NoError(t, err)
 
-	nbus, err := bus.Connect(ns.ClientURL())
+	nbus, err := bus.Connect(ns.ClientURL(), "")
 	require.NoError(t, err)
 	require.NoError(t, nbus.EnsureIngestStream(ctx, bus.IngestStreamConfig{}))
 
@@ -61,6 +61,7 @@ func TestIngestPipeline_EndToEnd(t *testing.T) {
 	var (
 		targetEvent   bus.TargetRegisteredEvent
 		evidenceEvent bus.EvidenceEvent
+		rawCEMsg      []byte
 		mu            sync.Mutex
 		targetCh      = make(chan struct{}, 1)
 		evidenceCh    = make(chan struct{}, 1)
@@ -69,7 +70,12 @@ func TestIngestPipeline_EndToEnd(t *testing.T) {
 	_, err = nc.Subscribe("core.target.registered", func(msg *nats.Msg) {
 		mu.Lock()
 		defer mu.Unlock()
-		_ = json.Unmarshal(msg.Data, &targetEvent)
+		parsed, parseErr := bus.ParseCloudEventData[bus.TargetRegisteredEvent](msg.Data)
+		if parseErr != nil {
+			t.Logf("parse target event error: %v", parseErr)
+			return
+		}
+		targetEvent = parsed
 		select {
 		case targetCh <- struct{}{}:
 		default:
@@ -80,7 +86,15 @@ func TestIngestPipeline_EndToEnd(t *testing.T) {
 	_, err = nc.Subscribe("core.evidence.>", func(msg *nats.Msg) {
 		mu.Lock()
 		defer mu.Unlock()
-		_ = json.Unmarshal(msg.Data, &evidenceEvent)
+		if rawCEMsg == nil {
+			rawCEMsg = append([]byte{}, msg.Data...)
+		}
+		parsed, parseErr := bus.ParseCloudEventData[bus.EvidenceEvent](msg.Data)
+		if parseErr != nil {
+			t.Logf("parse evidence event error: %v", parseErr)
+			return
+		}
+		evidenceEvent = parsed
 		select {
 		case evidenceCh <- struct{}{}:
 		default:
@@ -234,9 +248,19 @@ evaluations:
 	case <-evidenceCh:
 		mu.Lock()
 		assert.Equal(t, "nist-800-53", evidenceEvent.PolicyID)
+		assert.Equal(t, "demo-app", evidenceEvent.TargetID)
+		assert.Equal(t, "EvaluationLog", evidenceEvent.ArtifactType)
 		assert.Equal(t, 1, evidenceEvent.RecordCount)
-		t.Logf("Event received: core.evidence.%s → record_count=%d",
-			evidenceEvent.PolicyID, evidenceEvent.RecordCount)
+		t.Logf("Event received: core.evidence.%s → target=%s artifact_type=%s record_count=%d",
+			evidenceEvent.PolicyID, evidenceEvent.TargetID, evidenceEvent.ArtifactType, evidenceEvent.RecordCount)
+
+		// Verify the raw message is a valid CloudEvents envelope
+		assert.NotNil(t, rawCEMsg, "should have captured raw CloudEvents message")
+		rawStr := string(rawCEMsg)
+		assert.Contains(t, rawStr, `"specversion":"1.0"`)
+		assert.Contains(t, rawStr, `"type":"dev.complytime.evidence.ingested"`)
+		assert.Contains(t, rawStr, `"subject":"demo-app"`)
+		t.Logf("CloudEvents envelope verified: %s", rawStr)
 		mu.Unlock()
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for core.evidence.* event")

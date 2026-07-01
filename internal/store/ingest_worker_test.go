@@ -35,11 +35,11 @@ type recordingPublisher struct {
 	targetCalls   []string
 }
 
-func (p *recordingPublisher) PublishEvidence(policyID string, _ int) {
+func (p *recordingPublisher) PublishEvidence(policyID, _ string, _ string, _ int, _ uint64) {
 	p.evidenceCalls = append(p.evidenceCalls, policyID)
 }
-func (p *recordingPublisher) PublishDraftAuditLog(_, _, _ string) {}
-func (p *recordingPublisher) PublishPolicyNew(logIndex uint64, _ string) {
+func (p *recordingPublisher) PublishDraftAuditLog(_, _, _, _ string) {}
+func (p *recordingPublisher) PublishPolicyNew(logIndex uint64, _, _ string) {
 	p.policyCalls = append(p.policyCalls, logIndex)
 }
 func (p *recordingPublisher) PublishTargetRegistered(_ uint64, targetID, _ string) {

@@ -8,12 +8,12 @@ import (
 
 func TestNilBus_PublishEvidence_NoPanic(t *testing.T) {
 	var b *Bus
-	b.PublishEvidence("policy-1", 5)
+	b.PublishEvidence("policy-1", "target-1", "EvaluationLog", 5, 0)
 }
 
 func TestNilBus_PublishDraftAuditLog_NoPanic(t *testing.T) {
 	var b *Bus
-	b.PublishDraftAuditLog("draft-1", "policy-1", "summary")
+	b.PublishDraftAuditLog("draft-1", "policy-1", "target-1", "summary")
 }
 
 func TestNilBus_SubscribeEvidence_NoPanic(t *testing.T) {

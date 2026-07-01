@@ -49,10 +49,10 @@ func (m *mockTrustStoreWithCapture) InsertTrustedPublishers(_ context.Context, r
 
 type mockEventPublisher struct{}
 
-func (m *mockEventPublisher) PublishEvidence(_ string, _ int)                        {}
-func (m *mockEventPublisher) PublishDraftAuditLog(_, _, _ string)                    {}
-func (m *mockEventPublisher) PublishPolicyNew(_ uint64, _ string)                    {}
-func (m *mockEventPublisher) PublishTargetRegistered(_ uint64, _, _ string)          {}
+func (m *mockEventPublisher) PublishEvidence(_, _, _ string, _ int, _ uint64) {}
+func (m *mockEventPublisher) PublishDraftAuditLog(_, _, _, _ string)          {}
+func (m *mockEventPublisher) PublishPolicyNew(_ uint64, _, _ string)          {}
+func (m *mockEventPublisher) PublishTargetRegistered(_ uint64, _, _ string)   {}
 
 // ── Admin handler tests ────────────────────────────────────────────────────
 

@@ -123,7 +123,7 @@ func IngestWorker(
 			applyOutcome(msg, handleEvidenceIngestJS(ref, content, artifactType, pub, tracker))
 		case gemara.PolicyArtifact, gemara.ControlCatalogArtifact, gemara.ThreatCatalogArtifact,
 			gemara.RiskCatalogArtifact, gemara.GuidanceCatalogArtifact, gemara.MappingDocumentArtifact:
-			applyOutcome(msg, handleArtifactEventJS(ref, artifactType, pub, tracker))
+			applyOutcome(msg, handleArtifactEventJS(ref, content, artifactType, pub, tracker))
 		default:
 			tracker.Fail(ref.JobID, fmt.Sprintf("unsupported artifact type: %s", artifactType))
 			_ = msg.Term()
@@ -150,9 +150,10 @@ func handleEvidenceIngestJS(
 	tracker *IngestTracker,
 ) ingestOutcome {
 	policyID := evidence.DetectPolicyID(yaml)
+	targetID := evidence.DetectTargetID(yaml)
 
 	if pub != nil && policyID != "" {
-		pub.PublishEvidence(policyID, 1)
+		pub.PublishEvidence(policyID, targetID, artifactType.String(), 1, ref.LogIndex)
 	}
 
 	tracker.Complete(ref.JobID, 1, policyID)
@@ -166,14 +167,16 @@ func handleEvidenceIngestJS(
 
 func handleArtifactEventJS(
 	ref bus.IngestRef,
+	content []byte,
 	artifactType gemara.ArtifactType,
 	pub EventPublisher,
 	tracker *IngestTracker,
 ) ingestOutcome {
 	artType := artifactType.String()
+	targetID := evidence.DetectTargetID(content)
 
 	if artifactType == gemara.PolicyArtifact && pub != nil {
-		pub.PublishPolicyNew(ref.LogIndex, ref.JobID)
+		pub.PublishPolicyNew(ref.LogIndex, ref.JobID, targetID)
 	}
 
 	tracker.CompleteArtifact(ref.JobID, ref.JobID, artType)
