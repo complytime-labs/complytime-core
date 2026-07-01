@@ -81,7 +81,7 @@ Environment variables:
 		os.Exit(1)
 	}
 
-	bus, busErr := eventbus.Connect(cfg.NatsURL)
+	bus, busErr := eventbus.Connect(cfg.NatsURL, cfg.CloudEventsSource)
 	if busErr != nil {
 		slog.Error("nats connection failed", "error", busErr)
 		os.Exit(1)
