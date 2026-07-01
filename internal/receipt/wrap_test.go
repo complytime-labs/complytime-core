@@ -1,9 +1,9 @@
-// internal/receipt/wrap_test.go
+// SPDX-License-Identifier: Apache-2.0
+
 package receipt_test
 
 import (
 	"bytes"
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -26,17 +26,16 @@ func TestWrap_ProducesValidStatement(t *testing.T) {
 	data, err := receipt.Wrap(canonical, digest, pub, "EvaluationLog", "Software", now)
 	require.NoError(t, err)
 
-	var stmt receipt.Statement
-	require.NoError(t, json.Unmarshal(data, &stmt))
-	assert.Equal(t, receipt.StatementType, stmt.Type)
-	assert.Equal(t, receipt.PredicateType, stmt.PredicateType)
-	assert.Len(t, stmt.Subject, 1)
-	assert.Equal(t, "EvaluationLog/tgt-1", stmt.Subject[0].Name)
-	assert.Equal(t, digest, stmt.Subject[0].Digest["sha256"])
-	assert.Equal(t, digest, stmt.Predicate.ContentDigest["sha256"])
-	assert.Equal(t, "application/json", stmt.Predicate.ContentFormat)
-	assert.Equal(t, "Software", stmt.Predicate.AuthorType)
-	assert.Equal(t, pub.Issuer, stmt.Predicate.Publisher.Issuer)
+	assert.True(t, receipt.IsReceipt(data))
+	assert.Contains(t, string(data), `"_type":"https://in-toto.io/Statement/v1"`)
+	assert.Contains(t, string(data), `"EvaluationLog/tgt-1"`)
+
+	pred, err := receipt.Unwrap(data)
+	require.NoError(t, err)
+	assert.Equal(t, digest, pred.ContentDigest["sha256"])
+	assert.Equal(t, "application/json", pred.ContentFormat)
+	assert.Equal(t, "Software", pred.AuthorType)
+	assert.Equal(t, pub.Issuer, pred.Publisher.Issuer)
 }
 
 func TestWrap_ContentPreservedAsRawJSON(t *testing.T) {
@@ -48,9 +47,9 @@ func TestWrap_ContentPreservedAsRawJSON(t *testing.T) {
 	data, err := receipt.Wrap(canonical, digest, pub, "EvaluationLog", "", time.Now())
 	require.NoError(t, err)
 
-	var stmt receipt.Statement
-	require.NoError(t, json.Unmarshal(data, &stmt))
-	assert.JSONEq(t, `{"alpha":1,"beta":"two"}`, string(stmt.Predicate.Content))
+	pred, err := receipt.Unwrap(data)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"alpha":1,"beta":"two"}`, string(pred.Content))
 }
 
 func TestUnwrap_VerifiesDigest(t *testing.T) {
@@ -79,8 +78,8 @@ func TestUnwrap_RejectsCorruptedContent(t *testing.T) {
 	data, err := receipt.Wrap(canonical, digest, pub, "EvaluationLog", "", time.Now())
 	require.NoError(t, err)
 
-	// Tamper with content field specifically
-	tampered := bytes.Replace(data, []byte(`{"metadata":{"type":"EvaluationLog"}}`), []byte(`{"metadata":{"type":"TAMPERED"}}`), 1)
+	// Corrupt the content to simulate tampering — change a value in the stored content
+	tampered := bytes.ReplaceAll(data, []byte(`EvaluationLog`), []byte(`TamperedValue`))
 	_, err = receipt.Unwrap(tampered)
 	assert.ErrorContains(t, err, "digest mismatch")
 }

@@ -1,46 +1,43 @@
-// internal/receipt/receipt_test.go
+// SPDX-License-Identifier: Apache-2.0
+
 package receipt_test
 
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/complytime-labs/complytime-core/internal/receipt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestStatement_MarshalJSON(t *testing.T) {
-	stmt := receipt.Statement{
-		Type: receipt.StatementType,
-		Subject: []receipt.Subject{{
-			Name:   "EvaluationLog/target-123",
-			Digest: map[string]string{"sha256": "abc123"},
-		}},
-		PredicateType: receipt.PredicateType,
-		Predicate: receipt.Predicate{
-			Content:       json.RawMessage(`{"metadata":{"type":"EvaluationLog"}}`),
-			ContentDigest: map[string]string{"sha256": "abc123"},
-			ContentFormat: "application/json",
-			Publisher: receipt.Publisher{
-				Issuer:  "https://token.actions.githubusercontent.com",
-				Subject: "repo:acme/myapp",
-				Method:  "jwt-channel",
-			},
-			ArtifactType: "EvaluationLog",
-			AuthorType:   "Software",
-		},
-	}
-
-	data, err := json.Marshal(stmt)
+func TestWrapProducesValidStatement(t *testing.T) {
+	content := []byte(`{"metadata":{"type":"EvaluationLog"},"target":{"id":"target-123"}}`)
+	canonical, digest, err := receipt.Canonicalize(content)
 	require.NoError(t, err)
 
-	var roundTrip receipt.Statement
-	require.NoError(t, json.Unmarshal(data, &roundTrip))
-	assert.Equal(t, receipt.StatementType, roundTrip.Type)
-	assert.Equal(t, receipt.PredicateType, roundTrip.PredicateType)
-	assert.Equal(t, "abc123", roundTrip.Predicate.ContentDigest["sha256"])
-	assert.Equal(t, "repo:acme/myapp", roundTrip.Predicate.Publisher.Subject)
+	pub := receipt.Publisher{
+		Issuer:  "https://token.actions.githubusercontent.com",
+		Subject: "repo:acme/myapp",
+		Method:  "jwt-channel",
+	}
+	now := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	data, err := receipt.Wrap(canonical, digest, pub, "EvaluationLog", "Software", now)
+	require.NoError(t, err)
+
+	// Verify it's a valid in-toto v1 Statement
+	assert.True(t, receipt.IsReceipt(data))
+	assert.Contains(t, string(data), `"_type":"https://in-toto.io/Statement/v1"`)
+	assert.Contains(t, string(data), `"predicateType":"https://complytime.dev/gemara-receipt/v1"`)
+
+	// Round-trip through Unwrap
+	pred, err := receipt.Unwrap(data)
+	require.NoError(t, err)
+	assert.Equal(t, digest, pred.ContentDigest["sha256"])
+	assert.Equal(t, "repo:acme/myapp", pred.Publisher.Subject)
+	assert.Equal(t, "EvaluationLog", pred.ArtifactType)
+	assert.Equal(t, "Software", pred.AuthorType)
 }
 
 func TestPublisher_JWTChannel(t *testing.T) {

@@ -4,8 +4,6 @@ package store
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -51,16 +49,9 @@ func unwrapEntry(data []byte) (content []byte, pub bus.PublisherIdentity, isDSSE
 	}
 
 	if receipt.IsDSSE(data) {
-		var env receipt.DSSEEnvelope
-		if err := json.Unmarshal(data, &env); err != nil {
-			return nil, bus.PublisherIdentity{}, true, fmt.Errorf("parse DSSE: %w", err)
-		}
-		payload, err := base64.StdEncoding.DecodeString(env.Payload)
+		payload, err := receipt.DecodeDSSEPayload(data)
 		if err != nil {
-			payload, err = base64.RawURLEncoding.DecodeString(env.Payload)
-			if err != nil {
-				return nil, bus.PublisherIdentity{}, true, fmt.Errorf("decode DSSE payload: %w", err)
-			}
+			return nil, bus.PublisherIdentity{}, true, err
 		}
 		return payload, bus.PublisherIdentity{}, true, nil
 	}

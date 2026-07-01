@@ -105,9 +105,26 @@ Independent verification daemon that polls Tessera and validates evidence qualit
 | **JWT Bearer** | `POST /api/ingest` additionally accepts OIDC JWT tokens verified via JWKS discovery. For CI/CD pipelines and scanning tools. |
 | **Cedar middleware** | Default-deny. Every authenticated request is evaluated against Cedar policies. Unmapped routes return 403. |
 | **Cedar publish gate** | `POST /api/ingest` and `POST /api/import` require `publishers` group membership (Cedar `Action::"publish"`). |
-| **Cedar target trust** | Ingest handler evaluates `publish:artifact` (target-scoped publisher trust), `publish:registration`, or `publish:policy` based on artifact type. |
-| **Forbid safety floors** | Embedded `forbid/unless` rules for `read:entries` (auditors), `publish` (publishers), and `publish:artifact` (target trust) cannot be overridden by directory policies. |
+| **Cedar target trust** | Ingest handler evaluates `publish:artifact` with per-target publisher trust for all artifact types. |
+| **Cedar admin** | Admin API evaluates `admin:register-target` requiring `admins` group membership. |
+| **Forbid safety floors** | Embedded `forbid/unless` rules for `read:entries` (auditors), `publish` (publishers), `publish:artifact` (target trust), and `admin:register-target` (admins) cannot be overridden by directory policies. |
 | **Internal listener** | `:8081` serves tlog-tiles without auth for witness. Network-isolated by default (127.0.0.1). |
+
+## Receipt Model
+
+Non-DSSE submissions are normalized to canonical JSON and wrapped in an [in-toto v1 Statement](https://github.com/in-toto/attestation/tree/main/spec/v1) with predicate type `https://complytime.dev/gemara-receipt/v1`. The receipt durably binds channel identity to content in the transparency log.
+
+| Field | Description |
+|:--|:--|
+| `content` | Inline canonical JSON (Gemara artifact) |
+| `contentDigest` | SHA-256 of the canonical form |
+| `publisher` | Channel identity from verified JWT (issuer, subject, method) |
+| `authorType` | Self-declared provenance claim from `metadata.author.type` |
+| `artifactType` | Gemara artifact type from `metadata.type` |
+
+DSSE-signed envelopes (`Content-Type: application/vnd.dsse+json`) are stored as-is using the [DSSE](https://github.com/secure-systems-lab/dsse) envelope format. The producer's signing identity is in the envelope. Signature verification is a consumer-edge concern.
+
+Size limit: 256 KiB per submission. Gemara artifacts are structured summaries, not raw evidence.
 
 ## Data Flow
 
@@ -132,13 +149,13 @@ sequenceDiagram
   I->>KV: Resolve publisher trust for target
   I->>Cedar: handler: Action::"publish:artifact" + publisher_trusted?
   Cedar-->>I: permit/deny
-  I->>T: Append to log → log_index
+  I->>I: Normalize to canonical JSON, wrap in receipt
+  I->>T: Append receipt to log → log_index
   I->>N: publish core.ingest
   I->>C: 202 Accepted {job_id, log_index}
   T->>W: Witness cosigns checkpoint (via :8081)
-  N->>I: worker detects artifact type
-  I->>N: publish core.evidence / core.policy / core.target
-  I->>KV: update publisher trust (TargetRegistration)
+  N->>I: worker unwraps receipt, detects artifact type
+  I->>N: publish CloudEvent (core.evidence / core.policy)
   M->>T: poll for new entries
   M->>M: verify schema, publisher, references
   M->>N: publish verification attestation
@@ -161,6 +178,7 @@ sequenceDiagram
 | GET | `/api/ingest/jobs/:job_id` | `read:status` | Any authenticated |
 | POST | `/api/ingest` | `publish` | Publishers group + target trust |
 | POST | `/api/import` | `publish` | Publishers group |
+| POST | `/api/admin/targets` | `admin:register-target` | Admins group |
 
 ### Internal listener (:8081, network-isolated)
 
@@ -173,12 +191,15 @@ sequenceDiagram
 
 ## NATS Subjects
 
-| Subject | Use |
-|:--|:--|
-| `core.ingest` | Async ingest worker (JetStream durable consumer) |
-| `core.evidence.<policy_id>` | Evidence ingested for a policy |
-| `core.policy.new` | New Policy artifact ingested |
-| `core.target.registered` | New TargetRegistration ingested |
+| Subject | CloudEvents type | Use |
+|:--|:--|:--|
+| `core.ingest` | (internal, not CloudEvents) | Async ingest worker (JetStream durable consumer) |
+| `core.evidence.<policy_id>` | `dev.complytime.evidence.ingested` | Evidence ingested for a policy |
+| `core.policy.new` | `dev.complytime.policy.imported` | New Policy artifact ingested |
+| `core.target.registered` | `dev.complytime.target.registered` | Target registered via admin API |
+| `core.draft.<policy_id>` | `dev.complytime.auditlog.drafted` | Draft audit log created |
+
+All public events use [CloudEvents v1.0](https://cloudevents.io) structured-mode JSON envelopes. The `subject` attribute is the target ID. Source is configurable via `CLOUDEVENTS_SOURCE` (default: `https://complytime.dev/core`).
 
 ## NATS KV Buckets
 
@@ -207,6 +228,7 @@ Both are materialized views of TargetRegistration entries in Tessera. Rebuildabl
 | `INTERNAL_LISTEN_HOST` | No | Internal listener bind address (default: 127.0.0.1) |
 | `CEDAR_POLICY_DIR` | No | Directory with additional `.cedar` policy files (merged with embedded defaults) |
 | `CEDAR_POLL_INTERVAL` | No | Policy directory poll interval (default: 30s) |
+| `CLOUDEVENTS_SOURCE` | No | CloudEvents source URI (default: `https://complytime.dev/core`) |
 | `CORS_ORIGINS` | No | Comma-separated allowed origins |
 
 ## Removed Query Endpoints (moved to CrossCodex)

@@ -1,4 +1,5 @@
-// internal/receipt/receipt.go
+// SPDX-License-Identifier: Apache-2.0
+
 package receipt
 
 import (
@@ -10,20 +11,6 @@ const (
 	StatementType = "https://in-toto.io/Statement/v1"
 	PredicateType = "https://complytime.dev/gemara-receipt/v1"
 )
-
-// Statement is an in-toto v1 Statement wrapping a Gemara receipt.
-type Statement struct {
-	Type          string    `json:"_type"`
-	Subject       []Subject `json:"subject"`
-	PredicateType string    `json:"predicateType"`
-	Predicate     Predicate `json:"predicate"`
-}
-
-// Subject identifies the artifact by name and content digest.
-type Subject struct {
-	Name   string            `json:"name"`
-	Digest map[string]string `json:"digest"`
-}
 
 // Predicate is the gemara-receipt/v1 predicate binding channel identity to content.
 type Predicate struct {
