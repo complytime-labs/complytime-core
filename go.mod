@@ -11,7 +11,7 @@ require (
 	github.com/labstack/echo/v4 v4.15.4
 	github.com/lestrrat-go/jwx/v2 v2.1.6
 	github.com/minio/minio-go/v7 v7.2.0
-	github.com/nats-io/nats-server/v2 v2.14.2
+	github.com/nats-io/nats-server/v2 v2.14.3
 	github.com/nats-io/nats.go v1.52.0
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
