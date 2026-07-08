@@ -514,12 +514,13 @@ controls:
         applicability: [all]
         state: Active
   - id: CTRL-AC-07
-    title: Trust Modification Authorization
+    title: Admin API Target Registration Authorization
     objective: >-
-      Modification of trusted publisher lists for existing targets requires
-      the caller to be an existing trusted publisher for that target. New
-      target registrations with no prior publishers are exempt. This prevents
-      privilege escalation from target registration to evidence publication.
+      Target registration is separated from the ingest pipeline into a
+      dedicated admin API (POST /api/admin/targets) requiring the admins
+      group. Cedar admin:register-target with a forbid safety floor ensures
+      this cannot be bypassed by directory-added policies. The ingest
+      endpoint rejects TargetRegistration artifacts (both raw and DSSE-wrapped).
     group: access-control
     threats:
       - reference-id: tlog-threats
@@ -530,16 +531,20 @@ controls:
     assessment-requirements:
       - id: CTRL-AC-07.1
         text: >-
-          A TargetRegistration that adds trusted publishers to a target with
-          existing publishers MUST be rejected if the caller is not an existing
-          trusted publisher for that target.
+          POST /api/admin/targets without admins group membership MUST
+          receive HTTP 403.
         applicability: [all]
         state: Active
       - id: CTRL-AC-07.2
         text: >-
-          A TargetRegistration that adds trusted publishers to a new target
-          (no existing publishers) MUST be accepted from any authenticated
-          publisher.
+          POST /api/ingest with a TargetRegistration artifact (any format)
+          MUST receive HTTP 400 directing the caller to the admin API.
+        applicability: [all]
+        state: Active
+      - id: CTRL-AC-07.3
+        text: >-
+          A directory-added permit for admin:register-target without the
+          admins group condition MUST NOT override the embedded forbid.
         applicability: [all]
         state: Active
   - id: CTRL-AC-08
