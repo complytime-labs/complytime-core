@@ -32,7 +32,7 @@ flowchart TB
   subgraph Ingest["Ingest Service — cmd/ingest"]
     subgraph Primary[":8080 — authenticated"]
       Cedar["Cedar authz middleware"]
-      Echo["Echo — /api/ingest, /api/import, tlog-tiles"]
+      Echo["Echo — /api/ingest, /api/import, /api/admin, tlog-tiles"]
     end
     subgraph Internal[":8081 — internal only"]
       IntTiles["tlog-tiles (no auth)"]
@@ -78,7 +78,7 @@ Accepts Gemara artifacts, appends to Tessera, publishes NATS events. Serves the 
 | Transparency | Tessera — embedded Go library, POSIX storage, cosigned checkpoints |
 | Publisher trust | NATS KV bucket `publisher-trust` + Cedar `publish:artifact` evaluation |
 | Target registry | NATS KV bucket `targets-registry` |
-| Events | NATS JetStream — async ingest worker, evidence/policy/target events |
+| Events | NATS JetStream — CloudEvents v1.0 envelopes, async ingest worker |
 | Auth | OAuth2 Proxy `X-Forwarded-*` headers + JWT bearer (OIDC JWKS) for publish |
 | tlog-tiles (:8080) | `/checkpoint`, `/tile/*`, `/log/witnessed/:index` — authenticated, Cedar-gated |
 | tlog-tiles (:8081) | Same endpoints — unauthenticated, network-isolated for witness |
@@ -106,8 +106,53 @@ Independent verification daemon that polls Tessera and validates evidence qualit
 | **Cedar middleware** | Default-deny. Every authenticated request is evaluated against Cedar policies. Unmapped routes return 403. |
 | **Cedar publish gate** | `POST /api/ingest` and `POST /api/import` require `publishers` group membership (Cedar `Action::"publish"`). |
 | **Cedar target trust** | Ingest handler evaluates `publish:artifact` (target-scoped publisher trust), `publish:registration`, or `publish:policy` based on artifact type. |
-| **Forbid safety floors** | Embedded `forbid/unless` rules for `read:entries` (auditors), `publish` (publishers), and `publish:artifact` (target trust) cannot be overridden by directory policies. |
+| **Cedar admin gate** | `POST /api/admin/targets` requires `admins` group membership (Cedar `Action::"admin:register-target"`). |
+| **Forbid safety floors** | Embedded `forbid/unless` rules for `read:entries`, `publish`, `publish:artifact`, and `admin:register-target` cannot be overridden by directory policies. |
 | **Internal listener** | `:8081` serves tlog-tiles without auth for witness. Network-isolated by default (127.0.0.1). |
+
+## Ingest Pipeline
+
+Ingest uses a two-step pipeline to decouple HTTP response latency from Tessera append latency.
+
+**Step 1 — HTTP handler** (`POST /api/ingest`):
+1. Authenticate JWT and evaluate Cedar `publish` gate.
+2. Enforce 256 KiB body limit.
+3. Detect submission format from `Content-Type` header (YAML, JSON, or DSSE).
+4. For DSSE envelopes: extract the payload and resolve the target for Cedar `publish:artifact` evaluation.
+5. Evaluate Cedar `publish:artifact` with per-target publisher trust from NATS KV.
+6. Publish the raw submission to NATS JetStream (`core.ingest.raw`) with a job ID.
+7. Return `202 Accepted` with `{job_id, log_index: null}`.
+
+**Step 2 — Ingest worker** (JetStream consumer on `core.ingest.raw`):
+1. Normalize submission to canonical JSON (RFC 8785 key ordering, deterministic digest).
+2. Wrap in an in-toto v1 Statement with a `gemara-receipt/v1` predicate, binding the publisher's JWT claims to the content digest. DSSE envelopes are stored as-is rather than re-wrapped.
+3. Append the receipt (or DSSE envelope) to Tessera.
+4. Publish a typed CloudEvents v1.0 event to the appropriate NATS subject based on artifact type.
+5. Update the job status in the ingest tracker.
+
+The Tessera log entry is always either an in-toto receipt or a DSSE envelope — never a raw artifact. The monitor and downstream consumers call `unwrapEntry` to recover the artifact from either format.
+
+### Content Formats
+
+| `Content-Type` | Handling |
+|:--|:--|
+| `application/yaml` (default) | Parse YAML → canonical JSON → receipt wrap → Tessera |
+| `application/json` | Canonical JSON → receipt wrap → Tessera |
+| `application/vnd.dsse+json` | Validate envelope structure → Tessera (no re-wrap) |
+
+### Receipt Package (`internal/receipt`)
+
+The receipt package provides the canonical JSON and in-toto wrapping layer.
+
+| Component | Purpose |
+|:--|:--|
+| `Canonicalize` | Deterministic JSON with sorted keys + SHA-256 digest |
+| `Wrap` | Builds an in-toto v1 Statement with a `gemara-receipt/v1` predicate |
+| `Unwrap` | Extracts and verifies the predicate from a stored receipt |
+| `DetectFormat` | Maps `Content-Type` header to `FormatYAML`, `FormatJSON`, or `FormatDSSE` |
+| `ValidateDSSE` | Structural validation of DSSE envelopes (does not verify signatures) |
+
+The receipt predicate records the publisher's OIDC issuer, subject, and authentication method alongside the artifact digest. Tamper-evidence comes from Tessera's Merkle proofs, not from the receipt itself.
 
 ## Data Flow
 
@@ -123,7 +168,7 @@ sequenceDiagram
   participant W as Witness
   participant M as Monitor
 
-  C->>P: POST /api/ingest (YAML + JWT)
+  C->>P: POST /api/ingest (artifact + JWT)
   P->>P: OIDC authentication
   P->>I: X-Forwarded-Email/Groups + request
   I->>Cedar: middleware: Action::"publish" + publishers group?
@@ -132,13 +177,13 @@ sequenceDiagram
   I->>KV: Resolve publisher trust for target
   I->>Cedar: handler: Action::"publish:artifact" + publisher_trusted?
   Cedar-->>I: permit/deny
-  I->>T: Append to log → log_index
-  I->>N: publish core.ingest
-  I->>C: 202 Accepted {job_id, log_index}
+  I->>N: publish to core.ingest.raw (job_id)
+  I->>C: 202 Accepted {job_id}
+  N->>I: worker: dequeue from core.ingest.raw
+  I->>I: normalize → wrap receipt (or keep DSSE)
+  I->>T: Append receipt/DSSE to log
+  I->>N: publish CloudEvent (evidence/policy/target)
   T->>W: Witness cosigns checkpoint (via :8081)
-  N->>I: worker detects artifact type
-  I->>N: publish core.evidence / core.policy / core.target
-  I->>KV: update publisher trust (TargetRegistration)
   M->>T: poll for new entries
   M->>M: verify schema, publisher, references
   M->>N: publish verification attestation
@@ -159,8 +204,9 @@ sequenceDiagram
 | GET | `/api/config` | `read:status` | Any authenticated |
 | GET | `/api/system-info` | `read:status` | Any authenticated |
 | GET | `/api/ingest/jobs/:job_id` | `read:status` | Any authenticated |
-| POST | `/api/ingest` | `publish` | Publishers group + target trust |
+| POST | `/api/ingest` | `publish` + `publish:artifact` | Publishers group + target trust |
 | POST | `/api/import` | `publish` | Publishers group |
+| POST | `/api/admin/targets` | `admin:register-target` | Admins group |
 
 ### Internal listener (:8081, network-isolated)
 
@@ -175,10 +221,21 @@ sequenceDiagram
 
 | Subject | Use |
 |:--|:--|
-| `core.ingest` | Async ingest worker (JetStream durable consumer) |
-| `core.evidence.<policy_id>` | Evidence ingested for a policy |
-| `core.policy.new` | New Policy artifact ingested |
-| `core.target.registered` | New TargetRegistration ingested |
+| `core.ingest.raw` | Async ingest worker (JetStream durable consumer) |
+| `core.evidence.<policy_id>` | Evidence ingested for a policy (CloudEvents envelope) |
+| `core.policy.new` | New Policy artifact ingested (CloudEvents envelope) |
+| `core.target.registered` | New TargetRegistration ingested (CloudEvents envelope) |
+
+All published events use CloudEvents v1.0 structured-mode JSON (`dev.complytime.*` event types). The monitor and downstream subscribers use `ParseCloudEventData` which falls back to plain JSON for backward compatibility.
+
+### CloudEvents Types
+
+| Event Type | Subject | Trigger |
+|:--|:--|:--|
+| `dev.complytime.evidence.ingested` | `core.evidence.<policy_id>` | EvaluationLog or AuditLog ingested |
+| `dev.complytime.policy.imported` | `core.policy.new` | Policy artifact imported |
+| `dev.complytime.target.registered` | `core.target.registered` | TargetRegistration via admin API |
+| `dev.complytime.auditlog.drafted` | `core.evidence.<policy_id>` | AuditLog draft ingested |
 
 ## NATS KV Buckets
 
@@ -187,7 +244,7 @@ sequenceDiagram
 | `publisher-trust` | `targets.<target_id>` | JSON array of publisher allowlist entries | Authorization at ingest boundary |
 | `targets-registry` | `<target_id>` | JSON target registration | Target metadata |
 
-Both are materialized views of TargetRegistration entries in Tessera. Rebuildable from the log on bucket loss.
+Both are materialized views of TargetRegistration entries in Tessera. Rebuildable from the log on bucket loss. The admin API (`POST /api/admin/targets`) is the authoritative write path for registrations.
 
 ## Configuration
 
@@ -245,6 +302,9 @@ cd ../.. && ./scripts/smoke-test.sh
 
 # Integration tests (Ginkgo, in-process Tessera)
 go test -tags integration ./internal/e2e/ -run "Transparency"
+
+# Demo (requires running NATS)
+go run ./cmd/demo -target examples/demo-target.yaml -evidence examples/demo-evidence.yaml
 ```
 
 ## Related Docs
@@ -254,4 +314,5 @@ go test -tags integration ./internal/e2e/ -run "Transparency"
 | [ADRs](decisions/) | Architecture decisions |
 | [ADR 0044: Remove PostgreSQL](decisions/remove-postgresql.md) | Why and how Postgres was removed |
 | [ADR 0045: Testing Strategy](decisions/testing-strategy.md) | Five test layers |
+| [ADR 0046: Unified Ingest Pipeline](decisions/unified-ingest-pipeline.md) | Two-step pipeline design |
 | [API spec](api/openapi.yaml) | OpenAPI 3.1 definition |
