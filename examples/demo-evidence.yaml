@@ -1,0 +1,26 @@
+metadata:
+  type: EvaluationLog
+  id: demo-eval-001
+  version: 1.0.0
+  author:
+    name: demo-scanner
+    type: Software
+    version: 1.0.0
+  date: "2026-07-01T00:00:00Z"
+  mapping-references:
+    - id: nist-800-53
+      title: NIST 800-53
+      version: "rev5"
+target:
+  id: demo-app
+  name: Demo Application
+  type: web-service
+evaluations:
+  - control:
+      entry-id: AC-1
+      reference-id: nist-800-53
+    assessment-logs:
+      - result: Passed
+        start: "2026-07-01T00:00:00Z"
+        requirement:
+          entry-id: AC-1.1

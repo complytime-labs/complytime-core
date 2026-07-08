@@ -1,0 +1,13 @@
+metadata:
+  type: TargetRegistration
+  id: demo-target-reg
+  date: "2026-07-01T00:00:00Z"
+target:
+  id: demo-app
+  name: Demo Application
+  type: web-service
+  trusted-publishers:
+    - issuer: http://localhost:8080
+      sub_pattern: "demo-publisher"
+dimensions:
+  technologies: [go]
