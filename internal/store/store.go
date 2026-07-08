@@ -19,9 +19,9 @@ type TesseraAppender interface {
 
 // EventPublisher emits NATS events for evidence, policies, and targets.
 type EventPublisher interface {
-	PublishEvidence(policyID string, count int)
-	PublishDraftAuditLog(draftID, policyID, summary string)
-	PublishPolicyNew(logIndex uint64, policyID string)
+	PublishEvidence(policyID, targetID, artifactType string, count int, logIndex uint64)
+	PublishDraftAuditLog(draftID, policyID, targetID, summary string)
+	PublishPolicyNew(logIndex uint64, policyID, targetID string)
 	PublishTargetRegistered(logIndex uint64, targetID, registeredBy string)
 }
 

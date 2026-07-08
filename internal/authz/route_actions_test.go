@@ -19,6 +19,7 @@ func TestMapRouteAction_AllKnownRoutes(t *testing.T) {
 		{"GET", "/api/ingest/jobs/abc-123", "read:status"},
 		{"POST", "/api/ingest", "publish"},
 		{"POST", "/api/import", "publish"},
+		{"POST", "/api/admin/targets", "admin:register-target"},
 	}
 
 	for _, tt := range routes {

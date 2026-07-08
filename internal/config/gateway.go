@@ -67,6 +67,9 @@ type GatewayConfig struct {
 	InternalListenHost string
 	CedarPolicyDir     string
 	CedarPollInterval  time.Duration
+
+	// CloudEvents
+	CloudEventsSource string
 }
 
 // GatewayFromEnv loads gateway configuration from environment variables.
@@ -104,6 +107,7 @@ func GatewayFromEnv() (*GatewayConfig, error) {
 		InternalListenHost:        envOr("INTERNAL_LISTEN_HOST", "127.0.0.1"),
 		CedarPolicyDir:            os.Getenv("CEDAR_POLICY_DIR"),
 		CedarPollInterval:         envDuration("CEDAR_POLL_INTERVAL", 30*time.Second),
+		CloudEventsSource:         os.Getenv("CLOUDEVENTS_SOURCE"),
 	}
 
 	// Clamp rate-limit values to reasonable upper bounds.
