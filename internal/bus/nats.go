@@ -33,15 +33,19 @@ const SubjectPrefix = SubjectEvidence
 
 // EvidenceEvent is published after evidence is ingested for a policy.
 type EvidenceEvent struct {
-	PolicyID    string    `json:"policy_id"`
-	RecordCount int       `json:"record_count"`
-	Timestamp   time.Time `json:"timestamp"`
+	PolicyID     string    `json:"policy_id"`
+	TargetID     string    `json:"target_id"`
+	ArtifactType string    `json:"artifact_type"`
+	RecordCount  int       `json:"record_count"`
+	LogIndex     uint64    `json:"log_index"`
+	Timestamp    time.Time `json:"timestamp"`
 }
 
 // DraftAuditLogEvent is published after a draft audit log is created.
 type DraftAuditLogEvent struct {
 	DraftID   string    `json:"draft_id"`
 	PolicyID  string    `json:"policy_id"`
+	TargetID  string    `json:"target_id"`
 	Summary   string    `json:"summary"`
 	Timestamp time.Time `json:"timestamp"`
 }
@@ -54,8 +58,9 @@ type IngestStreamConfig struct {
 
 // Bus wraps a NATS connection for event publishing and subscribing.
 type Bus struct {
-	conn *nats.Conn
-	js   jetstream.JetStream
+	conn   *nats.Conn
+	js     jetstream.JetStream
+	source string
 }
 
 // Conn returns the underlying NATS connection for health checks.
@@ -70,9 +75,13 @@ func (b *Bus) JetStream() jetstream.JetStream {
 
 // Connect creates a new Bus connected to the given NATS URL.
 // Returns (nil, nil) if natsURL is empty (NATS disabled).
-func Connect(natsURL string) (*Bus, error) {
+func Connect(natsURL, cloudEventsSource string) (*Bus, error) {
 	if natsURL == "" {
 		return nil, nil
+	}
+	src := cloudEventsSource
+	if src == "" {
+		src = DefaultSource
 	}
 	nc, err := nats.Connect(natsURL,
 		nats.RetryOnFailedConnect(true),
@@ -96,7 +105,7 @@ func Connect(natsURL string) (*Bus, error) {
 	}
 
 	slog.Info("nats connected", "url", natsURL, "jetstream", true)
-	return &Bus{conn: nc, js: js}, nil
+	return &Bus{conn: nc, js: js, source: src}, nil
 }
 
 // EnsureIngestStream creates or updates the INGEST stream for durable ingest
@@ -149,18 +158,21 @@ func (b *Bus) EnsureIngestStream(ctx context.Context, cfg IngestStreamConfig) er
 
 // PublishEvidence publishes an evidence event. Errors are logged, never returned
 // — callers must not block ingestion on NATS availability.
-func (b *Bus) PublishEvidence(policyID string, recordCount int) {
+func (b *Bus) PublishEvidence(policyID, targetID, artifactType string, recordCount int, logIndex uint64) {
 	if b == nil || b.conn == nil {
 		return
 	}
 	evt := EvidenceEvent{
-		PolicyID:    policyID,
-		RecordCount: recordCount,
-		Timestamp:   time.Now().UTC(),
+		PolicyID:     policyID,
+		TargetID:     targetID,
+		ArtifactType: artifactType,
+		RecordCount:  recordCount,
+		LogIndex:     logIndex,
+		Timestamp:    time.Now().UTC(),
 	}
-	data, err := json.Marshal(evt)
+	data, err := NewCloudEvent(EventTypeEvidenceIngested, b.source, targetID, evt)
 	if err != nil {
-		slog.Warn("nats marshal failed", "error", err)
+		slog.Warn("cloudevent build failed", "error", err)
 		return
 	}
 	subject := SubjectPrefix + "." + policyID
@@ -171,19 +183,20 @@ func (b *Bus) PublishEvidence(policyID string, recordCount int) {
 
 // PublishDraftAuditLog publishes a draft audit log event. Errors are logged,
 // never returned — callers must not block on NATS availability.
-func (b *Bus) PublishDraftAuditLog(draftID, policyID, summary string) {
+func (b *Bus) PublishDraftAuditLog(draftID, policyID, targetID, summary string) {
 	if b == nil || b.conn == nil {
 		return
 	}
 	evt := DraftAuditLogEvent{
 		DraftID:   draftID,
 		PolicyID:  policyID,
+		TargetID:  targetID,
 		Summary:   summary,
 		Timestamp: time.Now().UTC(),
 	}
-	data, err := json.Marshal(evt)
+	data, err := NewCloudEvent(EventTypeAuditLogDrafted, b.source, targetID, evt)
 	if err != nil {
-		slog.Warn("nats marshal failed", "error", err)
+		slog.Warn("cloudevent build failed", "error", err)
 		return
 	}
 	subject := SubjectDraft + "." + policyID
@@ -213,9 +226,11 @@ type IngestRef struct {
 
 // PolicyEvent is published when a new Policy artifact is ingested.
 type PolicyEvent struct {
-	LogIndex  uint64    `json:"log_index"`
-	PolicyID  string    `json:"policy_id"`
-	Timestamp time.Time `json:"timestamp"`
+	LogIndex     uint64    `json:"log_index"`
+	PolicyID     string    `json:"policy_id"`
+	TargetID     string    `json:"target_id"`
+	ArtifactType string    `json:"artifact_type"`
+	Timestamp    time.Time `json:"timestamp"`
 }
 
 // TargetRegisteredEvent is published when a TargetRegistration is ingested.
@@ -282,8 +297,8 @@ func (b *Bus) SubscribeEvidence(handler func(EvidenceEvent)) (*nats.Subscription
 		return nil, nil
 	}
 	return b.conn.Subscribe(SubjectPrefix+".>", func(msg *nats.Msg) {
-		var evt EvidenceEvent
-		if err := json.Unmarshal(msg.Data, &evt); err != nil {
+		evt, err := ParseCloudEventData[EvidenceEvent](msg.Data)
+		if err != nil {
 			slog.Warn("nats unmarshal failed", "error", err)
 			return
 		}
@@ -292,18 +307,20 @@ func (b *Bus) SubscribeEvidence(handler func(EvidenceEvent)) (*nats.Subscription
 }
 
 // PublishPolicyNew broadcasts that a new Policy artifact was ingested.
-func (b *Bus) PublishPolicyNew(logIndex uint64, policyID string) {
+func (b *Bus) PublishPolicyNew(logIndex uint64, policyID, targetID string) {
 	if b == nil || b.conn == nil {
 		return
 	}
 	evt := PolicyEvent{
-		LogIndex:  logIndex,
-		PolicyID:  policyID,
-		Timestamp: time.Now().UTC(),
+		LogIndex:     logIndex,
+		PolicyID:     policyID,
+		TargetID:     targetID,
+		ArtifactType: "Policy",
+		Timestamp:    time.Now().UTC(),
 	}
-	data, err := json.Marshal(evt)
+	data, err := NewCloudEvent(EventTypePolicyImported, b.source, targetID, evt)
 	if err != nil {
-		slog.Warn("nats marshal failed", "error", err)
+		slog.Warn("cloudevent build failed", "error", err)
 		return
 	}
 	if err := b.conn.Publish(SubjectPolicyNew, data); err != nil {
@@ -322,9 +339,9 @@ func (b *Bus) PublishTargetRegistered(logIndex uint64, targetID, registeredBy st
 		RegisteredBy: registeredBy,
 		Timestamp:    time.Now().UTC(),
 	}
-	data, err := json.Marshal(evt)
+	data, err := NewCloudEvent(EventTypeTargetRegistered, b.source, targetID, evt)
 	if err != nil {
-		slog.Warn("nats marshal failed", "error", err)
+		slog.Warn("cloudevent build failed", "error", err)
 		return
 	}
 	if err := b.conn.Publish(SubjectTargetRegistered, data); err != nil {
@@ -338,8 +355,8 @@ func (b *Bus) SubscribePolicyNew(handler func(PolicyEvent)) (*nats.Subscription,
 		return nil, nil
 	}
 	return b.conn.Subscribe(SubjectPolicyNew, func(msg *nats.Msg) {
-		var evt PolicyEvent
-		if err := json.Unmarshal(msg.Data, &evt); err != nil {
+		evt, err := ParseCloudEventData[PolicyEvent](msg.Data)
+		if err != nil {
 			slog.Warn("nats unmarshal failed", "error", err)
 			return
 		}
@@ -353,8 +370,8 @@ func (b *Bus) SubscribeTargetRegistered(handler func(TargetRegisteredEvent)) (*n
 		return nil, nil
 	}
 	return b.conn.Subscribe(SubjectTargetRegistered, func(msg *nats.Msg) {
-		var evt TargetRegisteredEvent
-		if err := json.Unmarshal(msg.Data, &evt); err != nil {
+		evt, err := ParseCloudEventData[TargetRegisteredEvent](msg.Data)
+		if err != nil {
 			slog.Warn("nats unmarshal failed", "error", err)
 			return
 		}

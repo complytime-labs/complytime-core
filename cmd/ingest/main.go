@@ -18,7 +18,6 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/complytime-labs/complytime-core/internal/auth"
-	"github.com/complytime-labs/complytime-core/internal/version"
 	"github.com/complytime-labs/complytime-core/internal/authz"
 	eventbus "github.com/complytime-labs/complytime-core/internal/bus"
 	"github.com/complytime-labs/complytime-core/internal/config"
@@ -26,6 +25,7 @@ import (
 	"github.com/complytime-labs/complytime-core/internal/httputil"
 	"github.com/complytime-labs/complytime-core/internal/store"
 	"github.com/complytime-labs/complytime-core/internal/tessera"
+	"github.com/complytime-labs/complytime-core/internal/version"
 )
 
 func main() {
@@ -81,7 +81,7 @@ Environment variables:
 		os.Exit(1)
 	}
 
-	bus, busErr := eventbus.Connect(cfg.NatsURL)
+	bus, busErr := eventbus.Connect(cfg.NatsURL, cfg.CloudEventsSource)
 	if busErr != nil {
 		slog.Error("nats connection failed", "error", busErr)
 		os.Exit(1)
@@ -113,6 +113,7 @@ Environment variables:
 
 	var pub store.EventPublisher = bus
 	ingestTracker := store.NewIngestTracker()
+	defer ingestTracker.Stop()
 
 	// Initialize Tessera client for transparency log
 	tesseraOpts := tessera.DefaultOptions()
