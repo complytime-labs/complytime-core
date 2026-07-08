@@ -3,6 +3,7 @@
 package store
 
 import (
+	"context"
 	"log/slog"
 	"sync"
 	"time"
@@ -28,27 +29,39 @@ type IngestJobStatus struct {
 // Terminal jobs (completed/failed) are evicted after a TTL to prevent
 // unbounded memory growth.
 type IngestTracker struct {
-	mu   sync.RWMutex
-	jobs map[string]*IngestJobStatus
-	ttl  time.Duration
+	mu     sync.RWMutex
+	jobs   map[string]*IngestJobStatus
+	ttl    time.Duration
+	cancel context.CancelFunc
 }
 
 // NewIngestTracker creates a tracker and starts a background eviction loop.
-// Cancel the context to stop the loop.
 func NewIngestTracker() *IngestTracker {
+	ctx, cancel := context.WithCancel(context.Background())
 	t := &IngestTracker{
-		jobs: make(map[string]*IngestJobStatus),
-		ttl:  defaultJobTTL,
+		jobs:   make(map[string]*IngestJobStatus),
+		ttl:    defaultJobTTL,
+		cancel: cancel,
 	}
-	go t.evictLoop()
+	go t.evictLoop(ctx)
 	return t
 }
 
-func (t *IngestTracker) evictLoop() {
+// Stop terminates the background eviction goroutine.
+func (t *IngestTracker) Stop() {
+	t.cancel()
+}
+
+func (t *IngestTracker) evictLoop(ctx context.Context) {
 	ticker := time.NewTicker(t.ttl / 2)
 	defer ticker.Stop()
-	for range ticker.C {
-		t.evict()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			t.evict()
+		}
 	}
 }
 

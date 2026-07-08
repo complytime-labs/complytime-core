@@ -3,6 +3,7 @@
 package store
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/complytime-labs/complytime-core/internal/bus"
+	"github.com/complytime-labs/complytime-core/internal/evidence"
 	"github.com/complytime-labs/complytime-core/internal/requirements"
 )
 
@@ -49,45 +51,24 @@ func importArtifactHandler(s Stores) echo.HandlerFunc {
 
 // ── OCI reference import ────────────────────────────────────────────────────
 
-func importPublisherIdentity(ref string) bus.PublisherIdentity {
-	return bus.PublisherIdentity{
-		Sub:    "import:" + ref,
-		Issuer: "complytime-gateway",
-		Type:   "import",
-	}
-}
-
-func ociImport(c echo.Context, s Stores, ref string) error {
-	if s.Registry == nil {
-		return jsonError(c, http.StatusServiceUnavailable, "registry not configured")
-	}
-
-	repo, err := s.Registry.Repository(ref)
-	if err != nil {
-		return jsonError(c, http.StatusForbidden, err.Error())
-	}
-
-	ctx := c.Request().Context()
-	bundle, err := gemarabundle.Unpack(ctx, repo, repo.Reference.Reference)
-	if err != nil {
-		slog.Error("oci import unpack failed", "reference", ref, "error", err)
-		return jsonError(c, http.StatusBadGateway, "failed to pull bundle: "+err.Error())
-	}
-
-	bundleID := uuid.New().String()
-	allFiles := append(bundle.Files, bundle.Imports...)
-
-	if s.TesseraAppender == nil || s.IngestPublisher == nil {
-		return jsonError(c, http.StatusServiceUnavailable, "tessera and NATS are required for import")
-	}
-
+// processBundleFiles iterates unpacked OCI bundle files, skipping unrecognized
+// and target-scoped artifacts, and appends the rest to Tessera.
+func processBundleFiles(ctx context.Context, files []gemarabundle.File, s Stores, bundleID, ref string) []requirements.OciImportedArtifact {
 	identity := importPublisherIdentity(ref)
-
 	var imported []requirements.OciImportedArtifact
-	for _, f := range allFiles {
+
+	for _, f := range files {
 		detected, err := gemara.DetectType(f.Data)
 		if err != nil {
 			slog.Warn("skip unrecognized artifact", "name", f.Name, "error", err)
+			continue
+		}
+
+		if targetID := evidence.DetectTargetID(f.Data); targetID != "" {
+			slog.Warn("skip target-scoped artifact in OCI import — use POST /api/ingest",
+				"name", f.Name,
+				"target_id", targetID,
+			)
 			continue
 		}
 
@@ -119,6 +100,42 @@ func ociImport(c echo.Context, s Stores, ref string) error {
 			Name: f.Name,
 		})
 	}
+	return imported
+}
+
+func importPublisherIdentity(ref string) bus.PublisherIdentity {
+	return bus.PublisherIdentity{
+		Sub:    "import:" + ref,
+		Issuer: "complytime-gateway",
+		Type:   "import",
+	}
+}
+
+func ociImport(c echo.Context, s Stores, ref string) error {
+	if s.Registry == nil {
+		return jsonError(c, http.StatusServiceUnavailable, "registry not configured")
+	}
+
+	repo, err := s.Registry.Repository(ref)
+	if err != nil {
+		return jsonError(c, http.StatusForbidden, err.Error())
+	}
+
+	ctx := c.Request().Context()
+	bundle, err := gemarabundle.Unpack(ctx, repo, repo.Reference.Reference)
+	if err != nil {
+		slog.Error("oci import unpack failed", "reference", ref, "error", err)
+		return jsonError(c, http.StatusBadGateway, "failed to pull bundle from registry")
+	}
+
+	bundleID := uuid.New().String()
+	allFiles := append(bundle.Files, bundle.Imports...)
+
+	if s.TesseraAppender == nil || s.IngestPublisher == nil {
+		return jsonError(c, http.StatusServiceUnavailable, "tessera and NATS are required for import")
+	}
+
+	imported := processBundleFiles(ctx, allFiles, s, bundleID, ref)
 
 	return c.JSON(http.StatusAccepted, map[string]any{
 		"bundle_id": bundleID,
