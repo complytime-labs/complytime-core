@@ -55,7 +55,7 @@ target:
 	var appended [][]byte
 	appender := &mockAppender{addFn: func(_ context.Context, data []byte) (uint64, error) {
 		appended = append(appended, data)
-		return uint64(len(appended) - 1), nil
+		return uint64(len(appended) - 1), nil //nolint:gosec // G115: test mock, len is non-negative
 	}}
 
 	s := Stores{
