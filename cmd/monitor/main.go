@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/complytime-labs/complytime-core/internal/config"
-	"github.com/complytime-labs/complytime-core/internal/version"
 	"github.com/complytime-labs/complytime-core/internal/tessera"
+	"github.com/complytime-labs/complytime-core/internal/version"
 )
 
 func main() {
