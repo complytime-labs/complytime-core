@@ -42,6 +42,9 @@ __pycache__/
 # Generated witness key material
 deploy/compose/witness-config/
 
+# Session retros (managed in Dewey KB)
+session-retro/
+
 # Editor/IDE
 .claude/
 .cursor/
