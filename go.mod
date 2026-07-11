@@ -4,7 +4,7 @@ go 1.25.8
 
 require (
 	github.com/cedar-policy/cedar-go v1.8.0
-	github.com/gemaraproj/go-gemara v0.7.0
+	github.com/gemaraproj/go-gemara v0.8.0
 	github.com/goccy/go-yaml v1.19.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
