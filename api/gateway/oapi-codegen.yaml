@@ -1,0 +1,7 @@
+package: gateway
+generate:
+  chi-server: true
+  models: true
+output: ../../internal/gateway/gen.openapi.go
+output-options:
+  skip-prune: true
