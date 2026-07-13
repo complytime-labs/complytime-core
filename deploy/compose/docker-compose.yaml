@@ -1,71 +1,64 @@
-# SPDX-License-Identifier: Apache-2.0
-#
-# ComplyTime Ingest stack — transparency log + NATS event bus.
-# No PostgreSQL. Tessera is the source of truth, NATS KV for publisher trust.
-#
-# Run scripts/setup-witness.sh first to generate witness keys.
-
 services:
-  ingest:
-    build:
-      context: ../../
-      dockerfile: Dockerfile.ingest
-    ports:
-      - "8080:8080"
-      # 8081 is internal only — not mapped to host
-    environment:
-      PORT: "8080"
-      INTERNAL_PORT: "8081"
-      # 0.0.0.0 required for witness container to reach :8081 via Docker network.
-      # In Kubernetes, apply a NetworkPolicy restricting :8081 to witness pods only.
-      INTERNAL_LISTEN_HOST: "0.0.0.0"
-      NATS_URL: nats://nats:4222
-      CORS_ORIGINS: ""
-      JWT_ISSUERS: ""
-      JWT_AUDIENCE: "complytime"
-      TESSERA_CHECKPOINT_INTERVAL: "5s"
-      TESSERA_PATH: /data/tessera
-      TESSERA_SIGNER_KEY_PATH: /data/signer/.signer.key
-      TESSERA_WITNESS_POLICY_PATH: /etc/witness/policy
-      TESSERA_WITNESS_FAIL_OPEN: "false"
-    volumes:
-      - tesseradata:/data/tessera
-      - ./witness-config/log-signer:/data/signer:ro
-      - ./witness-config/witness-policy:/etc/witness/policy:ro
-    depends_on:
-      nats:
-        condition: service_started
-      witness:
-        condition: service_started
-
-  witness:
-    build:
-      context: ../../
-      dockerfile: Dockerfile.witness
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        /omniwitness \
-          -private_key="$$(cat /etc/witness/signer.key)" \
-          -db_file=/data/witness.db \
-          -additional_logs=/etc/witness/additional-logs.yaml \
-          -logtostderr
-    ports:
-      - "8100:8080"
-    volumes:
-      - ./witness-config/witness-signer.key:/etc/witness/signer.key:ro
-      - ./witness-config/additional-logs.yaml:/etc/witness/additional-logs.yaml:ro
-      - witnessdata:/data
-
   nats:
     image: nats:2.14-alpine
-    command: ["-js", "-sd", "/data"]
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    volumes:
+      - ./nats-server.conf:/etc/nats/nats-server.conf:ro
+      - nats-data:/data/jetstream
     ports:
       - "4222:4222"
+      - "8222:8222"
+    healthcheck:
+      test: ["CMD", "nats-server", "--signal", "ldm"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  locker:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.locker
+    environment:
+      - LOCKER_DATA_PATH=/data/ledgers
+      - LOCKER_LISTEN_ADDR=:8081
+      - LOCKER_SECRET=dev-secret
     volumes:
-      - natsdata:/data
+      - locker-data:/data/ledgers
+    ports:
+      - "8081:8081"
+    depends_on:
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8081/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  gateway:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.gateway
+    environment:
+      - NATS_URL=nats://nats:4222
+      - LOCKER_URL=http://locker:8081
+      - LOCKER_SECRET=dev-secret
+      - JWT_ISSUERS=http://testjwks:8888
+      - JWT_AUDIENCE=complytime-gateway
+      - GATEWAY_LISTEN_ADDR=:8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      nats:
+        condition: service_healthy
+      locker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
 volumes:
-  natsdata:
-  tesseradata:
-  witnessdata:
+  nats-data:
+  locker-data:

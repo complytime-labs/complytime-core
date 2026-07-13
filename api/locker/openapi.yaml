@@ -1,0 +1,306 @@
+openapi: 3.0.3
+info:
+  title: Evidence Locker API
+  description: HTTP API for the Evidence Locker transparency log service
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+paths:
+  /healthz:
+    get:
+      summary: Health check endpoint
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /ledgers:
+    post:
+      summary: Create a new ledger
+      operationId: createLedger
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLedgerRequest'
+      responses:
+        '201':
+          description: Ledger created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerInfo'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ledger already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    get:
+      summary: List all ledgers
+      operationId: listLedgers
+      responses:
+        '200':
+          description: List of ledgers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerList'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ledgers/{subjectId}:
+    get:
+      summary: Get ledger information
+      operationId: getLedger
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Ledger information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerInfo'
+        '404':
+          description: Ledger not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ledgers/{subjectId}/seal:
+    post:
+      summary: Seal a receipt in the ledger
+      operationId: sealReceipt
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+              description: Raw receipt data
+      responses:
+        '201':
+          description: Receipt sealed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SealResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ledger not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ledgers/{subjectId}/entry/{index}:
+    get:
+      summary: Fetch a sealed receipt by index
+      operationId: fetchReceipt
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: index
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+      responses:
+        '200':
+          description: Receipt data
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+                description: Raw receipt data
+        '404':
+          description: Ledger or receipt not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ledgers/{subjectId}/verify/{digest}:
+    get:
+      summary: Verify a receipt exists by digest
+      operationId: verifyReceipt
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: digest
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Hex-encoded SHA-256 digest to verify
+      responses:
+        '200':
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ledger not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    CreateLedgerRequest:
+      type: object
+      required:
+        - subjectId
+      properties:
+        subjectId:
+          type: string
+          description: Unique identifier for the subject
+
+    LedgerInfo:
+      type: object
+      required:
+        - subjectId
+        - verifierKey
+      properties:
+        subjectId:
+          type: string
+          description: Subject identifier
+        verifierKey:
+          type: string
+          description: Public verification key for checkpoint signatures
+
+    LedgerList:
+      type: object
+      required:
+        - ledgers
+      properties:
+        ledgers:
+          type: array
+          items:
+            $ref: '#/components/schemas/LedgerInfo'
+
+    SealResponse:
+      type: object
+      required:
+        - index
+        - digest
+      properties:
+        index:
+          type: integer
+          format: int64
+          description: Log index assigned to the sealed receipt
+        digest:
+          type: string
+          description: Hex-encoded SHA-256 digest of the receipt
+
+    VerifyResponse:
+      type: object
+      required:
+        - found
+      properties:
+        found:
+          type: boolean
+          description: Whether the digest was found in the ledger
+        index:
+          type: integer
+          format: int64
+          description: Log index if found
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error message

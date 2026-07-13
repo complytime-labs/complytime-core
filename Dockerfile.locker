@@ -1,0 +1,33 @@
+# Multi-stage build for locker service
+# Stage 1: Build
+FROM golang:1.25.0-alpine AS builder
+
+WORKDIR /build
+
+# Copy go.mod and go.sum
+COPY go.mod go.sum ./
+
+# Copy source code
+COPY cmd cmd/
+COPY internal internal/
+
+# Build the binary
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o locker ./cmd/locker
+
+# Stage 2: Runtime
+FROM gcr.io/distroless/static-debian12:nonroot
+
+WORKDIR /app
+
+# Copy the binary from the builder stage
+COPY --from=builder /build/locker /app/locker
+
+# Create data directory
+WORKDIR /data/ledgers
+
+# Set default environment variables
+ENV LOCKER_DATA_PATH="/data/ledgers" \
+    LOCKER_LISTEN_ADDR=":8081"
+
+# Run the service
+ENTRYPOINT ["/app/locker"]
