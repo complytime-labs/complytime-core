@@ -31,7 +31,7 @@ jobs:
       - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         id: meta
         with:
-          images: ${{ env.REGISTRY }}/${{ env.ORG }}/complytime-ingest
+          images: ${{ env.REGISTRY }}/${{ env.ORG }}/complytime-gateway
           tags: |
             type=sha,prefix=
             type=ref,event=branch
@@ -41,12 +41,12 @@ jobs:
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
-          file: Dockerfile.ingest
+          file: Dockerfile.gateway
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  gemara-mcp:
+  locker:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -63,7 +63,7 @@ jobs:
       - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         id: meta
         with:
-          images: ${{ env.REGISTRY }}/${{ env.ORG }}/gemara-mcp
+          images: ${{ env.REGISTRY }}/${{ env.ORG }}/complytime-locker
           tags: |
             type=sha,prefix=
             type=ref,event=branch
@@ -73,7 +73,7 @@ jobs:
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
-          file: Dockerfile.gemara-mcp
+          file: Dockerfile.locker
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

@@ -1,257 +1,177 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# ComplyTime Ingest Architecture
+# ComplyTime Core Architecture
 
-Compliance evidence ingestion and transparency service. Accepts Gemara artifacts via JWT-authenticated API, appends to a Tessera transparency log, publishes CloudEvents to NATS. No PostgreSQL. All query and analysis capabilities are in downstream services (CrossCodex).
+Compliance evidence locker with cryptographic guarantees. Four components in one repo, connected by NATS.
 
 ## System Overview
 
-| Boundary | Role | Tech | Repository |
-|:--|:--|:--|:--|
-| **Ingest Service** | Evidence ingestion, Tessera log, publisher trust, tlog-tiles API | Go (Echo), Tessera (embedded), NATS JetStream + KV | [complytime-core](https://github.com/complytime-labs/complytime-core) |
-| **Content Monitor** | Independent verification: schema, publisher trust, reference integrity | Go (standalone binary), Tessera (read) | [complytime-core](https://github.com/complytime-labs/complytime-core) |
-| **CrossCodex** | Query and analysis: evidence queries, coverage, policy management, graph | TBD | [crosscodex](https://github.com/complytime-labs/crosscodex) |
+```
+┌──────────────┐     JetStream      ┌──────────────┐
+│   Gateway    │ ──────────────────► │    Locker    │
+│   :8080      │                    │    :8081     │
+│              │ ◄────── index ──── │              │
+└──────┬───────┘                    └──────────────┘
+       │                                   ▲
+       │  CloudEvent                       │ tlog-tiles
+       ▼                                   │
+┌──────────────┐                    ┌──────────────┐
+│   Thin DB    │                    │   Witness    │
+│   (Plan 3)   │                    │  (external)  │
+└──────────────┘                    └──────────────┘
+```
 
-**Upstream tools** (produce artifacts consumed by ingest):
+| Component | Role | Tech |
+|:--|:--|:--|
+| **Evidence Gateway** (:8080) | Authenticates publishers, evaluates Cedar policies, wraps artifacts into receipts, enqueues to JetStream | Go, Chi, cedar-go, jwtauth, in-toto/attestation |
+| **Evidence Locker** (:8081) | WORM storage — one Tessera transparency log per subject. Seals receipts, serves tlog-tiles | Go, Chi, Tessera (embedded), POSIX storage |
+| **Thin DB** (:8082) | Read-only property graph materialized from NATS events | Plan 3 — Memgraph experimental, CrossCodex (PostgreSQL + Apache AGE) for production |
+| **NATS** | JetStream for reliable delivery and replay. KV buckets for publisher trust and subject registry | NATS 2.14+ |
+
+**Upstream tools** (produce artifacts consumed by the gateway):
 
 | Tool | Role | Repository |
 |:--|:--|:--|
-| **complyctl** | CLI: pulls policies from OCI, scans targets, produces Gemara EvaluationLogs | [complyctl](https://github.com/complytime/complyctl) |
-| **complypack** | Policy authoring: validate, test, package assessment logic as signed OCI artifacts | [complytime/issues/8](https://github.com/complytime/complytime/issues/8) |
-
-```mermaid
-flowchart TB
-  subgraph Clients
-    complyctl["complyctl"]
-    CI["CI/CD Pipelines"]
-    Browser["Browser (auditors)"]
-  end
-
-  Proxy["OAuth2 Proxy"]
-
-  subgraph Ingest["Ingest Service — cmd/ingest"]
-    subgraph Primary[":8080 — authenticated"]
-      Cedar["Cedar authz middleware"]
-      Echo["Echo — /api/ingest, /api/import, tlog-tiles"]
-    end
-    subgraph Internal[":8081 — internal only"]
-      IntTiles["tlog-tiles (no auth)"]
-    end
-  end
-
-  Tessera[("Tessera (POSIX storage)")]
-  NATS[("NATS JetStream + KV")]
-  Witness["Witness (omniwitness)"]
-
-  subgraph Monitor["Content Monitor — cmd/monitor"]
-    WS["Poll Tessera → verify → publish attestation"]
-  end
-
-  subgraph Downstream["Downstream Subscribers"]
-    CrossCodex["CrossCodex"]
-    Other["Other services"]
-  end
-
-  complyctl -->|"JWT + proxy"| Proxy
-  CI -->|"JWT + proxy"| Proxy
-  Browser -->|"OIDC"| Proxy
-  Proxy -->|"X-Forwarded-*"| Cedar
-  Cedar --> Echo
-  Echo --> Tessera
-  Echo --> NATS
-  Witness -->|"checkpoint polling"| IntTiles
-  IntTiles --> Tessera
-  WS --> Tessera
-  NATS --> Downstream
-```
+| **complyctl** | CLI: pulls policies from OCI, scans targets, produces Gemara artifacts | [complyctl](https://github.com/complytime/complyctl) |
+| **CrossCodex** | Query and analysis: evidence queries, coverage, framework crosswalking | [crosscodex](https://github.com/complytime-labs/crosscodex) |
 
 ## Binaries
 
-### Ingest Service (`cmd/ingest`)
+### Evidence Gateway (`cmd/gateway`)
 
-Accepts Gemara artifacts, appends to Tessera, publishes NATS events. Serves the tlog-tiles read API for offline verification.
+Public-facing service. Controls what enters the locker.
 
 | Concern | Implementation |
 |:--|:--|
-| HTTP | Echo — two listeners (:8080 authenticated, :8081 internal) |
+| HTTP | Chi — OpenAPI-first with oapi-codegen |
+| Authentication | JWT/OIDC via go-chi/jwtauth with JWKS discovery |
 | Authorization | Cedar policies — default-deny middleware with forbid safety floors |
-| Transparency | Tessera — embedded Go library, POSIX storage, cosigned checkpoints |
-| Publisher trust | NATS KV bucket `publisher-trust` + Cedar `publish:artifact` evaluation |
-| Target registry | NATS KV bucket `targets-registry` |
-| Events | NATS JetStream — async ingest worker, evidence/policy/target events |
-| Auth | OAuth2 Proxy `X-Forwarded-*` headers + JWT bearer (OIDC JWKS) for publish |
-| tlog-tiles (:8080) | `/checkpoint`, `/tile/*`, `/log/witnessed/:index` — authenticated, Cedar-gated |
-| tlog-tiles (:8081) | Same endpoints — unauthenticated, network-isolated for witness |
+| Receipt wrapping | in-toto v1 Statements with JCS canonicalization (RFC 8785) |
+| Async ingest | JetStream durable consumer — seal to locker, publish CloudEvent |
+| Publisher trust | NATS KV bucket `publisher-trust` (fail-closed) |
+| Subject registry | NATS KV bucket `subjects-registry` |
 
-**Hard requirements:** `NATS_URL` must be set and reachable.
+### Evidence Locker (`cmd/locker`)
 
-### Content Monitor (`cmd/monitor`)
-
-Independent verification daemon that polls Tessera and validates evidence quality.
+Internal WORM storage. Not exposed to the public network.
 
 | Concern | Implementation |
 |:--|:--|
-| Verification | Schema validation (implemented). Publisher trust, reference integrity, and target registration checks are planned but not yet wired (#128). |
-| Config | YAML file with trusted publisher patterns and poll interval |
-| State | JSON file persisting last verified index across restarts |
-
-**Hard requirements:** `TESSERA_PATH` must be set.
+| HTTP | Chi — OpenAPI-first, shared-secret auth |
+| Transparency log | Tessera — embedded Go library, POSIX storage, Ed25519 checkpoint signing |
+| Multi-ledger | One Tessera Merkle tree per subject |
+| tlog-tiles | `/checkpoint`, `/tile/*` per ledger for external verifiers |
 
 ## Authentication and Authorization
 
 | Layer | Mechanism |
 |:--|:--|
-| **Authentication** | OAuth2 Proxy sidecar handles OIDC, sets `X-Forwarded-Email/User/Groups` headers. All routes on :8080 except `/healthz` and `/auth/*` require `X-Forwarded-Email`. |
-| **JWT Bearer** | `POST /api/ingest` additionally accepts OIDC JWT tokens verified via JWKS discovery. For CI/CD pipelines and scanning tools. |
-| **Cedar middleware** | Default-deny. Every authenticated request is evaluated against Cedar policies. Unmapped routes return 403. |
-| **Cedar publish gate** | `POST /api/ingest` and `POST /api/import` require `publishers` group membership (Cedar `Action::"publish"`). |
-| **Cedar target trust** | Ingest handler evaluates `publish:artifact` (target-scoped publisher trust), `publish:registration`, or `publish:policy` based on artifact type. |
-| **Forbid safety floors** | Embedded `forbid/unless` rules for `read:entries` (auditors), `publish` (publishers), and `publish:artifact` (target trust) cannot be overridden by directory policies. |
-| **Internal listener** | `:8081` serves tlog-tiles without auth for witness. Network-isolated by default (127.0.0.1). |
+| **JWT/OIDC** | Gateway verifies bearer tokens via JWKS discovery. `JWT_AUDIENCE` required (fail-closed at startup). |
+| **Cedar middleware** | Default-deny. Route-to-action typed map. Unmapped routes return 403. |
+| **Publisher trust** | Per-subject allowlist in NATS KV. Fail-closed: reject if KV unavailable. |
+| **Forbid safety floors** | Untrusted publishers blocked by `forbid/unless` rule — no permit can override. |
+| **Locker auth** | Shared-secret `Authorization: Bearer` header. `/healthz` unauthenticated. |
 
 ## Data Flow
 
-```mermaid
-sequenceDiagram
-  participant C as Client
-  participant P as OAuth2 Proxy
-  participant I as Ingest Service
-  participant Cedar as Cedar Policies
-  participant T as Tessera
-  participant KV as NATS KV
-  participant N as NATS JetStream
-  participant W as Witness
-  participant M as Monitor
+### Ingest (async, two-step)
 
-  C->>P: POST /api/ingest (YAML + JWT)
-  P->>P: OIDC authentication
-  P->>I: X-Forwarded-Email/Groups + request
-  I->>Cedar: middleware: Action::"publish" + publishers group?
-  Cedar-->>I: permit/deny
-  I->>I: Verify JWT (handler)
-  I->>KV: Resolve publisher trust for target
-  I->>Cedar: handler: Action::"publish:artifact" + publisher_trusted?
-  Cedar-->>I: permit/deny
-  I->>T: Append to log → log_index
-  I->>N: publish core.ingest
-  I->>C: 202 Accepted {job_id, log_index}
-  T->>W: Witness cosigns checkpoint (via :8081)
-  N->>I: worker detects artifact type
-  I->>N: publish core.evidence / core.policy / core.target
-  I->>KV: update publisher trust (TargetRegistration)
-  M->>T: poll for new entries
-  M->>M: verify schema, publisher, references
-  M->>N: publish verification attestation
-```
+**Step 1 — Gateway HTTP handler (synchronous):**
+1. Receive `POST /api/ingest` with JWT bearer token + `X-Subject-ID` header
+2. JWT/OIDC authentication, Cedar authorization (checks publisher trust for subject)
+3. Wrap artifact in in-toto v1 receipt (or prepare DSSE + channel receipt)
+4. Enqueue `IngestRef` to JetStream `INGEST` stream
+5. Return `202 Accepted {job_id}`
 
-## Key Routes
+**Step 2 — Gateway async worker (JetStream consumer):**
+1. Pick `IngestRef` from durable consumer
+2. Call locker `POST /ledgers/{subjectId}/seal` → log index
+3. Publish CloudEvent to `core.evidence.{subjectId}`
+4. Ack. Retry on transient failure, dead-letter on permanent.
 
-### Primary listener (:8080, authenticated + Cedar)
+### Two Receipt Formats (ADR-0003)
 
-| Method | Path | Cedar Action | Access |
-|:--|:--|:--|:--|
-| GET | `/healthz` | (exempt) | Unauthenticated |
-| GET | `/auth/me` | (exempt) | Unauthenticated |
-| GET | `/auth/logged-out` | (exempt) | Unauthenticated |
-| GET | `/checkpoint` | `read:checkpoint` | Any authenticated |
-| GET | `/tile/*` | `read:entries` | Auditors group |
-| GET | `/log/witnessed/:index` | `read:checkpoint` | Any authenticated |
-| GET | `/api/config` | `read:status` | Any authenticated |
-| GET | `/api/system-info` | `read:status` | Any authenticated |
-| GET | `/api/ingest/jobs/:job_id` | `read:status` | Any authenticated |
-| POST | `/api/ingest` | `publish` | Publishers group + target trust |
-| POST | `/api/import` | `publish` | Publishers group |
+- **Unsigned artifacts:** Single entry — `gemara-receipt/v1` in-toto Statement wraps content inline
+- **DSSE-signed artifacts:** Two entries — DSSE envelope stored byte-exact + `gemara-dsse-channel-receipt/v1` references it by digest
 
-### Internal listener (:8081, network-isolated)
+## API Surface
 
-| Method | Path | Access |
+### Gateway (:8080)
+
+| Method | Path | Purpose |
 |:--|:--|:--|
-| GET | `/healthz` | Unauthenticated |
-| GET | `/checkpoint` | Unauthenticated (witness) |
-| GET | `/tile/*` | Unauthenticated (witness) |
-| GET | `/log/witnessed/:index` | Unauthenticated (witness) |
+| `POST` | `/api/ingest` | Submit artifact (async, returns 202) |
+| `POST` | `/api/admin/subjects` | Register subject with trusted publishers (sync) |
+| `GET` | `/api/ingest/jobs/{jobId}` | Poll job status |
+| `GET` | `/healthz` | Health check (unauthenticated) |
 
-## NATS Subjects
+### Locker (:8081, internal only)
+
+| Method | Path | Purpose |
+|:--|:--|:--|
+| `POST` | `/ledgers` | Create ledger for a subject |
+| `GET` | `/ledgers` | List all ledgers |
+| `POST` | `/ledgers/{subjectId}/seal` | Seal receipt into ledger |
+| `GET` | `/ledgers/{subjectId}/entry/{index}` | Fetch sealed receipt |
+| `GET` | `/ledgers/{subjectId}/verify/{digest}` | Verify receipt by digest |
+| `GET` | `/ledgers/{subjectId}/checkpoint` | Cosigned checkpoint |
+| `GET` | `/ledgers/{subjectId}/tile/{level}/{index}/{width}` | Merkle tree tiles |
+
+## NATS
+
+### Subjects
 
 | Subject | Use |
 |:--|:--|
 | `core.ingest` | Async ingest worker (JetStream durable consumer) |
-| `core.evidence.<policy_id>` | Evidence ingested for a policy |
-| `core.policy.new` | New Policy artifact ingested |
-| `core.target.registered` | New TargetRegistration ingested |
+| `core.evidence.{subjectId}` | Evidence sealed for a subject |
+| `core.subject.registered` | Subject registered |
+| `core.mapping.imported` | MappingDocument ingested |
 
-## NATS KV Buckets
+### KV Buckets
 
 | Bucket | Key | Value | Purpose |
 |:--|:--|:--|:--|
-| `publisher-trust` | `targets.<target_id>` | JSON array of publisher allowlist entries | Authorization at ingest boundary |
-| `targets-registry` | `<target_id>` | JSON target registration | Target metadata |
+| `publisher-trust` | `subjects.{subjectId}` | JSON array of `[{issuer, sub}]` | Authorization at ingest boundary |
+| `subjects-registry` | `{subjectId}` | JSON registration marker | Subject metadata |
 
-Both are materialized views of TargetRegistration entries in Tessera. Rebuildable from the log on bucket loss.
+Both are materialized views. Rebuildable from the locker if lost.
 
 ## Configuration
 
 | Variable | Required | Purpose |
 |:--|:--|:--|
-| `NATS_URL` | Yes | Event bus and KV store |
-| `TESSERA_PATH` | No | Transparency log directory (default: `/data/tessera`) |
-| `TESSERA_SIGNER_KEY_PATH` | No | Persistent signer key |
-| `TESSERA_CHECKPOINT_INTERVAL` | No | Checkpoint publish interval (default: 10m) |
-| `TESSERA_WITNESS_POLICY_PATH` | No | Sigsum witness policy file |
-| `TESSERA_WITNESS_TIMEOUT` | No | Max wait for cosignatures (default: 5s) |
-| `TESSERA_WITNESS_FAIL_OPEN` | No | Fail-closed by default (default: false) |
-| `JWT_ISSUERS` | No | Comma-separated allowed JWT issuers |
-| `JWT_AUDIENCE` | No | Expected JWT audience claim |
-| `PORT` | No | Listen port (default: 8080) |
-| `INTERNAL_PORT` | No | Internal listener port (default: 8081) |
-| `INTERNAL_LISTEN_HOST` | No | Internal listener bind address (default: 127.0.0.1) |
-| `CEDAR_POLICY_DIR` | No | Directory with additional `.cedar` policy files (merged with embedded defaults) |
-| `CEDAR_POLL_INTERVAL` | No | Policy directory poll interval (default: 30s) |
-| `CORS_ORIGINS` | No | Comma-separated allowed origins |
-
-## Removed Query Endpoints (moved to CrossCodex)
-
-The following endpoints were removed in ADR 0044. CrossCodex or other downstream subscribers should implement these as NATS subscribers with their own read models:
-
-| Endpoint | Purpose | NATS subject to subscribe |
-|:--|:--|:--|
-| `GET /api/evidence` | Query evidence by target, policy, date | `core.evidence.>` |
-| `GET /api/policies`, `GET /api/policies/{id}` | Policy CRUD | `core.policy.new` |
-| `GET /api/policies/discover` | Dimension-based policy discovery | `core.policy.new` |
-| `GET /api/targets` | List registered targets | `core.target.registered` |
-| `GET /api/catalogs` | List catalogs | `core.ingest` (filter by type) |
-| `GET /api/requirements` | Requirements matrix | Derived from policies + evidence |
-| `GET /api/posture` | Posture aggregates | Derived from evidence + trust signals |
-| `GET /api/audit-logs`, `POST /api/audit-logs` | Audit log CRUD | `core.ingest` (filter AuditLog) |
-| `GET /api/draft-audit-logs` | Draft audit logs | `core.ingest` (filter by type) |
-| `POST /api/audit-logs/promote` | Promote draft to official | Was Postgres-only |
-| `GET /api/mappings` | Framework mappings | `core.ingest` (filter MappingDocument) |
-| `GET /api/threats`, `GET /api/risks` | Threat/risk catalogs | `core.ingest` (filter by type) |
-| `GET /api/inventory` | Evidence inventory | Derived from evidence |
-| `GET /api/users/*` | User management | Removed (no role-based access) |
-| `GET /api/role-changes/*` | Role change history | Removed (no role-based access) |
-| `GET /api/certifications` | Certification results | Monitor publishes to NATS |
+| `NATS_URL` | Yes | NATS connection URL |
+| `LOCKER_URL` | Yes (gateway) | Internal locker HTTP URL |
+| `LOCKER_SECRET` | Yes | Shared secret for gateway→locker auth |
+| `JWT_ISSUERS` | Yes (gateway) | Comma-separated OIDC issuer URLs |
+| `JWT_AUDIENCE` | Yes (gateway) | Expected JWT audience (fail-closed) |
+| `GATEWAY_LISTEN_ADDR` | No | Gateway listen address (default: `:8080`) |
+| `LOCKER_DATA_PATH` | No | Locker storage directory (default: `/data/ledgers`) |
+| `LOCKER_LISTEN_ADDR` | No | Locker listen address (default: `:8081`) |
 
 ## Testing
 
 ```bash
 # Unit tests
-go test -tags dev ./...
+go test ./... -v -count=1
 
-# Smoke test (requires docker compose stack)
-./scripts/setup-witness.sh
-cd deploy/compose && docker compose -f docker-compose.yaml -f docker-compose.testjwks.yml up --build -d
-cd ../.. && ./scripts/smoke-test.sh
+# Integration tests (full lifecycle: register → ingest → seal → verify)
+go test ./internal/gateway/ -tags integration -v
 
-# Integration tests (Ginkgo, in-process Tessera)
-go test -tags integration ./internal/e2e/ -run "Transparency"
+# Build
+make build
+
+# Docker Compose
+docker compose -f deploy/compose/docker-compose.yaml up --build
 ```
 
-## Related Docs
+## Related
 
 | Doc | Topic |
 |:--|:--|
-| [ADRs](decisions/) | Architecture decisions |
-| [ADR 0044: Remove PostgreSQL](decisions/remove-postgresql.md) | Why and how Postgres was removed |
-| [ADR 0045: Testing Strategy](decisions/testing-strategy.md) | Five test layers |
-| [API spec](api/openapi.yaml) | OpenAPI 3.1 definition |
+| [ADRs](../adrs/) | Architecture decisions |
+| [ADR-0003](../adrs/0003-receipt-model.md) | Receipt model (in-toto + JCS + two-entry DSSE) |
+| [ADR-0004](../adrs/0004-cedar-authorization.md) | Cedar authorization middleware |
+| [Gateway OpenAPI](../api/gateway/openapi.yaml) | Gateway API spec |
+| [Locker OpenAPI](../api/locker/openapi.yaml) | Locker API spec |

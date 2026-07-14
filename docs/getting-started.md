@@ -2,54 +2,71 @@
 
 ## Prerequisites
 
-- [Go 1.24+](https://go.dev/dl/)
+- [Go 1.25+](https://go.dev/dl/)
 - [Docker](https://docs.docker.com/get-docker/) or [Podman](https://podman.io/)
 
-## Quick Start
+## Build
 
 ```bash
-# Setup witness keys and start the stack
-./scripts/setup-witness.sh
-cd deploy/compose && docker compose -f docker-compose.yaml -f docker-compose.testjwks.yml up --build -d
-
-# Get a test JWT
-TOKEN=$(curl -s http://localhost:9090/token?sub=repo:complytime-labs/complytime-core)
-
-# Submit an EvaluationLog
-curl -X POST http://localhost:8080/api/ingest \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "X-Forwarded-Email: dev@complytime.dev" \
-  -H "Content-Type: application/x-yaml" \
-  --data-binary @examples/evaluation-log.yaml
+make build
 ```
 
-## Running Tests
+Produces `bin/gateway` and `bin/locker`.
+
+## Run Tests
 
 ```bash
-make test                # Unit tests
-make test-integration    # Integration (Ginkgo, in-process Tessera)
+# Unit tests
+make test
+
+# Integration tests (full lifecycle with embedded NATS)
+go test ./internal/gateway/ -tags integration -v
 ```
 
-## Smoke Test
+## Run with Docker Compose
 
 ```bash
-./scripts/smoke-test.sh  # Full stack verification (requires compose up)
+cd deploy/compose
+docker compose up --build
 ```
 
-## Troubleshooting
+This starts three services:
+- **NATS** (JetStream enabled) on port 4222
+- **Locker** on port 8081 (internal)
+- **Gateway** on port 8080
 
-- `make lint` — run linters locally
-- Check `NATS_URL` is set and reachable
-- Ingest service logs to stdout with `slog` — look for `async ingest` messages
+The gateway requires JWT configuration. For local development, set `JWT_ISSUERS` and `JWT_AUDIENCE` in the Compose environment.
 
-## Configuration
+### Verify Services
 
-| Variable | Default | Purpose |
-| :-- | :-- | :-- |
-| `NATS_URL` | (required) | NATS server URL |
-| `TESSERA_PATH` | `/data/tessera` | POSIX storage path for the transparency log |
-| `TESSERA_SIGNER_KEY_PATH` | (empty) | Persist Tessera signer key. Without this, the log identity changes on restart. |
-| `JWT_ISSUERS` | (empty) | Comma-separated OIDC issuer URLs for publisher JWT verification |
-| `JWT_AUDIENCE` | `complytime` | Expected JWT audience claim |
-| `INGEST_RATE_LIMIT` | `10` | Requests/second per IP on `/api/ingest` |
-| `INGEST_RATE_BURST` | `20` | Burst allowance for rate limiting |
+```bash
+# Gateway health
+curl http://localhost:8080/healthz
+
+# Locker health (requires shared secret from LOCKER_SECRET env var)
+curl -H "Authorization: Bearer $LOCKER_SECRET" http://localhost:8081/healthz
+```
+
+## Project Structure
+
+```
+cmd/
+  gateway/       # Evidence Gateway entry point
+  locker/        # Evidence Locker entry point
+api/
+  gateway/       # Gateway OpenAPI spec + codegen config
+  locker/        # Locker OpenAPI spec + codegen config
+internal/
+  gateway/       # Gateway handlers, worker, trust, events, receipts
+  locker/        # Locker core, handlers, ledger, tileserver
+  authz/         # Cedar authorization middleware
+  nats/          # NATS connection, streams, subjects
+adrs/            # Architecture Decision Records
+deploy/compose/  # Docker Compose for local development
+```
+
+## Next Steps
+
+- Read the [Architecture](architecture.md) doc for component details
+- Review the [ADRs](../adrs/) for design decisions
+- See the [Gateway OpenAPI spec](../api/gateway/openapi.yaml) for the full API contract
