@@ -1,34 +1,27 @@
-namespace ComplyTime {
-  // Publisher entity represents a JWT-identified publisher
-  entity Publisher = {
-    // Whether this publisher has admin privileges
-    admin: Bool
-  };
+entity Publisher = {
+  admin: Bool,
+};
 
-  // Subject entity represents a compliance subject (project/component)
-  entity Subject = {
-    // Whether the publisher is trusted for this subject
-    publisher_trusted: Bool
-  };
+entity Subject = {
+  publisher_trusted: Bool,
+};
 
-  // Available actions in the system
-  action "publish:artifact" appliesTo {
-    principal: [Publisher],
-    resource: [Subject]
-  };
+action "publish:artifact" appliesTo {
+  principal: [Publisher],
+  resource: [Subject],
+};
 
-  action "admin:register-subject" appliesTo {
-    principal: [Publisher],
-    resource: [Subject]
-  };
+action "admin:register-subject" appliesTo {
+  principal: [Publisher],
+  resource: [Subject],
+};
 
-  action "admin:modify-trust" appliesTo {
-    principal: [Publisher],
-    resource: [Subject]
-  };
+action "admin:modify-trust" appliesTo {
+  principal: [Publisher],
+  resource: [Subject],
+};
 
-  action "read:evidence" appliesTo {
-    principal: [Publisher],
-    resource: [Subject]
-  };
-}
+action "read:evidence" appliesTo {
+  principal: [Publisher],
+  resource: [Subject],
+};

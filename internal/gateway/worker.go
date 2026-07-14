@@ -138,7 +138,7 @@ func (w *Worker) handleMessage(ctx context.Context, msg jetstream.Msg) {
 	var ref IngestRef
 	if err := json.Unmarshal(msg.Data(), &ref); err != nil {
 		slog.Error("failed to unmarshal IngestRef", "error", err)
-		msg.Term()
+		_ = msg.Term()
 		return
 	}
 
@@ -156,10 +156,10 @@ func (w *Worker) handleMessage(ctx context.Context, msg jetstream.Msg) {
 		if isPermanent(processErr) {
 			slog.Error("permanent failure, terminating message", "error", processErr, "jobId", ref.JobID)
 			w.updateJobStatus(ref.JobID, Failed, nil, nil)
-			msg.Term()
+			_ = msg.Term()
 		} else {
 			slog.Warn("transient failure, will retry", "error", processErr, "jobId", ref.JobID)
-			msg.NakWithDelay(retryDelay)
+			_ = msg.NakWithDelay(retryDelay)
 		}
 		return
 	}
@@ -192,7 +192,7 @@ func (w *Worker) processReceipt(ctx context.Context, ref *IngestRef) error {
 	return nil
 }
 
-// processDSSE handles the DSSE path: verify → seal DSSE (if needed) → rebuild channel attestation → seal → publish event.
+// processDSSE handles the DSSE path: verify → seal DSSE (if needed) → rebuild DSSE channel receipt → seal → publish event.
 func (w *Worker) processDSSE(ctx context.Context, ref *IngestRef) error {
 	// Compute DSSE digest
 	dsseDigest := computeDigest(ref.DSSEBytes)
@@ -218,16 +218,16 @@ func (w *Worker) processDSSE(ctx context.Context, ref *IngestRef) error {
 		slog.Info("DSSE sealed", "jobId", ref.JobID, "index", dsseIndex)
 	}
 
-	// Rebuild channel attestation with actual index
+	// Rebuild DSSE channel receipt with actual index
 	// The handler created a placeholder with index -1; we need to rebuild it with the real index.
 	// Parse the placeholder to extract the publisher and payload type.
-	var placeholderAttestation map[string]interface{}
-	if err := json.Unmarshal(ref.ChannelAttestationBytes, &placeholderAttestation); err != nil {
+	var placeholderReceipt map[string]interface{}
+	if err := json.Unmarshal(ref.DSSEChannelReceiptBytes, &placeholderReceipt); err != nil {
 		return fmt.Errorf("parsing placeholder attestation: %w", err)
 	}
 
 	// Extract predicate
-	predicate, ok := placeholderAttestation["predicate"].(map[string]interface{})
+	predicate, ok := placeholderReceipt["predicate"].(map[string]interface{})
 	if !ok {
 		return fmt.Errorf("invalid attestation: missing predicate")
 	}
@@ -252,29 +252,29 @@ func (w *Worker) processDSSE(ctx context.Context, ref *IngestRef) error {
 		return fmt.Errorf("invalid attestation: missing payloadType")
 	}
 
-	// Rebuild channel attestation with actual DSSE index
-	channelAttestationBytes, err := receipt.BuildChannelAttestation(dsseDigest, dsseIndex, publisher, ref.SubjectID, payloadType)
+	// Rebuild DSSE channel receipt with actual DSSE index
+	dsseChannelReceiptBytes, err := receipt.BuildDSSEChannelReceipt(dsseDigest, dsseIndex, publisher, ref.SubjectID, payloadType)
 	if err != nil {
-		return fmt.Errorf("building channel attestation: %w", err)
+		return fmt.Errorf("building DSSE channel receipt: %w", err)
 	}
 
-	// Seal channel attestation
-	attestationSealResp, err := w.sealToLocker(ctx, ref.SubjectID, channelAttestationBytes)
+	// Seal DSSE channel receipt
+	receiptSealResp, err := w.sealToLocker(ctx, ref.SubjectID, dsseChannelReceiptBytes)
 	if err != nil {
-		return fmt.Errorf("sealing channel attestation: %w", err)
+		return fmt.Errorf("sealing DSSE channel receipt: %w", err)
 	}
 
-	slog.Info("channel attestation sealed", "jobId", ref.JobID, "index", attestationSealResp.Index)
+	slog.Info("DSSE channel receipt sealed", "jobId", ref.JobID, "index", receiptSealResp.Index)
 
 	// Publish CloudEvent with refDigest
-	if err := w.events.PublishEvidenceSealedWithRef(ctx, ref.SubjectID, attestationSealResp.Index, attestationSealResp.Digest, "application/vnd.dsse+json", dsseDigest); err != nil {
+	if err := w.events.PublishEvidenceSealedWithRef(ctx, ref.SubjectID, receiptSealResp.Index, receiptSealResp.Digest, "application/vnd.dsse+json", dsseDigest); err != nil {
 		slog.Warn("failed to publish CloudEvent", "error", err, "jobId", ref.JobID)
 		// Continue
 	}
 
-	// Update job status (use channel attestation digest/index as the primary result)
-	digest := attestationSealResp.Digest
-	w.updateJobStatus(ref.JobID, Sealed, &digest, &attestationSealResp.Index)
+	// Update job status (use DSSE channel receipt digest/index as the primary result)
+	digest := receiptSealResp.Digest
+	w.updateJobStatus(ref.JobID, Sealed, &digest, &receiptSealResp.Index)
 
 	return nil
 }

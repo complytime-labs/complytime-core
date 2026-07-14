@@ -52,7 +52,7 @@ func (p *EventPublisher) PublishEvidenceSealed(ctx context.Context, subjectID st
 }
 
 // PublishEvidenceSealedWithRef publishes a CloudEvent when evidence is sealed, including a reference digest
-// for channel attestation back-references (e.g., the DSSE envelope digest that wraps the actual evidence).
+// for DSSE channel receipt back-references (e.g., the DSSE envelope digest that wraps the actual evidence).
 func (p *EventPublisher) PublishEvidenceSealedWithRef(ctx context.Context, subjectID string, logIndex int64, digest, contentFormat, refDigest string) error {
 	event := cloudevents.NewEvent()
 	event.SetType(EventTypeEvidenceSealed)

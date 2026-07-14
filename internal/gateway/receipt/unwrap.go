@@ -8,17 +8,17 @@ import (
 
 // UnwrapResult contains the unwrapped content and metadata.
 type UnwrapResult struct {
-	Content               []byte
-	Publisher             *Publisher
-	Format                string
-	IsDSSE                bool
-	IsChannelAttestation bool
+	Content              []byte
+	Publisher            *Publisher
+	Format               string
+	IsDSSE               bool
+	IsDSSEChannelReceipt bool
 }
 
 // UnwrapContent detects the entry type and unwraps it appropriately.
 // - DSSE envelope: returns as-is with IsDSSE=true
 // - gemara-receipt/v1: extracts content + publisher
-// - gemara-channel-attestation/v1: extracts publisher, IsChannelAttestation=true
+// - gemara-dsse-channel-receipt/v1: extracts publisher, IsDSSEChannelReceipt=true
 func UnwrapContent(entry []byte) (UnwrapResult, error) {
 	var raw map[string]any
 	if err := json.Unmarshal(entry, &raw); err != nil {
@@ -34,7 +34,7 @@ func UnwrapContent(entry []byte) (UnwrapResult, error) {
 		}, nil
 	}
 
-	// Check for in-toto Statement (receipt or channel attestation)
+	// Check for in-toto Statement (receipt or DSSE channel receipt)
 	predicateType, ok := raw["predicate_type"].(string)
 	if !ok {
 		return UnwrapResult{}, fmt.Errorf("unknown entry format: missing predicate_type")
@@ -70,11 +70,11 @@ func UnwrapContent(entry []byte) (UnwrapResult, error) {
 			Format:    predicateType,
 		}, nil
 
-	case "gemara-channel-attestation/v1":
+	case "gemara-dsse-channel-receipt/v1":
 		return UnwrapResult{
 			Publisher:            publisher,
 			Format:               predicateType,
-			IsChannelAttestation: true,
+			IsDSSEChannelReceipt: true,
 		}, nil
 
 	default:

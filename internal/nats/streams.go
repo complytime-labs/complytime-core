@@ -13,7 +13,7 @@ const (
 	StreamIngest = "INGEST"
 
 	// KV bucket names
-	PublisherTrustBucket = "publisher-trust"
+	PublisherTrustBucket  = "publisher-trust"
 	SubjectRegistryBucket = "subjects-registry"
 
 	// Consumer names
@@ -25,19 +25,19 @@ const (
 // Replicas should be increased to 3 for a production NATS cluster.
 func IngestStreamConfig() jetstream.StreamConfig {
 	return jetstream.StreamConfig{
-		Name:            StreamIngest,
-		Description:     "Evidence ingest work queue — gateway enqueues, worker seals into locker",
-		Subjects:        []string{SubjectIngest},
-		Retention:       jetstream.WorkQueuePolicy,
-		MaxConsumers:    -1,
-		MaxMsgs:         -1,
-		MaxBytes:        -1,
-		MaxAge:          72 * time.Hour,
-		Storage:         jetstream.FileStorage,
-		Replicas:        1,
-		Discard:         jetstream.DiscardOld,
-		Duplicates:      2 * time.Minute,
-		MaxMsgSize:      4 * 1024 * 1024, // 4 MiB per message
+		Name:         StreamIngest,
+		Description:  "Evidence ingest work queue — gateway enqueues, worker seals into locker",
+		Subjects:     []string{SubjectIngest},
+		Retention:    jetstream.WorkQueuePolicy,
+		MaxConsumers: -1,
+		MaxMsgs:      -1,
+		MaxBytes:     -1,
+		MaxAge:       72 * time.Hour,
+		Storage:      jetstream.FileStorage,
+		Replicas:     1,
+		Discard:      jetstream.DiscardOld,
+		Duplicates:   2 * time.Minute,
+		MaxMsgSize:   4 * 1024 * 1024, // 4 MiB per message
 	}
 }
 

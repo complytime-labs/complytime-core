@@ -55,12 +55,12 @@ type JobInfo struct {
 
 // IngestRef is the message structure published to JetStream for ingest work items.
 type IngestRef struct {
-	JobID                    string `json:"jobId"`
-	SubjectID                string `json:"subjectId"`
-	IsDSSE                   bool   `json:"isDSSE"`
-	ReceiptBytes             []byte `json:"receiptBytes,omitempty"`
-	DSSEBytes                []byte `json:"dsseBytes,omitempty"`
-	ChannelAttestationBytes  []byte `json:"channelAttestationBytes,omitempty"`
+	JobID                   string `json:"jobId"`
+	SubjectID               string `json:"subjectId"`
+	IsDSSE                  bool   `json:"isDSSE"`
+	ReceiptBytes            []byte `json:"receiptBytes,omitempty"`
+	DSSEBytes               []byte `json:"dsseBytes,omitempty"`
+	DSSEChannelReceiptBytes []byte `json:"dsseChannelReceiptBytes,omitempty"`
 }
 
 // NewHandler creates a new GatewayHandler with dependencies.
@@ -114,7 +114,7 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 	var subjectID string
 	var receiptBytes []byte
 	var dsseBytes []byte
-	var channelAttestationBytes []byte
+	var dsseChannelReceiptBytes []byte
 
 	// Subject ID comes from X-Subject-ID header (required for all ingest requests).
 	// The SubjectIDExtractor middleware already validated it and set it in context
@@ -134,7 +134,7 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 		// Store DSSE bytes as-is
 		dsseBytes = body
 
-		// Parse DSSE to extract payloadType for channel attestation
+		// Parse DSSE to extract payloadType for DSSE channel receipt
 		var dsse map[string]interface{}
 		if err := json.Unmarshal(body, &dsse); err != nil {
 			http.Error(w, "Invalid DSSE envelope", http.StatusBadRequest)
@@ -146,15 +146,15 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 			payloadType = "application/vnd.in-toto+json" // default
 		}
 
-		// Compute DSSE digest for channel attestation (hex format, same as worker/locker)
+		// Compute DSSE digest for DSSE channel receipt (hex format, same as worker/locker)
 		h := sha256.Sum256(body)
 		dsseDigest := hex.EncodeToString(h[:])
 
-		// Build channel attestation (index will be set by ingest worker after sealing)
+		// Build DSSE channel receipt (index will be set by ingest worker after sealing)
 		// For now, use -1 as a placeholder
-		channelAttestationBytes, err = receipt.BuildChannelAttestation(dsseDigest, -1, publisher, subjectID, payloadType)
+		dsseChannelReceiptBytes, err = receipt.BuildDSSEChannelReceipt(dsseDigest, -1, publisher, subjectID, payloadType)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to build channel attestation: %v", err), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("Failed to build DSSE channel receipt: %v", err), http.StatusInternalServerError)
 			return
 		}
 	} else {
@@ -206,7 +206,7 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 		IsDSSE:                  isDSSE,
 		ReceiptBytes:            receiptBytes,
 		DSSEBytes:               dsseBytes,
-		ChannelAttestationBytes: channelAttestationBytes,
+		DSSEChannelReceiptBytes: dsseChannelReceiptBytes,
 	}
 
 	refBytes, err := json.Marshal(ingestRef)
@@ -232,7 +232,7 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 	// Return 202 with job ID
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(IngestResponse{
+	_ = json.NewEncoder(w).Encode(IngestResponse{
 		JobId: types.UUID(jobID),
 	})
 }
@@ -251,6 +251,10 @@ func (h *GatewayHandler) RegisterSubject(w http.ResponseWriter, r *http.Request)
 	// Validate required fields
 	if req.SubjectId == "" {
 		http.Error(w, "Missing subjectId", http.StatusBadRequest)
+		return
+	}
+	if err := locker.ValidateSubjectID(req.SubjectId); err != nil {
+		http.Error(w, "Invalid subjectId", http.StatusBadRequest)
 		return
 	}
 	if len(req.TrustedPublishers) == 0 {
@@ -337,10 +341,7 @@ func (h *GatewayHandler) RegisterSubject(w http.ResponseWriter, r *http.Request)
 	// Update NATS KV trust store
 	trustEntries := make([]TrustEntry, len(req.TrustedPublishers))
 	for i, tp := range req.TrustedPublishers {
-		trustEntries[i] = TrustEntry{
-			Issuer: tp.Issuer,
-			Sub:    tp.Sub,
-		}
+		trustEntries[i] = TrustEntry(tp)
 	}
 
 	if err := h.trustStore.SetPublisherTrust(ctx, req.SubjectId, trustEntries); err != nil {
@@ -358,13 +359,13 @@ func (h *GatewayHandler) RegisterSubject(w http.ResponseWriter, r *http.Request)
 	if err := h.eventPublisher.PublishSubjectRegistered(ctx, req.SubjectId); err != nil {
 		// Log error but don't fail the request
 		// In production, consider retrying or using a dead-letter queue
-		slog.Warn("failed to publish subject.registered event", "error", err, "subjectId", req.SubjectId)
+		slog.Warn("failed to publish subject.registered event", "error", err, "subjectId", locker.SanitizeLogValue(req.SubjectId))
 	}
 
 	// Return 201
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(SubjectRegistrationResponse{
+	_ = json.NewEncoder(w).Encode(SubjectRegistrationResponse{
 		SubjectId: req.SubjectId,
 	})
 }
@@ -395,14 +396,14 @@ func (h *GatewayHandler) GetJobStatus(w http.ResponseWriter, r *http.Request, jo
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(status)
+	_ = json.NewEncoder(w).Encode(status)
 }
 
 // HealthCheck handles GET /healthz
 func (h *GatewayHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"status": "ok",
 	})
 }

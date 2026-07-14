@@ -25,7 +25,7 @@ We use `github.com/in-toto/attestation/go/v1` (the canonical protobuf types) rat
 
 ### DSSE-Signed Artifacts: Two-Entry Model
 
-DSSE envelopes are stored byte-exact as their own ledger entry. A separate channel attestation (`gemara-channel-attestation/v1`) is sealed immediately after, referencing the DSSE entry by content digest.
+DSSE envelopes are stored byte-exact as their own ledger entry. A separate DSSE channel receipt (`gemara-dsse-channel-receipt/v1`) is sealed immediately after, referencing the DSSE entry by content digest.
 
 This avoids nesting an in-toto Statement inside a DSSE envelope inside another in-toto Statement — three layers of envelopes that would:
 

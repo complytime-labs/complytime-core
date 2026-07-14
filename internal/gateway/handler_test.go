@@ -165,7 +165,7 @@ func TestRegisterSubject_Valid(t *testing.T) {
 		if r.Method == http.MethodPost && r.URL.Path == "/ledgers" {
 			ledgerCreated = true
 			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"subjectId": "proj-1",
 			})
 			return
@@ -173,7 +173,7 @@ func TestRegisterSubject_Valid(t *testing.T) {
 		if r.Method == http.MethodPost && r.URL.Path == "/ledgers/proj-1/seal" {
 			sealCalled = true
 			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"index":  int64(0),
 				"digest": "test-digest",
 			})

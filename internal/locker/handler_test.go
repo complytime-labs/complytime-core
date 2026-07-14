@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -309,7 +308,7 @@ func TestHandler_VerifyReceipt(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, resp.Found)
 		require.NotNil(t, resp.Index)
-		assert.Equal(t, int64(idx), *resp.Index)
+		assert.Equal(t, int64(idx), *resp.Index) //nolint:gosec // G115: test value
 	})
 
 	t.Run("returns 400 for empty digest", func(t *testing.T) {
@@ -421,10 +420,4 @@ func TestHandler_WithAuth(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 	})
-}
-
-// Helper to check if a file exists
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }

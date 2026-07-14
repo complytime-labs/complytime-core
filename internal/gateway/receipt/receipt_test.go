@@ -107,11 +107,3 @@ func TestWrap_Determinism(t *testing.T) {
 	expected := "sha256:" + base64.URLEncoding.EncodeToString(h.Sum(nil))
 	assert.Equal(t, expected, digest1)
 }
-
-func getKeys(m map[string]any) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	return keys
-}

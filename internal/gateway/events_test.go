@@ -25,7 +25,7 @@ func TestEventPublisher_PublishEvidenceSealed(t *testing.T) {
 		eventChan <- msg
 	})
 	require.NoError(t, err)
-	defer sub.Unsubscribe()
+	defer func() { _ = sub.Unsubscribe() }()
 
 	// Create publisher and publish event
 	publisher := gateway.NewEventPublisher(nc)
@@ -70,7 +70,7 @@ func TestEventPublisher_PublishEvidenceSealedWithRef(t *testing.T) {
 		eventChan <- msg
 	})
 	require.NoError(t, err)
-	defer sub.Unsubscribe()
+	defer func() { _ = sub.Unsubscribe() }()
 
 	// Create publisher and publish event with reference
 	publisher := gateway.NewEventPublisher(nc)
@@ -115,7 +115,7 @@ func TestEventPublisher_PublishSubjectRegistered(t *testing.T) {
 		eventChan <- msg
 	})
 	require.NoError(t, err)
-	defer sub.Unsubscribe()
+	defer func() { _ = sub.Unsubscribe() }()
 
 	// Create publisher and publish event
 	publisher := gateway.NewEventPublisher(nc)

@@ -3,16 +3,15 @@ package receipt
 import (
 	"fmt"
 
-	v1 "github.com/in-toto/attestation/go/v1"
 	"github.com/cyberphone/json-canonicalization/go/src/webpki.org/jsoncanonicalizer"
+	v1 "github.com/in-toto/attestation/go/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-// BuildChannelAttestation creates a gemara-channel-attestation/v1 in-toto Statement
+// BuildDSSEChannelReceipt creates a gemara-dsse-channel-receipt/v1 in-toto Statement
 // that references a DSSE-signed artifact by digest and index.
 // This avoids triple-nesting (in-toto wrapping DSSE wrapping in-toto).
-func BuildChannelAttestation(dsseDigest string, dsseIndex int64, publisher Publisher, subjectID, payloadType string) ([]byte, error) {
-	// Build predicate
+func BuildDSSEChannelReceipt(dsseDigest string, dsseIndex int64, publisher Publisher, subjectID, payloadType string) ([]byte, error) {
 	predicate := map[string]any{
 		"evidenceDigest": dsseDigest,
 		"evidenceIndex":  dsseIndex,
@@ -27,7 +26,6 @@ func BuildChannelAttestation(dsseDigest string, dsseIndex int64, publisher Publi
 		return nil, fmt.Errorf("convert predicate to struct: %w", err)
 	}
 
-	// Build in-toto v1 Statement
 	stmt := &v1.Statement{
 		Type: v1.StatementTypeUri,
 		Subject: []*v1.ResourceDescriptor{
@@ -35,11 +33,10 @@ func BuildChannelAttestation(dsseDigest string, dsseIndex int64, publisher Publi
 				Name: subjectID,
 			},
 		},
-		PredicateType: "gemara-channel-attestation/v1",
+		PredicateType: "gemara-dsse-channel-receipt/v1",
 		Predicate:     predicateStruct,
 	}
 
-	// Marshal to JSON using protojson
 	marshaler := protojson.MarshalOptions{
 		UseProtoNames:   true,
 		EmitUnpopulated: false,
@@ -49,11 +46,10 @@ func BuildChannelAttestation(dsseDigest string, dsseIndex int64, publisher Publi
 		return nil, fmt.Errorf("marshal statement: %w", err)
 	}
 
-	// JCS-canonicalize the full attestation
-	canonicalAttestation, err := jsoncanonicalizer.Transform(stmtJSON)
+	canonical, err := jsoncanonicalizer.Transform(stmtJSON)
 	if err != nil {
-		return nil, fmt.Errorf("canonicalize attestation: %w", err)
+		return nil, fmt.Errorf("canonicalize receipt: %w", err)
 	}
 
-	return canonicalAttestation, nil
+	return canonical, nil
 }

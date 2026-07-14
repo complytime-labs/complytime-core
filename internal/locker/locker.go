@@ -7,12 +7,28 @@ import (
 	"log/slog"
 	"os"
 	"regexp"
+	"strings"
 	"sync"
 )
 
+// SanitizeLogValue strips line breaks and control characters from a string before logging.
+func SanitizeLogValue(s string) string {
+	// Remove line breaks explicitly to prevent log-forging in plain-text logs.
+	s = strings.ReplaceAll(s, "\n", "")
+	s = strings.ReplaceAll(s, "\r", "")
+
+	// Remove remaining ASCII control characters.
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, s)
+}
+
 var (
-	ErrLedgerExists   = errors.New("ledger already exists")
-	ErrLedgerNotFound = errors.New("ledger not found")
+	ErrLedgerExists    = errors.New("ledger already exists")
+	ErrLedgerNotFound  = errors.New("ledger not found")
 	ErrIndexOutOfRange = errors.New("index out of range")
 )
 
@@ -72,7 +88,7 @@ func (lk *Locker) CreateLedger(ctx context.Context, subjectID string) (*Ledger, 
 	}
 
 	lk.ledgers[subjectID] = ledger
-	slog.Info("created ledger", "subject", subjectID)
+	slog.Info("created ledger", "subject", SanitizeLogValue(subjectID))
 	return ledger, nil
 }
 
@@ -105,11 +121,11 @@ func (lk *Locker) OpenExistingLedgers(ctx context.Context) error {
 		}
 		ledger, err := NewLedger(ctx, subjectID, lk.basePath)
 		if err != nil {
-			slog.Error("failed to open ledger", "subject", subjectID, "error", err)
+			slog.Error("failed to open ledger", "subject", SanitizeLogValue(subjectID), "error", err)
 			continue
 		}
 		lk.ledgers[subjectID] = ledger
-		slog.Info("opened existing ledger", "subject", subjectID)
+		slog.Info("opened existing ledger", "subject", SanitizeLogValue(subjectID))
 	}
 	return nil
 }

@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	v1 "github.com/in-toto/attestation/go/v1"
 	"github.com/cyberphone/json-canonicalization/go/src/webpki.org/jsoncanonicalizer"
+	v1 "github.com/in-toto/attestation/go/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/structpb"
 )

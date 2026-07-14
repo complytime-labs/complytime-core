@@ -87,7 +87,7 @@ func NewLedger(ctx context.Context, subjectID, basePath string) (*Ledger, error)
 	}
 
 	if err := l.rebuildDigestIndex(ctx); err != nil {
-		slog.Warn("failed to rebuild digest index", "subject", subjectID, "error", err)
+		slog.Warn("failed to rebuild digest index", "subject", SanitizeLogValue(subjectID), "error", err)
 	}
 
 	return l, nil
@@ -232,7 +232,7 @@ func (l *Ledger) rebuildDigestIndex(ctx context.Context) error {
 		digest := SHA256Hex(data)
 		l.digestIndex[digest] = i
 	}
-	slog.Info("rebuilt digest index", "subject", l.subjectID, "entries", size)
+	slog.Info("rebuilt digest index", "subject", SanitizeLogValue(l.subjectID), "entries", size)
 	return nil
 }
 

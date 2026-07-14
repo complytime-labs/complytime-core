@@ -19,9 +19,9 @@ type TrustEntry struct {
 
 // TrustStore provides publisher trust lookups and updates against NATS KV.
 type TrustStore struct {
-	js            jetstream.JetStream
-	publisherKV   jetstream.KeyValue
-	subjectKV     jetstream.KeyValue
+	js          jetstream.JetStream
+	publisherKV jetstream.KeyValue
+	subjectKV   jetstream.KeyValue
 }
 
 // NewTrustStore creates a new TrustStore backed by NATS KV buckets.

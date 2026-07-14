@@ -1,4 +1,4 @@
-.PHONY: generate lint test build
+.PHONY: generate lint test build cedar-validate
 
 generate:
 	go generate ./...
@@ -8,6 +8,9 @@ lint:
 
 test:
 	go test ./... -v -count=1
+
+cedar-validate:
+	cedar validate --schema internal/authz/policies/base.cedarschema --policies internal/authz/policies/base.cedar
 
 build:
 	go build -o bin/locker ./cmd/locker

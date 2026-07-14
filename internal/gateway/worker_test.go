@@ -64,7 +64,7 @@ func TestWorker_NonDSSEPath(t *testing.T) {
 		if r.URL.Path == "/ledgers/test-subject/seal" && r.Method == http.MethodPost {
 			sealCalls++
 			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"index":  int64(42),
 				"digest": "abc123",
 			})
@@ -157,7 +157,7 @@ func TestWorker_DSSEPath(t *testing.T) {
 		if r.Method == http.MethodGet && len(r.URL.Path) > 30 {
 			verifyCalls++
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"found": false,
 			})
 			return
@@ -166,7 +166,7 @@ func TestWorker_DSSEPath(t *testing.T) {
 		// Seal endpoint
 		if r.URL.Path == "/ledgers/test-subject/seal" && r.Method == http.MethodPost {
 			sealCalls++
-			// First seal: DSSE at index 10, second seal: channel attestation at index 11
+			// First seal: DSSE at index 10, second seal: DSSE channel receipt at index 11
 			index := int64(10)
 			digest := "dsse-digest-123"
 			if sealCalls == 2 {
@@ -174,7 +174,7 @@ func TestWorker_DSSEPath(t *testing.T) {
 				digest = "attestation-digest-456"
 			}
 			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"index":  index,
 				"digest": digest,
 			})
@@ -210,22 +210,22 @@ func TestWorker_DSSEPath(t *testing.T) {
 	// Wait for worker to be ready
 	time.Sleep(100 * time.Millisecond)
 
-	// Build placeholder channel attestation (index -1 will be replaced by worker)
+	// Build placeholder DSSE channel receipt (index -1 will be replaced by worker)
 	publisher := receipt.Publisher{
 		Issuer: "https://token.example.com",
 		Sub:    "user@example.com",
 	}
 	dsseBytes := []byte(`{"payloadType":"test"}`)
-	placeholderAttestation, err := receipt.BuildChannelAttestation("placeholder-digest", -1, publisher, "test-subject", "application/vnd.in-toto+json")
+	placeholderReceipt, err := receipt.BuildDSSEChannelReceipt("placeholder-digest", -1, publisher, "test-subject", "application/vnd.in-toto+json")
 	require.NoError(t, err)
 
-	// Publish DSSE IngestRef with placeholder channel attestation
+	// Publish DSSE IngestRef with placeholder DSSE channel receipt
 	ingestRef := IngestRef{
 		JobID:                   jobID,
 		SubjectID:               "test-subject",
 		IsDSSE:                  true,
 		DSSEBytes:               dsseBytes,
-		ChannelAttestationBytes: placeholderAttestation,
+		DSSEChannelReceiptBytes: placeholderReceipt,
 	}
 	refBytes, err := json.Marshal(ingestRef)
 	require.NoError(t, err)
@@ -239,7 +239,7 @@ func TestWorker_DSSEPath(t *testing.T) {
 	// Verify locker calls
 	mu.Lock()
 	assert.Equal(t, 1, verifyCalls, "should check if DSSE already sealed")
-	assert.Equal(t, 2, sealCalls, "should seal DSSE and channel attestation")
+	assert.Equal(t, 2, sealCalls, "should seal DSSE and DSSE channel receipt")
 	mu.Unlock()
 
 	// Verify job status updated
@@ -275,18 +275,18 @@ func TestWorker_DSSEAlreadySealed(t *testing.T) {
 		if r.Method == http.MethodGet && len(r.URL.Path) > 30 {
 			verifyCalls++
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"found": true,
 				"index": int64(5),
 			})
 			return
 		}
 
-		// Seal endpoint - only for channel attestation
+		// Seal endpoint - only for DSSE channel receipt
 		if r.URL.Path == "/ledgers/test-subject/seal" && r.Method == http.MethodPost {
 			sealCalls++
 			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"index":  int64(6),
 				"digest": "attestation-digest-789",
 			})
@@ -322,13 +322,13 @@ func TestWorker_DSSEAlreadySealed(t *testing.T) {
 	// Wait for worker to be ready
 	time.Sleep(100 * time.Millisecond)
 
-	// Build placeholder channel attestation
+	// Build placeholder DSSE channel receipt
 	publisher := receipt.Publisher{
 		Issuer: "https://token.example.com",
 		Sub:    "user@example.com",
 	}
 	dsseBytes := []byte(`{"payloadType":"test"}`)
-	placeholderAttestation, err := receipt.BuildChannelAttestation("placeholder-digest", -1, publisher, "test-subject", "application/vnd.in-toto+json")
+	placeholderReceipt, err := receipt.BuildDSSEChannelReceipt("placeholder-digest", -1, publisher, "test-subject", "application/vnd.in-toto+json")
 	require.NoError(t, err)
 
 	// Publish DSSE IngestRef
@@ -337,7 +337,7 @@ func TestWorker_DSSEAlreadySealed(t *testing.T) {
 		SubjectID:               "test-subject",
 		IsDSSE:                  true,
 		DSSEBytes:               dsseBytes,
-		ChannelAttestationBytes: placeholderAttestation,
+		DSSEChannelReceiptBytes: placeholderReceipt,
 	}
 	refBytes, err := json.Marshal(ingestRef)
 	require.NoError(t, err)
@@ -351,7 +351,7 @@ func TestWorker_DSSEAlreadySealed(t *testing.T) {
 	// Verify locker calls
 	mu.Lock()
 	assert.Equal(t, 1, verifyCalls, "should check if DSSE already sealed")
-	assert.Equal(t, 1, sealCalls, "should only seal channel attestation, not DSSE")
+	assert.Equal(t, 1, sealCalls, "should only seal DSSE channel receipt, not DSSE")
 	mu.Unlock()
 
 	// Verify job status updated
@@ -391,7 +391,7 @@ func TestWorker_TransientFailureRetry(t *testing.T) {
 			}
 			// Succeed on retry
 			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"index":  int64(1),
 				"digest": "retry-digest",
 			})
@@ -479,7 +479,7 @@ func TestWorker_PermanentFailureTerm(t *testing.T) {
 		if r.URL.Path == "/ledgers/nonexistent-subject/seal" && r.Method == http.MethodPost {
 			sealAttempts++
 			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"error": "ledger not found",
 			})
 			return

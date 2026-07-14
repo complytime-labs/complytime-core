@@ -8,10 +8,10 @@ import (
 
 // Cedar action entity UIDs
 var (
-	ActionPublishArtifact  = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("publish:artifact"))
-	ActionRegisterSubject  = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("admin:register-subject"))
-	ActionModifyTrust      = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("admin:modify-trust"))
-	ActionReadEvidence     = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("read:evidence"))
+	ActionPublishArtifact = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("publish:artifact"))
+	ActionRegisterSubject = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("admin:register-subject"))
+	ActionModifyTrust     = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("admin:modify-trust"))
+	ActionReadEvidence    = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("read:evidence"))
 )
 
 // routeMapping maps HTTP method + path patterns to Cedar actions

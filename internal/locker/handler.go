@@ -145,7 +145,7 @@ func (h *APIHandler) SealReceipt(w http.ResponseWriter, r *http.Request, subject
 
 	digest := SHA256Hex(receiptData)
 	resp := SealResponse{
-		Index:  int64(idx),
+		Index:  int64(idx), //nolint:gosec // G115: log indices won't exceed int64 max
 		Digest: digest,
 	}
 	respondJSON(w, http.StatusCreated, resp)
@@ -202,7 +202,7 @@ func (h *APIHandler) VerifyReceipt(w http.ResponseWriter, r *http.Request, subje
 		Found: found,
 	}
 	if found {
-		idx64 := int64(idx)
+		idx64 := int64(idx) //nolint:gosec // G115: log indices won't exceed int64 max
 		resp.Index = &idx64
 	}
 

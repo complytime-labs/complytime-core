@@ -210,7 +210,7 @@ func TestFullLifecycle(t *testing.T) {
 // TestDSSELifecycle tests the DSSE artifact flow:
 // - Register subject
 // - Submit DSSE artifact
-// - Verify both DSSE and channel attestation are sealed
+// - Verify both DSSE and DSSE channel receipt are sealed
 func TestDSSELifecycle(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -365,7 +365,7 @@ func TestDSSELifecycle(t *testing.T) {
 	assert.Equal(t, gateway.Sealed, finalStatus.Status, "Job should be sealed")
 	require.NotNil(t, finalStatus.Digest, "Sealed job should have a digest")
 
-	// 4. Verify channel attestation is in locker
+	// 4. Verify DSSE channel receipt is in locker
 	verifyURL := fmt.Sprintf("%s/ledgers/%s/verify/%s", lockerServer.URL, subjectID, *finalStatus.Digest)
 	verifyReq, err := http.NewRequest("GET", verifyURL, nil)
 	require.NoError(t, err)

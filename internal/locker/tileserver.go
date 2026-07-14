@@ -5,10 +5,15 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
+
+// tilePathSegment validates tile path components (level, index, width).
+// Only allows digits and dots (for partial tile notation like "p/123").
+var tilePathSegment = regexp.MustCompile(`^[a-zA-Z0-9.]+$`)
 
 // registerTileRoutes adds routes for serving Tessera checkpoint and tiles
 // for a specific ledger. These routes match the tlog-tiles directory layout.
@@ -16,15 +21,27 @@ func registerTileRoutes(r chi.Router, locker *Locker) {
 	// Checkpoint endpoint: /ledgers/{subjectId}/checkpoint
 	r.Get("/ledgers/{subjectId}/checkpoint", func(w http.ResponseWriter, r *http.Request) {
 		subjectID := chi.URLParam(r, "subjectId")
+		if err := ValidateSubjectID(subjectID); err != nil {
+			http.Error(w, "invalid subject ID", http.StatusBadRequest)
+			return
+		}
 		serveTesseraFile(w, r, locker, subjectID, "checkpoint")
 	})
 
 	// Tile endpoint: /ledgers/{subjectId}/tile/{level}/{index}/{width}
 	r.Get("/ledgers/{subjectId}/tile/{level}/{index}/{width}", func(w http.ResponseWriter, r *http.Request) {
 		subjectID := chi.URLParam(r, "subjectId")
+		if err := ValidateSubjectID(subjectID); err != nil {
+			http.Error(w, "invalid subject ID", http.StatusBadRequest)
+			return
+		}
 		level := chi.URLParam(r, "level")
 		index := chi.URLParam(r, "index")
 		width := chi.URLParam(r, "width")
+		if !tilePathSegment.MatchString(level) || !tilePathSegment.MatchString(index) || !tilePathSegment.MatchString(width) {
+			http.Error(w, "invalid tile path", http.StatusBadRequest)
+			return
+		}
 
 		tilePath := fmt.Sprintf("tile/%s/%s/%s", level, index, width)
 		serveTesseraFile(w, r, locker, subjectID, tilePath)
@@ -49,8 +66,7 @@ func serveTesseraFile(w http.ResponseWriter, r *http.Request, locker *Locker, su
 		return
 	}
 
-	// Check if file exists
-	info, err := os.Stat(fullPath)
+	info, err := os.Stat(fullPath) //nolint:gosec // G703: path validated above with HasPrefix check
 	if err != nil {
 		if os.IsNotExist(err) {
 			http.Error(w, "file not found", http.StatusNotFound)

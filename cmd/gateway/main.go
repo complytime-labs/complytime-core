@@ -16,7 +16,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/jwtauth/v5"
 	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/nats-io/nats.go/jetstream"
 	openapitypes "github.com/oapi-codegen/runtime/types"
 
@@ -124,7 +123,6 @@ func main() {
 
 	// Global middleware
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 
 	// Health check endpoint (no auth)
@@ -290,21 +288,13 @@ func jwtAuthenticator(next http.Handler) http.Handler {
 			return
 		}
 
-		// Extract issuer and subject from JWT token
-		// token is of type jwt.Token from lestrrat-go/jwx/v3
-		jwtToken, ok := token.(jwt.Token)
-		if !ok {
-			http.Error(w, "Unauthorized: invalid token type", http.StatusUnauthorized)
-			return
-		}
-
-		issuer, ok := jwtToken.Issuer()
+		issuer, ok := token.Issuer()
 		if !ok || issuer == "" {
 			http.Error(w, "Unauthorized: missing issuer", http.StatusUnauthorized)
 			return
 		}
 
-		sub, ok := jwtToken.Subject()
+		sub, ok := token.Subject()
 		if !ok || sub == "" {
 			http.Error(w, "Unauthorized: missing subject", http.StatusUnauthorized)
 			return
@@ -315,7 +305,7 @@ func jwtAuthenticator(next http.Handler) http.Handler {
 
 		// Extract admin claim if present
 		var isAdmin bool
-		if err := jwtToken.Get("admin", &isAdmin); err == nil {
+		if err := token.Get("admin", &isAdmin); err == nil {
 			ctx = authz.SetAdminContext(ctx, isAdmin)
 		}
 
