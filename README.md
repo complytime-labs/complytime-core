@@ -1,63 +1,79 @@
 # ComplyTime Core
 
-Compliance evidence ingestion with cryptographic guarantees. Submit assessment results, get verifiable posture.
+Compliance evidence locker with cryptographic guarantees. Submit assessment artifacts, get tamper-evident, verifiable records.
 
-> **Status:** Active redesign — this repo is being restructured from a monolithic pipeline to a focused ingestion and trust boundary service ([#128](https://github.com/complytime-labs/complytime-core/issues/128)). APIs, schema, and project scope are changing. Expect volatility.
+> **Status:** Active development — evidence gateway and locker services implemented ([#128](https://github.com/complytime-labs/complytime-core/issues/128)). Thin DB (Plan 3) and production infrastructure (Plan 4) are next.
 >
-> **Built with AI:** Code, documentation, architecture decisions, and design specs are authored collaboratively with LLM tools (Claude Code, Cursor). PRs are labeled `llm-assisted`.
+> **Built with AI:** Code, documentation, architecture decisions, and design specs are authored collaboratively with LLM tools. PRs are labeled `llm-assisted`.
 
-## Why
+## Architecture
 
-Proving your systems are compliant means collecting evidence from scanners, CI pipelines, and manual reviews — then assembling it into something an auditor can verify. Today that evidence is scattered across tools, unverifiable after the fact, and manually stitched together at audit time.
+Four components in one repo:
 
-ComplyTime Core is the ingestion service that fixes this:
+```
+┌──────────────┐     JetStream      ┌──────────────┐
+│   Gateway    │ ──────────────────► │    Locker    │
+│   :8080      │                    │    :8081     │
+│              │ ◄────── index ──── │              │
+└──────┬───────┘                    └──────────────┘
+       │                                   ▲
+       │  CloudEvent                       │ tlog-tiles
+       ▼                                   │
+┌──────────────┐                    ┌──────────────┐
+│   Thin DB    │                    │   Witness    │
+│   (Plan 3)   │                    │  (external)  │
+└──────────────┘                    └──────────────┘
+```
 
-- **Every piece of evidence is Tessera-anchored** — appended to a tamper-evident transparency log before anything else happens. You can prove what was submitted, when, and that it hasn't changed.
-- **Publisher identity is cryptographically verified** — JWT-authenticated OIDC identities tied to targets. A CI pipeline can only submit evidence for infrastructure it's authorized to assess.
-- **Independent witnesses cosign checkpoints** — anti-equivocation verification ensures all parties see the same log.
-- **Trust signals are computed at ingest** — schema validation, provenance checks, and executor verification run as certifiers in the async pipeline.
-
-Built around the [OpenSSF Gemara](https://gemara.openssf.org/) compliance schema. All artifacts in, all artifacts out are Gemara YAML.
+- **Evidence Gateway** (:8080) — authenticates publishers (JWT/OIDC), evaluates Cedar authorization policies, wraps artifacts into in-toto v1 receipts, seals them into the locker via async JetStream workers.
+- **Evidence Locker** (:8081) — WORM storage. One Tessera transparency log per subject. Seals receipts, serves tlog-tiles for external verifiers. Internal only.
+- **Thin DB** (Plan 3) — read-only property graph materialized from NATS events. Memgraph for experimental; CrossCodex (PostgreSQL + Apache AGE) for production.
+- **NATS** — JetStream for reliable delivery and replay. KV buckets for publisher trust and subject registry.
 
 ## How It Works
 
 ```text
-Scanner / CI pipeline
-    │ Gemara YAML (EvaluationLog, EnforcementLog)
+Publisher (scanner, CI pipeline)
+    │ Gemara artifact + JWT bearer token
     ▼
-POST /api/ingest (JWT)
+POST /api/ingest (X-Subject-ID header)
     │
-    ├── Verify publisher is trusted for this target
-    ├── Append to Tessera transparency log
-    ├── Queue for async processing (NATS JetStream)
+    ├── JWT/OIDC authentication
+    ├── Cedar authorization (per-subject publisher trust)
+    ├── Wrap in in-toto v1 receipt (provenance binding)
+    ├── Enqueue to JetStream
     │       ↓
-    │   Certify → Trust signals (NATS events)
+    │   Async worker → seal into locker → CloudEvent
     │
-    └── 202 Accepted {job_id, log_index}
-
-GET /checkpoint                → Cosigned checkpoint (signed note)
-GET /tile/*                    → Merkle tree tiles + entry bundles
-GET /log/witnessed/:index      → Witness cosignature coverage
+    └── 202 Accepted {job_id}
 ```
 
-Tessera is the source of truth. Publisher trust state lives in NATS KV, rebuildable from the log. Independent witnesses cosign checkpoints for anti-equivocation verification. A separate content monitor (`cmd/monitor`) polls Tessera and verifies entry quality.
+Built around the [OpenSSF Gemara](https://gemara.openssf.org/) compliance schema.
+
+## Quick Start
+
+```bash
+# Build
+make build
+
+# Run tests
+make test
+
+# Run with Docker Compose
+docker compose -f deploy/compose/docker-compose.yaml up
+```
 
 ## ComplyTime Ecosystem
 
 | Repository | What it does |
 | :-- | :-- |
-| **complytime-core** (this repo) | Evidence ingestion — ingest, verify, transparency log |
+| **complytime-core** (this repo) | Evidence locker — ingest, seal, verify |
 | [complyctl](https://github.com/complytime/complyctl) | CLI — scan targets, produce evidence, pull policies from OCI |
 | [CrossCodex](https://github.com/complytime-labs/crosscodex) | Framework crosswalking — map requirements across standards |
 
-All tools produce and consume [Gemara](https://gemara.openssf.org/) YAML artifacts. No tool requires any other to function.
-
 ## Learn More
 
-- [Getting Started](docs/getting-started.md) — quick start, configuration, and troubleshooting
-- [Architecture](docs/architecture.md) — component boundaries and communication
-- [Architecture Decision Records](docs/decisions/) — why things are the way they are
-- [AGENTS.md](AGENTS.md) — guide for AI coding agents working on this codebase
+- [Architecture Decision Records](adrs/) — why things are the way they are
 - [CONTRIBUTING.md](CONTRIBUTING.md) — how to contribute
 
 ## License
