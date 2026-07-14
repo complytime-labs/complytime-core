@@ -1,27 +1,47 @@
-// Read actions — any authenticated identity
-permit(principal, action == Action::"read:status", resource);
-permit(principal, action == Action::"read:checkpoint", resource);
+// Permit trusted publishers to publish artifacts for their trusted subjects
+permit (
+  principal,
+  action == Action::"publish:artifact",
+  resource
+)
+when {
+  resource.publisher_trusted == true
+};
 
-// Read entries — auditors group required (safety floor: forbid prevents override)
-permit(principal, action == Action::"read:entries", resource)
-when { principal has groups && principal.groups.contains("auditors") };
+// Permit admin publishers to register subjects
+permit (
+  principal,
+  action == Action::"admin:register-subject",
+  resource
+)
+when {
+  principal.admin == true
+};
 
-forbid(principal, action == Action::"read:entries", resource)
-unless { principal has groups && principal.groups.contains("auditors") };
+// Permit admin publishers to modify trust
+permit (
+  principal,
+  action == Action::"admin:modify-trust",
+  resource
+)
+when {
+  principal.admin == true
+};
 
-// Publish — publishers group required (safety floor: forbid prevents override)
-permit(principal, action == Action::"publish", resource)
-when { principal has groups && principal.groups.contains("publishers") };
+// Permit all authenticated publishers to read evidence
+permit (
+  principal,
+  action == Action::"read:evidence",
+  resource
+);
 
-forbid(principal, action == Action::"publish", resource)
-unless { principal has groups && principal.groups.contains("publishers") };
-
-// Publish sub-actions — evaluated at handler level
-permit(principal, action == Action::"publish:registration", resource);
-permit(principal, action == Action::"publish:policy", resource);
-
-permit(principal, action == Action::"publish:artifact", resource)
-when { resource has publisher_trusted && resource.publisher_trusted };
-
-forbid(principal, action == Action::"publish:artifact", resource)
-unless { resource has publisher_trusted && resource.publisher_trusted };
+// SAFETY FLOOR: Forbid untrusted publishers from publishing artifacts
+// This cannot be overridden by any permit
+forbid (
+  principal,
+  action == Action::"publish:artifact",
+  resource
+)
+unless {
+  resource.publisher_trusted == true
+};

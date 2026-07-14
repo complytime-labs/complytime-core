@@ -45,6 +45,9 @@ deploy/compose/witness-config/
 # Session retros (managed in Dewey KB)
 session-retro/
 
+# Superpowers working artifacts (plans, specs, scratch)
+docs/superpowers/
+
 # Editor/IDE
 .claude/
 .cursor/

@@ -1,0 +1,237 @@
+openapi: 3.0.3
+info:
+  title: Evidence Gateway API
+  description: HTTP API for the Evidence Gateway ingest and admin service
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8081
+    description: Local development server
+
+paths:
+  /healthz:
+    get:
+      summary: Health check endpoint
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /api/ingest:
+    post:
+      summary: Submit artifact for ingestion
+      operationId: ingestArtifact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Raw artifact JSON
+          application/vnd.dsse+json:
+            schema:
+              type: object
+              description: DSSE envelope
+      responses:
+        '202':
+          description: Artifact accepted for processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/ingest/jobs/{jobId}:
+    get:
+      summary: Poll job status
+      operationId: getJobStatus
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Job status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatus'
+        '404':
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/admin/subjects:
+    post:
+      summary: Register subject with trusted publishers
+      operationId: registerSubject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubjectRegistrationRequest'
+      responses:
+        '201':
+          description: Subject registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectRegistrationResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Subject already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    IngestResponse:
+      type: object
+      required:
+        - jobId
+      properties:
+        jobId:
+          type: string
+          format: uuid
+          description: Unique identifier for the ingestion job
+
+    SubjectRegistrationRequest:
+      type: object
+      required:
+        - subjectId
+        - trustedPublishers
+      properties:
+        subjectId:
+          type: string
+          description: Unique identifier for the subject
+        trustedPublishers:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrustedPublisher'
+          description: List of trusted OIDC publishers for this subject
+
+    TrustedPublisher:
+      type: object
+      required:
+        - issuer
+        - sub
+      properties:
+        issuer:
+          type: string
+          description: OIDC issuer URL
+        sub:
+          type: string
+          description: OIDC subject claim pattern
+
+    SubjectRegistrationResponse:
+      type: object
+      required:
+        - subjectId
+      properties:
+        subjectId:
+          type: string
+          description: Subject identifier
+
+    JobStatus:
+      type: object
+      required:
+        - jobId
+        - status
+      properties:
+        jobId:
+          type: string
+          format: uuid
+          description: Job identifier
+        status:
+          type: string
+          enum:
+            - pending
+            - sealed
+            - failed
+          description: Current job status
+        logIndex:
+          type: integer
+          format: int64
+          description: Log index (only present if status is sealed)
+        digest:
+          type: string
+          description: Hex-encoded SHA-256 digest (only present if status is sealed)
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error message

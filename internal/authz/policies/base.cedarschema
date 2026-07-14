@@ -1,0 +1,27 @@
+entity Publisher = {
+  admin: Bool,
+};
+
+entity Subject = {
+  publisher_trusted: Bool,
+};
+
+action "publish:artifact" appliesTo {
+  principal: [Publisher],
+  resource: [Subject],
+};
+
+action "admin:register-subject" appliesTo {
+  principal: [Publisher],
+  resource: [Subject],
+};
+
+action "admin:modify-trust" appliesTo {
+  principal: [Publisher],
+  resource: [Subject],
+};
+
+action "read:evidence" appliesTo {
+  principal: [Publisher],
+  resource: [Subject],
+};

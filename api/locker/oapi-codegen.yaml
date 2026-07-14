@@ -1,0 +1,7 @@
+package: locker
+generate:
+  chi-server: true
+  models: true
+output: ../../internal/locker/gen.openapi.go
+output-options:
+  skip-prune: true
