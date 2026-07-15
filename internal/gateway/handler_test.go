@@ -69,7 +69,7 @@ func TestIngestArtifact_ValidJSON(t *testing.T) {
 	// Subscribe to ingested events (synchronous subscription)
 	sub, err := nc.SubscribeSync("core.evidence.ingested.>")
 	require.NoError(t, err)
-	defer sub.Unsubscribe()
+	defer func() { _ = sub.Unsubscribe() }()
 	require.NoError(t, sub.AutoUnsubscribe(1))
 
 	// Create a test artifact
@@ -117,7 +117,7 @@ func TestIngestArtifact_ValidDSSE(t *testing.T) {
 	// Subscribe to ingested events (synchronous subscription)
 	sub, err := nc.SubscribeSync("core.evidence.ingested.>")
 	require.NoError(t, err)
-	defer sub.Unsubscribe()
+	defer func() { _ = sub.Unsubscribe() }()
 	require.NoError(t, sub.AutoUnsubscribe(1))
 
 	// Create a mock DSSE envelope

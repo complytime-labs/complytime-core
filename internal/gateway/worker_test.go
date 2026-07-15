@@ -104,7 +104,7 @@ func TestWorker_NonDSSEPath(t *testing.T) {
 	// Subscribe to sealed events (synchronous subscription)
 	sub, err := nc.SubscribeSync("core.evidence.sealed.>")
 	require.NoError(t, err)
-	defer sub.Unsubscribe()
+	defer func() { _ = sub.Unsubscribe() }()
 
 	// Publish IngestRef
 	ingestRef := IngestRef{
@@ -226,7 +226,7 @@ func TestWorker_DSSEPath(t *testing.T) {
 	// Subscribe to sealed events (synchronous subscription)
 	sub, err := nc.SubscribeSync("core.evidence.sealed.>")
 	require.NoError(t, err)
-	defer sub.Unsubscribe()
+	defer func() { _ = sub.Unsubscribe() }()
 
 	// Build placeholder DSSE channel receipt (index -1 will be replaced by worker)
 	publisher := receipt.Publisher{
