@@ -12,6 +12,9 @@ import (
 )
 
 const (
+	// EventTypeEvidenceIngested is emitted when evidence is ingested (before sealing).
+	EventTypeEvidenceIngested = "dev.complytime.evidence.ingested"
+
 	// EventTypeEvidenceSealed is emitted when evidence is sealed into the locker.
 	EventTypeEvidenceSealed = "dev.complytime.evidence.sealed"
 
@@ -32,13 +35,33 @@ func NewEventPublisher(nc *natsgo.Conn) *EventPublisher {
 	return &EventPublisher{nc: nc}
 }
 
+// PublisherIdentity identifies the entity that produced evidence.
+type PublisherIdentity struct {
+	Issuer string `json:"issuer"`
+	Sub    string `json:"sub"`
+}
+
+// EvidenceIngestedData is the CloudEvents data payload for evidence.ingested events.
+// Emitted by both S3+Lambda and gateway when evidence arrives but before it's sealed.
+type EvidenceIngestedData struct {
+	ContentDigest string            `json:"contentDigest"`
+	ArtifactType  string            `json:"artifactType"`
+	StorageRef    string            `json:"storageRef"`
+	SubjectID     string            `json:"subjectId"`
+	Publisher     PublisherIdentity `json:"publisher"`
+	ShardID       *string           `json:"shardId,omitempty"`
+}
+
 // EvidenceSealedData is the CloudEvents data payload for evidence.sealed events.
+// Emitted by gateway only, after the locker confirms evidence is sealed with a receipt.
 type EvidenceSealedData struct {
-	SubjectID     string `json:"subjectId"`
-	LogIndex      int64  `json:"logIndex"`
-	Digest        string `json:"digest"`
-	ContentFormat string `json:"contentFormat"`
-	RefDigest     string `json:"refDigest,omitempty"`
+	ContentDigest string  `json:"contentDigest"`
+	LogIndex      int64   `json:"logIndex"`
+	ReceiptDigest string  `json:"receiptDigest"`
+	ReceiptType   string  `json:"receiptType"`
+	StorageRef    string  `json:"storageRef"`
+	SubjectID     string  `json:"subjectId"`
+	ShardID       *string `json:"shardId,omitempty"`
 }
 
 // SubjectRegisteredData is the CloudEvents data payload for subject.registered events.
@@ -46,42 +69,49 @@ type SubjectRegisteredData struct {
 	SubjectID string `json:"subjectId"`
 }
 
-// PublishEvidenceSealed publishes a CloudEvent when evidence is sealed.
-func (p *EventPublisher) PublishEvidenceSealed(ctx context.Context, subjectID string, logIndex int64, digest, contentFormat string) error {
-	return p.PublishEvidenceSealedWithRef(ctx, subjectID, logIndex, digest, contentFormat, "")
+// PublishEvidenceIngested publishes a CloudEvent when evidence is ingested (before sealing).
+func (p *EventPublisher) PublishEvidenceIngested(ctx context.Context, data EvidenceIngestedData) error {
+	event := cloudevents.NewEvent()
+	event.SetType(EventTypeEvidenceIngested)
+	event.SetSource(EventSource)
+	event.SetSubject(data.SubjectID)
+
+	if err := event.SetData(cloudevents.ApplicationJSON, data); err != nil {
+		return fmt.Errorf("setting event data: %w", err)
+	}
+
+	eventJSON, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("marshaling event: %w", err)
+	}
+
+	subject := natsinfra.EvidenceIngestedSubject(data.SubjectID)
+	if err := p.nc.Publish(subject, eventJSON); err != nil {
+		return fmt.Errorf("publishing ingested event: %w", err)
+	}
+	return nil
 }
 
-// PublishEvidenceSealedWithRef publishes a CloudEvent when evidence is sealed, including a reference digest
-// for DSSE channel receipt back-references (e.g., the DSSE envelope digest that wraps the actual evidence).
-func (p *EventPublisher) PublishEvidenceSealedWithRef(ctx context.Context, subjectID string, logIndex int64, digest, contentFormat, refDigest string) error {
+// PublishEvidenceSealed publishes a CloudEvent when evidence is sealed into the locker.
+func (p *EventPublisher) PublishEvidenceSealed(ctx context.Context, data EvidenceSealedData) error {
 	event := cloudevents.NewEvent()
 	event.SetType(EventTypeEvidenceSealed)
 	event.SetSource(EventSource)
-	event.SetSubject(subjectID)
-
-	data := EvidenceSealedData{
-		SubjectID:     subjectID,
-		LogIndex:      logIndex,
-		Digest:        digest,
-		ContentFormat: contentFormat,
-		RefDigest:     refDigest,
-	}
+	event.SetSubject(data.SubjectID)
 
 	if err := event.SetData(cloudevents.ApplicationJSON, data); err != nil {
-		return fmt.Errorf("failed to set CloudEvent data: %w", err)
+		return fmt.Errorf("setting event data: %w", err)
 	}
 
-	// Serialize CloudEvent to JSON and publish to NATS
 	eventJSON, err := json.Marshal(event)
 	if err != nil {
-		return fmt.Errorf("failed to marshal CloudEvent: %w", err)
+		return fmt.Errorf("marshaling event: %w", err)
 	}
 
-	subject := natsinfra.EvidenceSubject(subjectID)
+	subject := natsinfra.EvidenceSealedSubject(data.SubjectID)
 	if err := p.nc.Publish(subject, eventJSON); err != nil {
-		return fmt.Errorf("failed to publish CloudEvent to NATS: %w", err)
+		return fmt.Errorf("publishing sealed event: %w", err)
 	}
-
 	return nil
 }
 

@@ -179,10 +179,11 @@ func (w *Worker) processReceipt(ctx context.Context, ref *IngestRef) error {
 	}
 
 	// Publish CloudEvent
-	if err := w.events.PublishEvidenceSealed(ctx, ref.SubjectID, sealResp.Index, sealResp.Digest, "application/json"); err != nil {
-		slog.Warn("failed to publish CloudEvent", "error", err, "jobId", ref.JobID)
-		// Continue - don't fail the job just because event publishing failed
-	}
+	// TODO(Task 3): Update to new PublishEvidenceSealed signature
+	// if err := w.events.PublishEvidenceSealed(ctx, ref.SubjectID, sealResp.Index, sealResp.Digest, "application/json"); err != nil {
+	// 	slog.Warn("failed to publish CloudEvent", "error", err, "jobId", ref.JobID)
+	// 	// Continue - don't fail the job just because event publishing failed
+	// }
 
 	// Update job status
 	digest := sealResp.Digest
@@ -267,10 +268,11 @@ func (w *Worker) processDSSE(ctx context.Context, ref *IngestRef) error {
 	slog.Info("DSSE channel receipt sealed", "jobId", ref.JobID, "index", receiptSealResp.Index)
 
 	// Publish CloudEvent with refDigest
-	if err := w.events.PublishEvidenceSealedWithRef(ctx, ref.SubjectID, receiptSealResp.Index, receiptSealResp.Digest, "application/vnd.dsse+json", dsseDigest); err != nil {
-		slog.Warn("failed to publish CloudEvent", "error", err, "jobId", ref.JobID)
-		// Continue
-	}
+	// TODO(Task 3): Update to new PublishEvidenceSealed signature
+	// if err := w.events.PublishEvidenceSealedWithRef(ctx, ref.SubjectID, receiptSealResp.Index, receiptSealResp.Digest, "application/vnd.dsse+json", dsseDigest); err != nil {
+	// 	slog.Warn("failed to publish CloudEvent", "error", err, "jobId", ref.JobID)
+	// 	// Continue
+	// }
 
 	// Update job status (use DSSE channel receipt digest/index as the primary result)
 	digest := receiptSealResp.Digest
