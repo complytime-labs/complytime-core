@@ -10,7 +10,8 @@ import (
 
 const (
 	// Stream names
-	StreamIngest = "INGEST"
+	StreamIngest   = "INGEST"
+	StreamEvidence = "EVIDENCE"
 
 	// KV bucket names
 	PublisherTrustBucket  = "publisher-trust"
@@ -18,6 +19,7 @@ const (
 
 	// Consumer names
 	ConsumerIngestWorker = "ingest-worker"
+	ConsumerGraphLoader  = "graph-loader"
 )
 
 // IngestStreamConfig returns the JetStream stream configuration.
@@ -54,6 +56,39 @@ func IngestConsumerConfig() jetstream.ConsumerConfig {
 	}
 }
 
+// EvidenceStreamConfig returns the JetStream stream configuration for evidence events.
+// Designed for consumption by the thin DB graph materialization service.
+// Interest policy — messages deleted when all consumers have acked.
+func EvidenceStreamConfig() jetstream.StreamConfig {
+	return jetstream.StreamConfig{
+		Name:         StreamEvidence,
+		Description:  "Evidence lifecycle events — ingested and sealed notifications for graph materialization",
+		Subjects:     []string{"core.evidence.>"},
+		Retention:    jetstream.InterestPolicy,
+		MaxConsumers: -1,
+		MaxMsgs:      -1,
+		MaxBytes:     -1,
+		MaxAge:       7 * 24 * time.Hour,
+		Storage:      jetstream.FileStorage,
+		Replicas:     1,
+		Discard:      jetstream.DiscardOld,
+		MaxMsgSize:   256 * 1024,
+	}
+}
+
+// GraphLoaderConsumerConfig returns the durable pull consumer configuration
+// for the thin DB graph loader.
+func GraphLoaderConsumerConfig() jetstream.ConsumerConfig {
+	return jetstream.ConsumerConfig{
+		Durable:       ConsumerGraphLoader,
+		Description:   "Graph loader — materializes evidence relationships into thin DB",
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		AckWait:       30 * time.Second,
+		MaxDeliver:    5,
+		FilterSubject: "core.evidence.>",
+	}
+}
+
 // PublisherTrustKVConfig returns the KV bucket configuration for publisher trust.
 // Values are JSON arrays of trusted publisher entries per subject.
 func PublisherTrustKVConfig() jetstream.KeyValueConfig {
@@ -82,6 +117,10 @@ func SubjectRegistryKVConfig() jetstream.KeyValueConfig {
 func EnsureInfrastructure(ctx context.Context, js jetstream.JetStream) error {
 	if _, err := js.CreateOrUpdateStream(ctx, IngestStreamConfig()); err != nil {
 		return fmt.Errorf("ensuring ingest stream: %w", err)
+	}
+
+	if _, err := js.CreateOrUpdateStream(ctx, EvidenceStreamConfig()); err != nil {
+		return fmt.Errorf("ensuring evidence stream: %w", err)
 	}
 
 	for _, kv := range []jetstream.KeyValueConfig{

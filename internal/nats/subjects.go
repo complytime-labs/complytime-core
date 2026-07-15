@@ -5,9 +5,13 @@ const (
 	// Gateway publishes IngestRef messages here; the ingest worker consumes them.
 	SubjectIngest = "core.ingest"
 
-	// SubjectEvidencePrefix is the pub/sub prefix for evidence-sealed events.
-	// Full subject: core.evidence.{subject_id}
-	SubjectEvidencePrefix = "core.evidence"
+	// SubjectEvidenceIngestedPrefix is the pub/sub prefix for evidence-ingested events.
+	// Full subject: core.evidence.ingested.{subject_id}
+	SubjectEvidenceIngestedPrefix = "core.evidence.ingested"
+
+	// SubjectEvidenceSealedPrefix is the pub/sub prefix for evidence-sealed events.
+	// Full subject: core.evidence.sealed.{subject_id}
+	SubjectEvidenceSealedPrefix = "core.evidence.sealed"
 
 	// SubjectRegistration is published when a subject is registered or updated.
 	SubjectRegistration = "core.subject.registered"
@@ -16,7 +20,12 @@ const (
 	SubjectMappingImported = "core.mapping.imported"
 )
 
-// EvidenceSubject returns the full NATS subject for an evidence event for the given subject.
-func EvidenceSubject(subjectID string) string {
-	return SubjectEvidencePrefix + "." + subjectID
+// EvidenceIngestedSubject returns the full NATS subject for an evidence-ingested event.
+func EvidenceIngestedSubject(subjectID string) string {
+	return SubjectEvidenceIngestedPrefix + "." + subjectID
+}
+
+// EvidenceSealedSubject returns the full NATS subject for an evidence-sealed event.
+func EvidenceSealedSubject(subjectID string) string {
+	return SubjectEvidenceSealedPrefix + "." + subjectID
 }

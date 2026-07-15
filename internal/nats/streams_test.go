@@ -47,7 +47,7 @@ func TestEnsureInfrastructure(t *testing.T) {
 	err = natsinfra.EnsureInfrastructure(ctx, js)
 	require.NoError(t, err)
 
-	// Verify stream exists
+	// Verify INGEST stream exists
 	stream, err := js.Stream(ctx, natsinfra.StreamIngest)
 	require.NoError(t, err)
 	info, err := stream.Info(ctx)
@@ -55,6 +55,15 @@ func TestEnsureInfrastructure(t *testing.T) {
 	assert.Equal(t, natsinfra.StreamIngest, info.Config.Name)
 	assert.Equal(t, jetstream.WorkQueuePolicy, info.Config.Retention)
 	assert.Equal(t, 2*time.Minute, info.Config.Duplicates)
+
+	// Verify EVIDENCE stream exists
+	evidenceStream, err := js.Stream(ctx, natsinfra.StreamEvidence)
+	require.NoError(t, err)
+	evidenceInfo, err := evidenceStream.Info(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, natsinfra.StreamEvidence, evidenceInfo.Config.Name)
+	assert.Contains(t, evidenceInfo.Config.Subjects, "core.evidence.>")
+	assert.Equal(t, jetstream.InterestPolicy, evidenceInfo.Config.Retention)
 
 	// Verify KV buckets exist
 	ptKV, err := js.KeyValue(ctx, natsinfra.PublisherTrustBucket)
@@ -74,6 +83,10 @@ func TestEnsureInfrastructure(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestEvidenceSubject(t *testing.T) {
-	assert.Equal(t, "core.evidence.my-subject", natsinfra.EvidenceSubject("my-subject"))
+func TestEvidenceIngestedSubject(t *testing.T) {
+	assert.Equal(t, "core.evidence.ingested.my-app", natsinfra.EvidenceIngestedSubject("my-app"))
+}
+
+func TestEvidenceSealedSubject(t *testing.T) {
+	assert.Equal(t, "core.evidence.sealed.my-app", natsinfra.EvidenceSealedSubject("my-app"))
 }
