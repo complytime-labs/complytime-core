@@ -15,6 +15,7 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
+	"github.com/complytime-labs/complytime-core/events"
 	"github.com/complytime-labs/complytime-core/internal/gateway/receipt"
 	natsinfra "github.com/complytime-labs/complytime-core/internal/nats"
 )
@@ -180,7 +181,7 @@ func (w *Worker) processReceipt(ctx context.Context, ref *IngestRef) error {
 
 	// Publish sealed event
 	storageRef := fmt.Sprintf("locker://%s/entry/%d", ref.SubjectID, sealResp.Index)
-	if err := w.events.PublishEvidenceSealed(ctx, EvidenceSealedData{
+	if err := w.events.PublishEvidenceSealed(ctx, events.EvidenceSealedData{
 		ContentDigest: ref.ContentDigest,
 		LogIndex:      sealResp.Index,
 		ReceiptDigest: sealResp.Digest,
@@ -276,7 +277,7 @@ func (w *Worker) processDSSE(ctx context.Context, ref *IngestRef) error {
 
 	// Publish sealed event
 	storageRef := fmt.Sprintf("locker://%s/entry/%d", ref.SubjectID, receiptSealResp.Index)
-	if err := w.events.PublishEvidenceSealed(ctx, EvidenceSealedData{
+	if err := w.events.PublishEvidenceSealed(ctx, events.EvidenceSealedData{
 		ContentDigest: ref.ContentDigest,
 		LogIndex:      receiptSealResp.Index,
 		ReceiptDigest: receiptSealResp.Digest,

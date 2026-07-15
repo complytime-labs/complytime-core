@@ -15,6 +15,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/oapi-codegen/runtime/types"
 
+	"github.com/complytime-labs/complytime-core/events"
 	"github.com/complytime-labs/complytime-core/internal/authz"
 	"github.com/complytime-labs/complytime-core/internal/gateway/receipt"
 	"github.com/complytime-labs/complytime-core/internal/locker"
@@ -205,12 +206,12 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Publish ingested event (notification that artifact arrived)
-	_ = h.eventPublisher.PublishEvidenceIngested(ctx, EvidenceIngestedData{
+	_ = h.eventPublisher.PublishEvidenceIngested(ctx, events.EvidenceIngestedData{
 		ContentDigest: contentDigest,
 		ArtifactType:  artifactType,
 		StorageRef:    "", // populated by worker after seal
 		SubjectID:     subjectID,
-		Publisher:     PublisherIdentity{Issuer: issuer, Sub: sub},
+		Publisher:     events.PublisherIdentity{Issuer: issuer, Sub: sub},
 	})
 
 	// Generate job ID

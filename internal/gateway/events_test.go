@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/complytime-labs/complytime-core/events"
 	"github.com/complytime-labs/complytime-core/internal/gateway"
 	natsinfra "github.com/complytime-labs/complytime-core/internal/nats"
 )
@@ -27,12 +28,12 @@ func TestEventPublisher_PublishEvidenceIngested(t *testing.T) {
 	defer func() { _ = sub.Unsubscribe() }()
 
 	publisher := gateway.NewEventPublisher(nc)
-	err = publisher.PublishEvidenceIngested(ctx, gateway.EvidenceIngestedData{
+	err = publisher.PublishEvidenceIngested(ctx, events.EvidenceIngestedData{
 		ContentDigest: "sha256:abc123",
 		ArtifactType:  "EvaluationLog",
 		StorageRef:    "locker://test-subject/entry/42",
 		SubjectID:     "test-subject",
-		Publisher:     gateway.PublisherIdentity{Issuer: "https://issuer", Sub: "user"},
+		Publisher:     events.PublisherIdentity{Issuer: "https://issuer", Sub: "user"},
 	})
 	require.NoError(t, err)
 
@@ -44,7 +45,7 @@ func TestEventPublisher_PublishEvidenceIngested(t *testing.T) {
 		assert.Equal(t, "complytime-gateway", event["source"])
 
 		dataRaw, _ := json.Marshal(event["data"])
-		var data gateway.EvidenceIngestedData
+		var data events.EvidenceIngestedData
 		require.NoError(t, json.Unmarshal(dataRaw, &data))
 		assert.Equal(t, "sha256:abc123", data.ContentDigest)
 		assert.Equal(t, "EvaluationLog", data.ArtifactType)
@@ -67,7 +68,7 @@ func TestEventPublisher_PublishEvidenceSealed(t *testing.T) {
 	defer func() { _ = sub.Unsubscribe() }()
 
 	publisher := gateway.NewEventPublisher(nc)
-	err = publisher.PublishEvidenceSealed(ctx, gateway.EvidenceSealedData{
+	err = publisher.PublishEvidenceSealed(ctx, events.EvidenceSealedData{
 		ContentDigest: "sha256:abc123",
 		LogIndex:      42,
 		ReceiptDigest: "sha256:def456",
@@ -84,7 +85,7 @@ func TestEventPublisher_PublishEvidenceSealed(t *testing.T) {
 		assert.Equal(t, "dev.complytime.evidence.sealed", event["type"])
 
 		dataRaw, _ := json.Marshal(event["data"])
-		var data gateway.EvidenceSealedData
+		var data events.EvidenceSealedData
 		require.NoError(t, json.Unmarshal(dataRaw, &data))
 		assert.Equal(t, int64(42), data.LogIndex)
 		assert.Equal(t, "gemara-receipt/v1", data.ReceiptType)
