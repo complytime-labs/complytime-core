@@ -101,12 +101,19 @@ func TestWorker_NonDSSEPath(t *testing.T) {
 	// Wait for worker to be ready
 	time.Sleep(100 * time.Millisecond)
 
+	// Subscribe to sealed events (synchronous subscription)
+	sub, err := nc.SubscribeSync("core.evidence.sealed.>")
+	require.NoError(t, err)
+	defer sub.Unsubscribe()
+
 	// Publish IngestRef
 	ingestRef := IngestRef{
-		JobID:        jobID,
-		SubjectID:    "test-subject",
-		IsDSSE:       false,
-		ReceiptBytes: []byte(`{"test":"receipt"}`),
+		JobID:         jobID,
+		SubjectID:     "test-subject",
+		IsDSSE:        false,
+		ContentDigest: "test-content-digest",
+		ArtifactType:  "test-artifact",
+		ReceiptBytes:  []byte(`{"test":"receipt"}`),
 	}
 	refBytes, err := json.Marshal(ingestRef)
 	require.NoError(t, err)
@@ -129,6 +136,12 @@ func TestWorker_NonDSSEPath(t *testing.T) {
 	assert.Equal(t, "abc123", *jobInfo.Digest)
 	require.NotNil(t, jobInfo.LogIndex)
 	assert.Equal(t, int64(42), *jobInfo.LogIndex)
+
+	// Verify sealed event was published
+	require.NoError(t, nc.Flush())
+	msg, err := sub.NextMsg(natsgo.DefaultTimeout)
+	require.NoError(t, err)
+	assert.NotNil(t, msg)
 
 	// Shutdown worker
 	cancel()
@@ -210,6 +223,11 @@ func TestWorker_DSSEPath(t *testing.T) {
 	// Wait for worker to be ready
 	time.Sleep(100 * time.Millisecond)
 
+	// Subscribe to sealed events (synchronous subscription)
+	sub, err := nc.SubscribeSync("core.evidence.sealed.>")
+	require.NoError(t, err)
+	defer sub.Unsubscribe()
+
 	// Build placeholder DSSE channel receipt (index -1 will be replaced by worker)
 	publisher := receipt.Publisher{
 		Issuer: "https://token.example.com",
@@ -224,6 +242,8 @@ func TestWorker_DSSEPath(t *testing.T) {
 		JobID:                   jobID,
 		SubjectID:               "test-subject",
 		IsDSSE:                  true,
+		ContentDigest:           "test-dsse-content-digest",
+		ArtifactType:            "dsse",
 		DSSEBytes:               dsseBytes,
 		DSSEChannelReceiptBytes: placeholderReceipt,
 	}
@@ -247,6 +267,12 @@ func TestWorker_DSSEPath(t *testing.T) {
 	require.True(t, ok)
 	jobInfo := jobVal.(*JobInfo)
 	assert.Equal(t, Sealed, jobInfo.Status)
+
+	// Verify sealed event was published
+	require.NoError(t, nc.Flush())
+	msg, err := sub.NextMsg(natsgo.DefaultTimeout)
+	require.NoError(t, err)
+	assert.NotNil(t, msg)
 
 	// Shutdown worker
 	cancel()
@@ -336,6 +362,8 @@ func TestWorker_DSSEAlreadySealed(t *testing.T) {
 		JobID:                   jobID,
 		SubjectID:               "test-subject",
 		IsDSSE:                  true,
+		ContentDigest:           "test-dsse-digest-2",
+		ArtifactType:            "dsse",
 		DSSEBytes:               dsseBytes,
 		DSSEChannelReceiptBytes: placeholderReceipt,
 	}
@@ -429,10 +457,12 @@ func TestWorker_TransientFailureRetry(t *testing.T) {
 
 	// Publish IngestRef
 	ingestRef := IngestRef{
-		JobID:        jobID,
-		SubjectID:    "test-subject",
-		IsDSSE:       false,
-		ReceiptBytes: []byte(`{"test":"receipt"}`),
+		JobID:         jobID,
+		SubjectID:     "test-subject",
+		IsDSSE:        false,
+		ContentDigest: "test-retry-digest",
+		ArtifactType:  "test-retry",
+		ReceiptBytes:  []byte(`{"test":"receipt"}`),
 	}
 	refBytes, err := json.Marshal(ingestRef)
 	require.NoError(t, err)
@@ -516,10 +546,12 @@ func TestWorker_PermanentFailureTerm(t *testing.T) {
 
 	// Publish IngestRef
 	ingestRef := IngestRef{
-		JobID:        jobID,
-		SubjectID:    "nonexistent-subject",
-		IsDSSE:       false,
-		ReceiptBytes: []byte(`{"test":"receipt"}`),
+		JobID:         jobID,
+		SubjectID:     "nonexistent-subject",
+		IsDSSE:        false,
+		ContentDigest: "test-fail-digest",
+		ArtifactType:  "test-fail",
+		ReceiptBytes:  []byte(`{"test":"receipt"}`),
 	}
 	refBytes, err := json.Marshal(ingestRef)
 	require.NoError(t, err)

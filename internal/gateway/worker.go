@@ -178,12 +178,19 @@ func (w *Worker) processReceipt(ctx context.Context, ref *IngestRef) error {
 		return fmt.Errorf("sealing receipt: %w", err)
 	}
 
-	// Publish CloudEvent
-	// TODO(Task 3): Update to new PublishEvidenceSealed signature
-	// if err := w.events.PublishEvidenceSealed(ctx, ref.SubjectID, sealResp.Index, sealResp.Digest, "application/json"); err != nil {
-	// 	slog.Warn("failed to publish CloudEvent", "error", err, "jobId", ref.JobID)
-	// 	// Continue - don't fail the job just because event publishing failed
-	// }
+	// Publish sealed event
+	storageRef := fmt.Sprintf("locker://%s/entry/%d", ref.SubjectID, sealResp.Index)
+	if err := w.events.PublishEvidenceSealed(ctx, EvidenceSealedData{
+		ContentDigest: ref.ContentDigest,
+		LogIndex:      sealResp.Index,
+		ReceiptDigest: sealResp.Digest,
+		ReceiptType:   "gemara-receipt/v1",
+		StorageRef:    storageRef,
+		SubjectID:     ref.SubjectID,
+	}); err != nil {
+		slog.Warn("failed to publish CloudEvent", "error", err, "jobId", ref.JobID)
+		// Continue - don't fail the job just because event publishing failed
+	}
 
 	// Update job status
 	digest := sealResp.Digest
@@ -267,12 +274,19 @@ func (w *Worker) processDSSE(ctx context.Context, ref *IngestRef) error {
 
 	slog.Info("DSSE channel receipt sealed", "jobId", ref.JobID, "index", receiptSealResp.Index)
 
-	// Publish CloudEvent with refDigest
-	// TODO(Task 3): Update to new PublishEvidenceSealed signature
-	// if err := w.events.PublishEvidenceSealedWithRef(ctx, ref.SubjectID, receiptSealResp.Index, receiptSealResp.Digest, "application/vnd.dsse+json", dsseDigest); err != nil {
-	// 	slog.Warn("failed to publish CloudEvent", "error", err, "jobId", ref.JobID)
-	// 	// Continue
-	// }
+	// Publish sealed event
+	storageRef := fmt.Sprintf("locker://%s/entry/%d", ref.SubjectID, receiptSealResp.Index)
+	if err := w.events.PublishEvidenceSealed(ctx, EvidenceSealedData{
+		ContentDigest: ref.ContentDigest,
+		LogIndex:      receiptSealResp.Index,
+		ReceiptDigest: receiptSealResp.Digest,
+		ReceiptType:   "gemara-dsse-channel-receipt/v1",
+		StorageRef:    storageRef,
+		SubjectID:     ref.SubjectID,
+	}); err != nil {
+		slog.Warn("failed to publish CloudEvent", "error", err, "jobId", ref.JobID)
+		// Continue
+	}
 
 	// Update job status (use DSSE channel receipt digest/index as the primary result)
 	digest := receiptSealResp.Digest
