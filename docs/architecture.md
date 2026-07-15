@@ -86,7 +86,7 @@ Internal WORM storage. Not exposed to the public network.
 **Step 2 — Gateway async worker (JetStream consumer):**
 1. Pick `IngestRef` from durable consumer
 2. Call locker `POST /ledgers/{subjectId}/seal` → log index
-3. Publish CloudEvent to `core.evidence.{subjectId}`
+3. Publish CloudEvent to `core.evidence.sealed.{subjectId}`
 4. Ack. Retry on transient failure, dead-letter on permanent.
 
 ### Two Receipt Formats (ADR-0003)
@@ -124,7 +124,8 @@ Internal WORM storage. Not exposed to the public network.
 | Subject | Use |
 |:--|:--|
 | `core.ingest` | Async ingest worker (JetStream durable consumer) |
-| `core.evidence.{subjectId}` | Evidence sealed for a subject |
+| `core.evidence.ingested.{subjectId}` | Artifact received (S3+Lambda or gateway) |
+| `core.evidence.sealed.{subjectId}` | Artifact receipted and sealed (gateway only) |
 | `core.subject.registered` | Subject registered |
 | `core.mapping.imported` | MappingDocument ingested |
 
