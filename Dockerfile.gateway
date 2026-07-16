@@ -12,6 +12,7 @@ RUN go mod download
 
 # Copy source code
 COPY cmd cmd/
+COPY events events/
 COPY internal internal/
 
 # Build the binary
