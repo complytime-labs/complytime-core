@@ -124,7 +124,7 @@ Internal WORM storage. Not exposed to the public network.
 | Subject | Use |
 |:--|:--|
 | `core.ingest` | Async ingest worker (JetStream durable consumer) |
-| `core.evidence.ingested.{subjectId}` | Artifact received (S3+Lambda or gateway) |
+| `core.evidence.ingested.{subjectId}` | Artifact received |
 | `core.evidence.sealed.{subjectId}` | Artifact receipted and sealed (gateway only) |
 | `core.subject.registered` | Subject registered |
 | `core.mapping.imported` | MappingDocument ingested |
