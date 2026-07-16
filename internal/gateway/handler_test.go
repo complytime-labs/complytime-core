@@ -66,6 +66,12 @@ func TestIngestArtifact_ValidJSON(t *testing.T) {
 	// Mock locker (not needed for async ingest, but handler requires URL)
 	handler := setupTestHandler(t, js, nc, "http://locker.example.com")
 
+	// Subscribe to ingested events (synchronous subscription)
+	sub, err := nc.SubscribeSync("core.evidence.ingested.>")
+	require.NoError(t, err)
+	defer func() { _ = sub.Unsubscribe() }()
+	require.NoError(t, sub.AutoUnsubscribe(1))
+
 	// Create a test artifact
 	artifact := map[string]interface{}{
 		"target": map[string]interface{}{
@@ -95,12 +101,24 @@ func TestIngestArtifact_ValidJSON(t *testing.T) {
 	err = json.NewDecoder(w.Body).Decode(&resp)
 	require.NoError(t, err)
 	assert.NotEqual(t, uuid.Nil, resp.JobId)
+
+	// Verify ingested event was published
+	require.NoError(t, nc.Flush())
+	msg, err := sub.NextMsg(natsgo.DefaultTimeout)
+	require.NoError(t, err)
+	assert.NotNil(t, msg)
 }
 
 func TestIngestArtifact_ValidDSSE(t *testing.T) {
 	_, nc, js := setupTestServer(t)
 
 	handler := setupTestHandler(t, js, nc, "http://locker.example.com")
+
+	// Subscribe to ingested events (synchronous subscription)
+	sub, err := nc.SubscribeSync("core.evidence.ingested.>")
+	require.NoError(t, err)
+	defer func() { _ = sub.Unsubscribe() }()
+	require.NoError(t, sub.AutoUnsubscribe(1))
 
 	// Create a mock DSSE envelope
 	dsseEnvelope := map[string]interface{}{
@@ -134,6 +152,12 @@ func TestIngestArtifact_ValidDSSE(t *testing.T) {
 	err = json.NewDecoder(w.Body).Decode(&resp)
 	require.NoError(t, err)
 	assert.NotEqual(t, uuid.Nil, resp.JobId)
+
+	// Verify ingested event was published
+	require.NoError(t, nc.Flush())
+	msg, err := sub.NextMsg(natsgo.DefaultTimeout)
+	require.NoError(t, err)
+	assert.NotNil(t, msg)
 }
 
 func TestIngestArtifact_MissingBody(t *testing.T) {

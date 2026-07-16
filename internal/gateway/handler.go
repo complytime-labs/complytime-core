@@ -15,6 +15,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/oapi-codegen/runtime/types"
 
+	"github.com/complytime-labs/complytime-core/events"
 	"github.com/complytime-labs/complytime-core/internal/authz"
 	"github.com/complytime-labs/complytime-core/internal/gateway/receipt"
 	"github.com/complytime-labs/complytime-core/internal/locker"
@@ -58,6 +59,8 @@ type IngestRef struct {
 	JobID                   string `json:"jobId"`
 	SubjectID               string `json:"subjectId"`
 	IsDSSE                  bool   `json:"isDSSE"`
+	ContentDigest           string `json:"contentDigest"`
+	ArtifactType            string `json:"artifactType"`
 	ReceiptBytes            []byte `json:"receiptBytes,omitempty"`
 	DSSEBytes               []byte `json:"dsseBytes,omitempty"`
 	DSSEChannelReceiptBytes []byte `json:"dsseChannelReceiptBytes,omitempty"`
@@ -115,6 +118,11 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 	var receiptBytes []byte
 	var dsseBytes []byte
 	var dsseChannelReceiptBytes []byte
+	var artifactType string
+
+	// Compute content digest for the ingested event
+	hash := sha256.Sum256(body)
+	contentDigest := hex.EncodeToString(hash[:])
 
 	// Subject ID comes from X-Subject-ID header (required for all ingest requests).
 	// The SubjectIDExtractor middleware already validated it and set it in context
@@ -130,6 +138,7 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if isDSSE {
+		artifactType = "dsse"
 
 		// Store DSSE bytes as-is
 		dsseBytes = body
@@ -183,7 +192,7 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 		}
 
 		// Determine artifact type
-		artifactType := "unknown"
+		artifactType = "unknown"
 		if t, ok := artifact["type"].(string); ok {
 			artifactType = t
 		}
@@ -196,6 +205,15 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
+	// Publish ingested event (notification that artifact arrived)
+	_ = h.eventPublisher.PublishEvidenceIngested(ctx, events.EvidenceIngestedData{
+		ContentDigest: contentDigest,
+		ArtifactType:  artifactType,
+		StorageRef:    "", // populated by worker after seal
+		SubjectID:     subjectID,
+		Publisher:     events.PublisherIdentity{Issuer: issuer, Sub: sub},
+	})
+
 	// Generate job ID
 	jobID := uuid.New()
 
@@ -204,6 +222,8 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 		JobID:                   jobID.String(),
 		SubjectID:               subjectID,
 		IsDSSE:                  isDSSE,
+		ContentDigest:           contentDigest,
+		ArtifactType:            artifactType,
 		ReceiptBytes:            receiptBytes,
 		DSSEBytes:               dsseBytes,
 		DSSEChannelReceiptBytes: dsseChannelReceiptBytes,

@@ -15,6 +15,7 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
+	"github.com/complytime-labs/complytime-core/events"
 	"github.com/complytime-labs/complytime-core/internal/gateway/receipt"
 	natsinfra "github.com/complytime-labs/complytime-core/internal/nats"
 )
@@ -178,8 +179,16 @@ func (w *Worker) processReceipt(ctx context.Context, ref *IngestRef) error {
 		return fmt.Errorf("sealing receipt: %w", err)
 	}
 
-	// Publish CloudEvent
-	if err := w.events.PublishEvidenceSealed(ctx, ref.SubjectID, sealResp.Index, sealResp.Digest, "application/json"); err != nil {
+	// Publish sealed event
+	storageRef := fmt.Sprintf("locker://%s/entry/%d", ref.SubjectID, sealResp.Index)
+	if err := w.events.PublishEvidenceSealed(ctx, events.EvidenceSealedData{
+		ContentDigest: ref.ContentDigest,
+		LogIndex:      sealResp.Index,
+		ReceiptDigest: sealResp.Digest,
+		ReceiptType:   "gemara-receipt/v1",
+		StorageRef:    storageRef,
+		SubjectID:     ref.SubjectID,
+	}); err != nil {
 		slog.Warn("failed to publish CloudEvent", "error", err, "jobId", ref.JobID)
 		// Continue - don't fail the job just because event publishing failed
 	}
@@ -266,8 +275,16 @@ func (w *Worker) processDSSE(ctx context.Context, ref *IngestRef) error {
 
 	slog.Info("DSSE channel receipt sealed", "jobId", ref.JobID, "index", receiptSealResp.Index)
 
-	// Publish CloudEvent with refDigest
-	if err := w.events.PublishEvidenceSealedWithRef(ctx, ref.SubjectID, receiptSealResp.Index, receiptSealResp.Digest, "application/vnd.dsse+json", dsseDigest); err != nil {
+	// Publish sealed event
+	storageRef := fmt.Sprintf("locker://%s/entry/%d", ref.SubjectID, receiptSealResp.Index)
+	if err := w.events.PublishEvidenceSealed(ctx, events.EvidenceSealedData{
+		ContentDigest: ref.ContentDigest,
+		LogIndex:      receiptSealResp.Index,
+		ReceiptDigest: receiptSealResp.Digest,
+		ReceiptType:   "gemara-dsse-channel-receipt/v1",
+		StorageRef:    storageRef,
+		SubjectID:     ref.SubjectID,
+	}); err != nil {
 		slog.Warn("failed to publish CloudEvent", "error", err, "jobId", ref.JobID)
 		// Continue
 	}
