@@ -1,6 +1,6 @@
 // Package events defines the CloudEvents data types for the ComplyTime
 // evidence lifecycle. These types are the stable contract between producers
-// (gateway, S3+Lambda bridge) and consumers (thin DB, external subscribers).
+// and consumers.
 package events
 
 const (
@@ -16,7 +16,6 @@ type PublisherIdentity struct {
 }
 
 // EvidenceIngestedData is the CloudEvents data payload for evidence.ingested events.
-// Emitted by both S3+Lambda and gateway when evidence arrives but before it's sealed.
 type EvidenceIngestedData struct {
 	ContentDigest string            `json:"contentDigest"`
 	ArtifactType  string            `json:"artifactType"`
