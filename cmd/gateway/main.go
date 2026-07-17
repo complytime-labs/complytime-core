@@ -132,7 +132,7 @@ func main() {
 	r.Group(func(r chi.Router) {
 		// JWT authentication
 		r.Use(jwtauth.Verifier(tokenAuth))
-		r.Use(jwtAuthenticator)
+		r.Use(jwtAuthenticatorWithAudience(jwtAudience))
 
 		// Extract X-Subject-ID header into context before Cedar runs
 		r.Use(gateway.SubjectIDExtractor)
@@ -273,42 +273,61 @@ func createJWTAuth(issuers, audience string) (*jwtauth.JWTAuth, error) {
 	return tokenAuth, nil
 }
 
-// jwtAuthenticator is the middleware that validates the JWT and adds publisher context.
-func jwtAuthenticator(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token, _, err := jwtauth.FromContext(r.Context())
+// jwtAuthenticatorWithAudience returns middleware that validates the JWT,
+// checks the audience claim, and adds publisher context.
+func jwtAuthenticatorWithAudience(expectedAudience string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			token, _, err := jwtauth.FromContext(r.Context())
 
-		if err != nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
+			if err != nil {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
 
-		if token == nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
+			if token == nil {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
 
-		issuer, ok := token.Issuer()
-		if !ok || issuer == "" {
-			http.Error(w, "Unauthorized: missing issuer", http.StatusUnauthorized)
-			return
-		}
+			// Validate audience claim
+			audiences, ok := token.Audience()
+			if !ok || len(audiences) == 0 {
+				http.Error(w, "Unauthorized: missing audience", http.StatusUnauthorized)
+				return
+			}
+			audFound := false
+			for _, aud := range audiences {
+				if aud == expectedAudience {
+					audFound = true
+					break
+				}
+			}
+			if !audFound {
+				http.Error(w, "Unauthorized: invalid audience", http.StatusUnauthorized)
+				return
+			}
 
-		sub, ok := token.Subject()
-		if !ok || sub == "" {
-			http.Error(w, "Unauthorized: missing subject", http.StatusUnauthorized)
-			return
-		}
+			issuer, ok := token.Issuer()
+			if !ok || issuer == "" {
+				http.Error(w, "Unauthorized: missing issuer", http.StatusUnauthorized)
+				return
+			}
 
-		// Add publisher to context
-		ctx := authz.SetPublisherContext(r.Context(), issuer, sub)
+			sub, ok := token.Subject()
+			if !ok || sub == "" {
+				http.Error(w, "Unauthorized: missing subject", http.StatusUnauthorized)
+				return
+			}
 
-		// Extract admin claim if present
-		var isAdmin bool
-		if err := token.Get("admin", &isAdmin); err == nil {
-			ctx = authz.SetAdminContext(ctx, isAdmin)
-		}
+			ctx := authz.SetPublisherContext(r.Context(), issuer, sub)
 
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+			var isAdmin bool
+			if err := token.Get("admin", &isAdmin); err == nil {
+				ctx = authz.SetAdminContext(ctx, isAdmin)
+			}
+
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }
