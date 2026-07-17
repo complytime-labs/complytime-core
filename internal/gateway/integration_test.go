@@ -429,6 +429,7 @@ func createTestJWTWithAdmin(t *testing.T, privateKey *ecdsa.PrivateKey, issuer, 
 	token, err := jwt.NewBuilder().
 		Issuer(issuer).
 		Subject(sub).
+		Audience([]string{"complytime-gateway"}).
 		IssuedAt(time.Now()).
 		Expiration(time.Now().Add(1 * time.Hour)).
 		Claim("admin", isAdmin).
@@ -449,19 +450,31 @@ func testJWTAuthenticator(next http.Handler) http.Handler {
 			return
 		}
 
-		jwtToken, ok := token.(jwt.Token)
-		if !ok {
-			http.Error(w, "Unauthorized: invalid token type", http.StatusUnauthorized)
+		// Validate audience
+		audiences, ok := token.Audience()
+		if !ok || len(audiences) == 0 {
+			http.Error(w, "Unauthorized: missing audience", http.StatusUnauthorized)
+			return
+		}
+		audFound := false
+		for _, aud := range audiences {
+			if aud == "complytime-gateway" {
+				audFound = true
+				break
+			}
+		}
+		if !audFound {
+			http.Error(w, "Unauthorized: invalid audience", http.StatusUnauthorized)
 			return
 		}
 
-		issuer, ok := jwtToken.Issuer()
+		issuer, ok := token.Issuer()
 		if !ok || issuer == "" {
 			http.Error(w, "Unauthorized: missing issuer", http.StatusUnauthorized)
 			return
 		}
 
-		subject, ok := jwtToken.Subject()
+		subject, ok := token.Subject()
 		if !ok || subject == "" {
 			http.Error(w, "Unauthorized: missing subject", http.StatusUnauthorized)
 			return
@@ -471,7 +484,7 @@ func testJWTAuthenticator(next http.Handler) http.Handler {
 
 		// Extract admin claim if present
 		var isAdmin bool
-		if err := jwtToken.Get("admin", &isAdmin); err == nil {
+		if err := token.Get("admin", &isAdmin); err == nil {
 			ctx = authz.SetAdminContext(ctx, isAdmin)
 		}
 

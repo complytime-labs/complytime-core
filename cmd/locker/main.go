@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -27,6 +28,10 @@ func main() {
 
 	// Read shared secret for service-to-service authentication
 	secret := os.Getenv("LOCKER_SECRET")
+	if secret == "" {
+		fmt.Fprintln(os.Stderr, "LOCKER_SECRET is required")
+		os.Exit(1)
+	}
 
 	// Initialize logger
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
