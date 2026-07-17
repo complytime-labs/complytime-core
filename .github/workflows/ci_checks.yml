@@ -15,6 +15,36 @@ permissions:
   pull-requests: read
 
 jobs:
+  go-test:
+    name: Go Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: go build ./...
+      - name: Unit tests
+        run: go test ./... -count=1 -v
+      - name: Integration tests
+        run: go test ./internal/gateway/ -tags integration -count=1 -v
+
+  docker-build:
+    name: Docker Build Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dockerfile: [Dockerfile.gateway, Dockerfile.locker]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Build image (no push)
+        run: docker build -f ${{ matrix.dockerfile }} .
+
   cedar-validate:
     name: Cedar Policy Validation
     runs-on: ubuntu-latest
