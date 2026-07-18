@@ -165,3 +165,15 @@ func unwrapReceipt(entry []byte) []byte {
 func lockerServiceToken() string {
 	return mintToken("acceptance-test-consumer", "complytime-locker", false, true)
 }
+
+func newRequest(method, url string, body []byte) (*http.Request, error) {
+	var bodyReader io.Reader
+	if body != nil {
+		bodyReader = bytes.NewReader(body)
+	}
+	return http.NewRequest(method, url, bodyReader)
+}
+
+func httpClient() *http.Client {
+	return &http.Client{Timeout: 30 * time.Second}
+}
