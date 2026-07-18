@@ -33,7 +33,7 @@ func NewFileTokenSource(path string) *FileTokenSource {
 }
 
 func (f *FileTokenSource) Token(_ context.Context) (string, error) {
-	data, err := os.ReadFile(f.path)
+	data, err := os.ReadFile(f.path) //nolint:gosec // G703: path set at init from trusted config
 	if err != nil {
 		return "", fmt.Errorf("reading token file %s: %w", f.path, err)
 	}

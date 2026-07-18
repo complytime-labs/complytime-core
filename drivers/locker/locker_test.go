@@ -17,7 +17,7 @@ func TestDriver_Fetch(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/ledgers/my-subject/entry/42", r.URL.Path)
 		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Write([]byte("receipt-data"))
+		_, _ = w.Write([]byte("receipt-data"))
 	}))
 	defer server.Close()
 

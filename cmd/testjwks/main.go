@@ -124,7 +124,7 @@ func main() {
 
 	mux.HandleFunc("GET /.well-known/jwks.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(jwks)
+		_ = json.NewEncoder(w).Encode(jwks)
 	})
 
 	mux.HandleFunc("POST /mint", func(w http.ResponseWriter, r *http.Request) {
@@ -178,12 +178,12 @@ func main() {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"token": string(signed)})
+		_ = json.NewEncoder(w).Encode(map[string]string{"token": string(signed)})
 	})
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
 
 	server := &http.Server{
@@ -214,7 +214,9 @@ func main() {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	server.Shutdown(shutdownCtx)
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		slog.Error("shutdown error", "error", err)
+	}
 }
 
 func writeToken(privKey jwk.Key, kidHeader jws.Headers, issuer, sub, audience string, admin, service bool, path string) error {
@@ -236,9 +238,9 @@ func writeToken(privKey jwk.Key, kidHeader jws.Headers, issuer, sub, audience st
 		return fmt.Errorf("signing token: %w", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil { //nolint:gosec // G703: path from trusted env var
 		return fmt.Errorf("creating token dir: %w", err)
 	}
 
-	return os.WriteFile(path, signed, 0600)
+	return os.WriteFile(path, signed, 0600) //nolint:gosec // G703: path from trusted env var
 }
