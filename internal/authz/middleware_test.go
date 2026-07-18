@@ -241,6 +241,15 @@ func TestContextHelpers(t *testing.T) {
 	subjectID := GetSubjectID(ctx)
 	assert.Equal(t, "proj-1", subjectID)
 
+	// Test admin context
+	ctx = SetAdminContext(ctx, true)
+	// Admin is retrieved via ctx.Value in middleware, tested there
+
+	// Test service context
+	ctx = SetServiceContext(ctx, true)
+	isService := GetService(ctx)
+	assert.Equal(t, true, isService)
+
 	// Test missing values
 	emptyCtx := context.Background()
 	issuer, sub = GetPublisher(emptyCtx)
@@ -249,4 +258,7 @@ func TestContextHelpers(t *testing.T) {
 
 	subjectID = GetSubjectID(emptyCtx)
 	assert.Equal(t, "", subjectID)
+
+	isService = GetService(emptyCtx)
+	assert.Equal(t, false, isService)
 }

@@ -12,6 +12,9 @@ var (
 	ActionRegisterSubject = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("admin:register-subject"))
 	ActionModifyTrust     = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("admin:modify-trust"))
 	ActionReadEvidence    = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("read:evidence"))
+	ActionSealEvidence    = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("seal:evidence"))
+	ActionVerifyEvidence  = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("verify:evidence"))
+	ActionManageLedger    = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("manage:ledger"))
 )
 
 // routeMapping maps HTTP method + path patterns to Cedar actions
@@ -22,12 +25,18 @@ type routeMapping struct {
 }
 
 var routeMappings = []routeMapping{
+	// Gateway routes
 	{"POST", "/api/ingest", ActionPublishArtifact},
 	{"POST", "/api/admin/subjects", ActionRegisterSubject},
 	{"PUT", "/api/admin/trust", ActionModifyTrust},
 	{"PATCH", "/api/admin/trust", ActionModifyTrust},
 	{"GET", "/api/evidence", ActionReadEvidence},
 	{"GET", "/api/ingest/jobs/", ActionReadEvidence},
+	// Locker routes — order matters: longer prefixes first
+	{"POST", "/ledgers", ActionManageLedger},   // POST /ledgers (exact — create)
+	{"POST", "/ledgers/", ActionSealEvidence},  // POST /ledgers/{subjectId}/seal
+	{"GET", "/ledgers", ActionReadEvidence},    // GET /ledgers (exact — list)
+	{"GET", "/ledgers/", ActionReadEvidence},   // GET /ledgers/... (info, fetch, verify, tiles)
 }
 
 // PrincipalFromJWT constructs a Cedar Publisher entity UID from JWT issuer and subject.

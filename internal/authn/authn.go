@@ -41,7 +41,7 @@ func AuthMiddleware(auth Authenticator) func(http.Handler) http.Handler {
 			ctx := context.WithValue(r.Context(), principalKey, p)
 			ctx = authz.SetPublisherContext(ctx, p.Issuer, p.Sub)
 			ctx = authz.SetAdminContext(ctx, p.Admin)
-			// TODO: authz.SetServiceContext will be added in Task 4
+			ctx = authz.SetServiceContext(ctx, p.Service)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
