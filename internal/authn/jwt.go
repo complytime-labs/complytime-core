@@ -16,6 +16,7 @@ import (
 type JWTAuthenticator struct {
 	cache    *jwk.Cache
 	jwksURLs []string
+	issuers  []string
 	audience string
 }
 
@@ -27,6 +28,7 @@ func NewJWTAuthenticator(ctx context.Context, issuers []string, audience string)
 	}
 
 	var urls []string
+	var issuerList []string
 	for _, issuer := range issuers {
 		issuer = strings.TrimSpace(issuer)
 		if issuer == "" {
@@ -40,9 +42,10 @@ func NewJWTAuthenticator(ctx context.Context, issuers []string, audience string)
 			return nil, fmt.Errorf("fetching JWKS from %s: %w", jwksURL, err)
 		}
 		urls = append(urls, jwksURL)
+		issuerList = append(issuerList, issuer)
 	}
 
-	return &JWTAuthenticator{cache: cache, jwksURLs: urls, audience: audience}, nil
+	return &JWTAuthenticator{cache: cache, jwksURLs: urls, issuers: issuerList, audience: audience}, nil
 }
 
 func (a *JWTAuthenticator) Authenticate(r *http.Request) (*Principal, error) {
@@ -52,7 +55,7 @@ func (a *JWTAuthenticator) Authenticate(r *http.Request) (*Principal, error) {
 	}
 
 	var lastErr error
-	for _, url := range a.jwksURLs {
+	for i, url := range a.jwksURLs {
 		set, err := a.cache.Lookup(r.Context(), url)
 		if err != nil {
 			lastErr = fmt.Errorf("fetching keyset %s: %w", url, err)
@@ -60,6 +63,7 @@ func (a *JWTAuthenticator) Authenticate(r *http.Request) (*Principal, error) {
 		}
 		tok, err := jwt.Parse([]byte(tokenString),
 			jwt.WithKeySet(set, jws.WithInferAlgorithmFromKey(true)),
+			jwt.WithIssuer(a.issuers[i]),
 			jwt.WithAudience(a.audience),
 			jwt.WithAcceptableSkew(30*time.Second),
 		)

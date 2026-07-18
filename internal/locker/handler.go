@@ -20,7 +20,7 @@ type APIHandler struct {
 
 // NewHandler creates a new HTTP handler for the locker API.
 // It returns a Chi router with all routes registered.
-// If auth is non-nil, all routes except /healthz and tile routes require JWT+Cedar authentication.
+// If auth is non-nil, all routes except /healthz require JWT+Cedar authentication.
 func NewHandler(lk *Locker, auth authn.Authenticator, policySet *cedar.PolicySet) http.Handler {
 	h := &APIHandler{locker: lk}
 
@@ -34,6 +34,7 @@ func NewHandler(lk *Locker, auth authn.Authenticator, policySet *cedar.PolicySet
 		}
 
 		r.Use(func(next http.Handler) http.Handler {
+			authed := authChain(next)
 			return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 				// Skip auth for /healthz
 				if req.URL.Path == "/healthz" {
@@ -41,7 +42,7 @@ func NewHandler(lk *Locker, auth authn.Authenticator, policySet *cedar.PolicySet
 					return
 				}
 				// Apply pre-built auth chain for all other routes
-				authChain(next).ServeHTTP(w, req)
+				authed.ServeHTTP(w, req)
 			})
 		})
 	}

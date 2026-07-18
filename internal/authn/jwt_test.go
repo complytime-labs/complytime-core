@@ -185,3 +185,92 @@ func TestAuthMiddleware_Rejects_NoToken(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, rr.Code)
 }
+
+func TestJWTAuthenticator_RejectsSpoofedIssuer(t *testing.T) {
+	// Create two JWKS servers (two issuers)
+	pubA, privA, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	pubB, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	// JWKS for issuer A
+	jwksA := jwk.NewSet()
+	keyA, err := jwk.Import(pubA)
+	require.NoError(t, err)
+	require.NoError(t, keyA.Set(jwk.KeyIDKey, "key-a"))
+	require.NoError(t, keyA.Set(jwk.AlgorithmKey, jwa.EdDSA()))
+	require.NoError(t, jwksA.AddKey(keyA))
+
+	jwksServerA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(jwksA)
+	}))
+	defer jwksServerA.Close()
+
+	// JWKS for issuer B
+	jwksB := jwk.NewSet()
+	keyB, err := jwk.Import(pubB)
+	require.NoError(t, err)
+	require.NoError(t, keyB.Set(jwk.KeyIDKey, "key-b"))
+	require.NoError(t, keyB.Set(jwk.AlgorithmKey, jwa.EdDSA()))
+	require.NoError(t, jwksB.AddKey(keyB))
+
+	jwksServerB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(jwksB)
+	}))
+	defer jwksServerB.Close()
+
+	// Authenticator configured with both issuers
+	auth, err := authn.NewJWTAuthenticator(
+		context.Background(),
+		[]string{jwksServerA.URL, jwksServerB.URL},
+		"complytime-gateway",
+	)
+	require.NoError(t, err)
+
+	// Build a token signed by issuer A but with iss claim = issuer B
+	tok, err := jwt.NewBuilder().
+		Issuer(jwksServerB.URL). // Claims to be from B
+		Subject("attacker").
+		Audience([]string{"complytime-gateway"}).
+		IssuedAt(time.Now()).
+		Expiration(time.Now().Add(time.Hour)).
+		Build()
+	require.NoError(t, err)
+
+	privKeyA, err := jwk.Import(privA)
+	require.NoError(t, err)
+	require.NoError(t, privKeyA.Set(jwk.KeyIDKey, "key-a"))
+
+	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.EdDSA(), privKeyA))
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Authorization", "Bearer "+string(signed))
+
+	// Should reject because iss claim doesn't match the expected issuer for keyset A
+	_, err = auth.Authenticate(req)
+	require.Error(t, err, "should reject token with spoofed issuer claim")
+
+	// Verify that a properly signed token with correct issuer still works
+	validTok, err := jwt.NewBuilder().
+		Issuer(jwksServerA.URL). // Correct issuer
+		Subject("valid-user").
+		Audience([]string{"complytime-gateway"}).
+		IssuedAt(time.Now()).
+		Expiration(time.Now().Add(time.Hour)).
+		Build()
+	require.NoError(t, err)
+
+	validSigned, err := jwt.Sign(validTok, jwt.WithKey(jwa.EdDSA(), privKeyA))
+	require.NoError(t, err)
+
+	validReq := httptest.NewRequest("GET", "/", nil)
+	validReq.Header.Set("Authorization", "Bearer "+string(validSigned))
+
+	principal, err := auth.Authenticate(validReq)
+	require.NoError(t, err, "should accept token with correct issuer")
+	assert.Equal(t, jwksServerA.URL, principal.Issuer)
+	assert.Equal(t, "valid-user", principal.Sub)
+}
