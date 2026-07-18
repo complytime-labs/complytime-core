@@ -202,7 +202,7 @@ func writeToken(priv ed25519.PrivateKey, issuer, sub, audience string, admin, se
 		Subject(sub).
 		Audience([]string{audience}).
 		IssuedAt(time.Now()).
-		Expiration(time.Now().Add(1 * time.Hour)).
+		Expiration(time.Now().Add(1*time.Hour)).
 		Claim("admin", admin).
 		Claim("service", service).
 		Build()
