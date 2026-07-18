@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -14,11 +13,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/jwtauth/v5"
-	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/nats-io/nats.go/jetstream"
 	openapitypes "github.com/oapi-codegen/runtime/types"
 
+	"github.com/complytime-labs/complytime-core/internal/authn"
 	"github.com/complytime-labs/complytime-core/internal/authz"
 	"github.com/complytime-labs/complytime-core/internal/gateway"
 	natsinfra "github.com/complytime-labs/complytime-core/internal/nats"
@@ -106,10 +104,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create JWT authenticator
-	// For simplicity, we'll use a simple approach: fetch JWKS from each issuer's .well-known/openid-configuration
-	// In production, you'd cache JWKS and refresh periodically
-	tokenAuth, err := createJWTAuth(jwtIssuers, jwtAudience)
+	// Create JWT authenticator with auto-refreshing JWKS
+	issuerList := strings.Split(jwtIssuers, ",")
+	jwtAuth, err := authn.NewJWTAuthenticator(ctx, issuerList, jwtAudience)
 	if err != nil {
 		slog.Error("failed to create jwt authenticator", "error", err)
 		os.Exit(1)
@@ -130,14 +127,8 @@ func main() {
 
 	// Authenticated routes
 	r.Group(func(r chi.Router) {
-		// JWT authentication
-		r.Use(jwtauth.Verifier(tokenAuth))
-		r.Use(jwtAuthenticatorWithAudience(jwtAudience))
-
-		// Extract X-Subject-ID header into context before Cedar runs
+		r.Use(authn.AuthMiddleware(jwtAuth))
 		r.Use(gateway.SubjectIDExtractor)
-
-		// Cedar authorization middleware
 		r.Use(authz.Middleware(policySet, trustStore.IsPublisherTrusted))
 
 		// API routes
@@ -223,111 +214,4 @@ func main() {
 	}
 
 	slog.Info("gateway server stopped successfully")
-}
-
-// createJWTAuth creates a JWT authenticator from a comma-separated list of issuer URLs.
-// For each issuer, it fetches the JWKS from the .well-known/openid-configuration endpoint.
-func createJWTAuth(issuers, audience string) (*jwtauth.JWTAuth, error) {
-	issuerList := strings.Split(issuers, ",")
-	if len(issuerList) == 0 {
-		return nil, fmt.Errorf("no JWT issuers configured")
-	}
-
-	// For simplicity, we'll create a keyset that includes keys from all issuers
-	// In production, you'd want to validate the issuer claim and use the right keyset
-	keySet := jwk.NewSet()
-
-	for _, issuer := range issuerList {
-		issuer = strings.TrimSpace(issuer)
-		if issuer == "" {
-			continue
-		}
-
-		// Fetch JWKS from issuer
-		jwksURL := issuer + "/.well-known/jwks.json"
-		slog.Info("fetching jwks", "url", jwksURL)
-
-		set, err := jwk.Fetch(context.Background(), jwksURL)
-		if err != nil {
-			return nil, fmt.Errorf("fetching jwks from %s: %w", jwksURL, err)
-		}
-
-		// Add keys to our keyset (v3 API)
-		keys := set.Keys()
-		for _, keyID := range keys {
-			key, ok := set.LookupKeyID(keyID)
-			if !ok {
-				continue
-			}
-			if err := keySet.AddKey(key); err != nil {
-				return nil, fmt.Errorf("adding key to keyset: %w", err)
-			}
-		}
-	}
-
-	// Create jwtauth with the keyset
-	// Note: jwtauth.New expects a signing key, but for verification we only need the public keys
-	// We'll use jwtauth.NewWithKeySet instead (if available) or work around it
-	tokenAuth := jwtauth.New("RS256", nil, keySet)
-
-	return tokenAuth, nil
-}
-
-// jwtAuthenticatorWithAudience returns middleware that validates the JWT,
-// checks the audience claim, and adds publisher context.
-func jwtAuthenticatorWithAudience(expectedAudience string) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			token, _, err := jwtauth.FromContext(r.Context())
-
-			if err != nil {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-
-			if token == nil {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-
-			// Validate audience claim
-			audiences, ok := token.Audience()
-			if !ok || len(audiences) == 0 {
-				http.Error(w, "Unauthorized: missing audience", http.StatusUnauthorized)
-				return
-			}
-			audFound := false
-			for _, aud := range audiences {
-				if aud == expectedAudience {
-					audFound = true
-					break
-				}
-			}
-			if !audFound {
-				http.Error(w, "Unauthorized: invalid audience", http.StatusUnauthorized)
-				return
-			}
-
-			issuer, ok := token.Issuer()
-			if !ok || issuer == "" {
-				http.Error(w, "Unauthorized: missing issuer", http.StatusUnauthorized)
-				return
-			}
-
-			sub, ok := token.Subject()
-			if !ok || sub == "" {
-				http.Error(w, "Unauthorized: missing subject", http.StatusUnauthorized)
-				return
-			}
-
-			ctx := authz.SetPublisherContext(r.Context(), issuer, sub)
-
-			var isAdmin bool
-			if err := token.Get("admin", &isAdmin); err == nil {
-				ctx = authz.SetAdminContext(ctx, isAdmin)
-			}
-
-			next.ServeHTTP(w, r.WithContext(ctx))
-		})
-	}
 }
