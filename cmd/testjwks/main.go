@@ -17,6 +17,7 @@ import (
 
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
@@ -59,9 +60,29 @@ func main() {
 		os.Exit(1)
 	}
 
+	privKey, err := jwk.Import(priv)
+	if err != nil {
+		slog.Error("failed to import private key", "error", err)
+		os.Exit(1)
+	}
+	if err := privKey.Set(jwk.KeyIDKey, "testjwks-1"); err != nil {
+		slog.Error("failed to set key ID on private key", "error", err)
+		os.Exit(1)
+	}
+	if err := privKey.Set(jwk.AlgorithmKey, jwa.EdDSA()); err != nil {
+		slog.Error("failed to set algorithm on private key", "error", err)
+		os.Exit(1)
+	}
+
 	jwks := jwk.NewSet()
 	if err := jwks.AddKey(pubKey); err != nil {
 		slog.Error("failed to add key to set", "error", err)
+		os.Exit(1)
+	}
+
+	kidHeader := jws.NewHeaders()
+	if err := kidHeader.Set(jws.KeyIDKey, "testjwks-1"); err != nil {
+		slog.Error("failed to set kid header", "error", err)
 		os.Exit(1)
 	}
 
@@ -78,7 +99,7 @@ func main() {
 	}
 
 	for _, t := range tokens {
-		if err := writeToken(priv, issuerURL, t.sub, t.audience, t.admin, t.service, filepath.Join(tokenDir, t.filename)); err != nil {
+		if err := writeToken(privKey, kidHeader, issuerURL, t.sub, t.audience, t.admin, t.service, filepath.Join(tokenDir, t.filename)); err != nil {
 			slog.Error("failed to write token", "file", t.filename, "error", err)
 			os.Exit(1)
 		}
@@ -91,7 +112,7 @@ func main() {
 		defer ticker.Stop()
 		for range ticker.C {
 			for _, t := range tokens {
-				if err := writeToken(priv, issuerURL, t.sub, t.audience, t.admin, t.service, filepath.Join(tokenDir, t.filename)); err != nil {
+				if err := writeToken(privKey, kidHeader, issuerURL, t.sub, t.audience, t.admin, t.service, filepath.Join(tokenDir, t.filename)); err != nil {
 					slog.Warn("failed to refresh token", "file", t.filename, "error", err)
 				}
 			}
@@ -150,7 +171,7 @@ func main() {
 			return
 		}
 
-		signed, err := jwt.Sign(tok, jwt.WithKey(jwa.EdDSA(), priv))
+		signed, err := jwt.Sign(tok, jwt.WithKey(jwa.EdDSA(), privKey, jws.WithProtectedHeaders(kidHeader)))
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to sign token: %v", err), http.StatusInternalServerError)
 			return
@@ -196,7 +217,7 @@ func main() {
 	server.Shutdown(shutdownCtx)
 }
 
-func writeToken(priv ed25519.PrivateKey, issuer, sub, audience string, admin, service bool, path string) error {
+func writeToken(privKey jwk.Key, kidHeader jws.Headers, issuer, sub, audience string, admin, service bool, path string) error {
 	tok, err := jwt.NewBuilder().
 		Issuer(issuer).
 		Subject(sub).
@@ -210,7 +231,7 @@ func writeToken(priv ed25519.PrivateKey, issuer, sub, audience string, admin, se
 		return fmt.Errorf("building token: %w", err)
 	}
 
-	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.EdDSA(), priv))
+	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.EdDSA(), privKey, jws.WithProtectedHeaders(kidHeader)))
 	if err != nil {
 		return fmt.Errorf("signing token: %w", err)
 	}

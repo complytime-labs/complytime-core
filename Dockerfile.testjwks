@@ -11,15 +11,21 @@ COPY internal internal/
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o testjwks ./cmd/testjwks
 
-FROM gcr.io/distroless/static-debian12:nonroot@sha256:b7bb25d9f7c31d2bdd1982feb4dafcaf137703c7075dbe2febb41c24212b946f
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
+
+RUN microdnf install -y curl-minimal && microdnf clean all
 
 WORKDIR /app
 COPY --from=builder /build/testjwks /app/testjwks
+
+RUN mkdir -p /tokens && chown 1001:1001 /tokens
 
 ENV TESTJWKS_LISTEN_ADDR=":8888"
 ENV TOKEN_DIR="/tokens"
 ENV ISSUER_URL="http://testjwks:8888"
 
 EXPOSE 8888
+
+USER 1001:1001
 
 ENTRYPOINT ["/app/testjwks"]
