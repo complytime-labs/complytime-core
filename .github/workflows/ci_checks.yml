@@ -73,8 +73,9 @@ jobs:
       - name: Wait for services
         run: |
           for svc in gateway locker; do
-            for i in $(seq 1 30); do
-              if curl -sf http://localhost:808$( [ "$svc" = "gateway" ] && echo 0 || echo 1 )/healthz > /dev/null 2>&1; then
+            port=$( [ "$svc" = "gateway" ] && echo 8080 || echo 8081 )
+            for _ in $(seq 1 30); do
+              if curl -sf "http://localhost:${port}/healthz" > /dev/null 2>&1; then
                 echo "$svc is healthy"
                 break
               fi
