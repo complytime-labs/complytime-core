@@ -18,7 +18,7 @@ func TestHandler_CreateLedger(t *testing.T) {
 	require.NoError(t, err)
 	defer lk.Close(context.Background())
 
-	handler := NewHandler(lk, "")
+	handler := NewHandler(lk, nil, nil)
 
 	t.Run("creates ledger successfully", func(t *testing.T) {
 		reqBody := CreateLedgerRequest{SubjectId: "subject-1"}
@@ -74,7 +74,7 @@ func TestHandler_ListLedgers(t *testing.T) {
 	require.NoError(t, err)
 	defer lk.Close(context.Background())
 
-	handler := NewHandler(lk, "")
+	handler := NewHandler(lk, nil, nil)
 
 	t.Run("returns empty list initially", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/ledgers", nil)
@@ -115,7 +115,7 @@ func TestHandler_GetLedger(t *testing.T) {
 	require.NoError(t, err)
 	defer lk.Close(context.Background())
 
-	handler := NewHandler(lk, "")
+	handler := NewHandler(lk, nil, nil)
 
 	t.Run("returns 404 for non-existent ledger", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/ledgers/missing", nil)
@@ -150,7 +150,7 @@ func TestHandler_SealReceipt(t *testing.T) {
 	require.NoError(t, err)
 	defer lk.Close(context.Background())
 
-	handler := NewHandler(lk, "")
+	handler := NewHandler(lk, nil, nil)
 
 	t.Run("returns 404 for non-existent ledger", func(t *testing.T) {
 		receiptData := []byte("test")
@@ -202,7 +202,7 @@ func TestHandler_FetchReceipt(t *testing.T) {
 	require.NoError(t, err)
 	defer lk.Close(context.Background())
 
-	handler := NewHandler(lk, "")
+	handler := NewHandler(lk, nil, nil)
 
 	t.Run("returns 404 for non-existent ledger", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/ledgers/missing/entry/0", nil)
@@ -260,7 +260,7 @@ func TestHandler_VerifyReceipt(t *testing.T) {
 	require.NoError(t, err)
 	defer lk.Close(context.Background())
 
-	handler := NewHandler(lk, "")
+	handler := NewHandler(lk, nil, nil)
 
 	t.Run("returns 404 for non-existent ledger", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/ledgers/missing/verify/abc123", nil)
@@ -331,7 +331,7 @@ func TestTileServer(t *testing.T) {
 	require.NoError(t, err)
 	defer lk.Close(context.Background())
 
-	handler := NewHandler(lk, "")
+	handler := NewHandler(lk, nil, nil)
 
 	ledger, err := lk.CreateLedger(context.Background(), "subject-1")
 	require.NoError(t, err)
@@ -374,45 +374,16 @@ func TestTileServer(t *testing.T) {
 	})
 }
 
-func TestHandler_WithAuth(t *testing.T) {
+func TestHandler_HealthzNoAuth(t *testing.T) {
 	tmpDir := t.TempDir()
 	lk, err := NewLocker(tmpDir)
 	require.NoError(t, err)
 	defer lk.Close(context.Background())
 
-	secret := "test-secret"
-	handler := NewHandler(lk, secret)
+	// Even with nil auth, healthz should work
+	handler := NewHandler(lk, nil, nil)
 
-	t.Run("rejects request without auth", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/ledgers", nil)
-		w := httptest.NewRecorder()
-
-		handler.ServeHTTP(w, req)
-
-		assert.Equal(t, http.StatusUnauthorized, w.Code)
-	})
-
-	t.Run("rejects request with wrong secret", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/ledgers", nil)
-		req.Header.Set("Authorization", "Bearer wrong-secret")
-		w := httptest.NewRecorder()
-
-		handler.ServeHTTP(w, req)
-
-		assert.Equal(t, http.StatusUnauthorized, w.Code)
-	})
-
-	t.Run("accepts request with correct secret", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/ledgers", nil)
-		req.Header.Set("Authorization", "Bearer test-secret")
-		w := httptest.NewRecorder()
-
-		handler.ServeHTTP(w, req)
-
-		assert.Equal(t, http.StatusOK, w.Code)
-	})
-
-	t.Run("healthz endpoint remains unauthenticated", func(t *testing.T) {
+	t.Run("healthz endpoint works without auth", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 		w := httptest.NewRecorder()
 

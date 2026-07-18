@@ -87,7 +87,8 @@ func TestWorker_NonDSSEPath(t *testing.T) {
 	})
 
 	// Create worker
-	worker := NewWorker(js, locker.URL, "test-secret", eventPublisher, jobs)
+	lockerClient := &http.Client{}
+	worker := NewWorker(js, locker.URL, lockerClient, eventPublisher, jobs)
 
 	// Start worker in background
 	workerCtx, cancel := context.WithCancel(ctx)
@@ -209,7 +210,8 @@ func TestWorker_DSSEPath(t *testing.T) {
 	})
 
 	// Create worker
-	worker := NewWorker(js, locker.URL, "test-secret", eventPublisher, jobs)
+	lockerClient := &http.Client{}
+	worker := NewWorker(js, locker.URL, lockerClient, eventPublisher, jobs)
 
 	// Start worker in background
 	workerCtx, cancel := context.WithCancel(ctx)
@@ -334,7 +336,8 @@ func TestWorker_DSSEAlreadySealed(t *testing.T) {
 	})
 
 	// Create worker
-	worker := NewWorker(js, locker.URL, "test-secret", eventPublisher, jobs)
+	lockerClient := &http.Client{}
+	worker := NewWorker(js, locker.URL, lockerClient, eventPublisher, jobs)
 
 	// Start worker in background
 	workerCtx, cancel := context.WithCancel(ctx)
@@ -441,7 +444,8 @@ func TestWorker_TransientFailureRetry(t *testing.T) {
 	})
 
 	// Create worker
-	worker := NewWorker(js, locker.URL, "test-secret", eventPublisher, jobs)
+	lockerClient := &http.Client{}
+	worker := NewWorker(js, locker.URL, lockerClient, eventPublisher, jobs)
 
 	// Start worker in background
 	workerCtx, cancel := context.WithCancel(ctx)
@@ -530,7 +534,8 @@ func TestWorker_PermanentFailureTerm(t *testing.T) {
 	})
 
 	// Create worker
-	worker := NewWorker(js, locker.URL, "test-secret", eventPublisher, jobs)
+	lockerClient := &http.Client{}
+	worker := NewWorker(js, locker.URL, lockerClient, eventPublisher, jobs)
 
 	// Start worker in background
 	workerCtx, cancel := context.WithCancel(ctx)

@@ -38,10 +38,10 @@ func main() {
 		lockerURL = "http://localhost:8081"
 	}
 
-	lockerSecret := os.Getenv("LOCKER_SECRET")
-	if lockerSecret == "" {
-		// Fail-closed: LOCKER_SECRET must be set
-		slog.Error("LOCKER_SECRET environment variable is required (fail-closed)")
+	tokenFile := os.Getenv("TOKEN_FILE")
+	if tokenFile == "" {
+		// Fail-closed: TOKEN_FILE must be set
+		slog.Error("TOKEN_FILE environment variable is required (fail-closed)")
 		os.Exit(1)
 	}
 
@@ -112,8 +112,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Build locker HTTP client with token auth
+	lockerTokenSource := authn.NewFileTokenSource(tokenFile)
+	lockerClient := &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: authn.NewTokenTransport(lockerTokenSource, http.DefaultTransport),
+	}
+
 	// Create gateway handler
-	gwHandler := gateway.NewHandler(trustStore, js, eventPublisher, lockerURL, lockerSecret)
+	gwHandler := gateway.NewHandler(trustStore, js, eventPublisher, lockerURL, lockerClient)
 
 	// Build Chi router
 	r := chi.NewRouter()
@@ -146,7 +153,7 @@ func main() {
 	})
 
 	// Create worker (needs access to the same jobs map as the handler)
-	worker := gateway.NewWorker(js, lockerURL, lockerSecret, eventPublisher, &gwHandler.Jobs)
+	worker := gateway.NewWorker(js, lockerURL, lockerClient, eventPublisher, &gwHandler.Jobs)
 
 	// Start worker in background
 	workerCtx, workerCancel := context.WithCancel(ctx)

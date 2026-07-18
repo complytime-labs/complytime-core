@@ -60,7 +60,8 @@ func TestFullLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	defer lk.Close(ctx)
 
-	lockerHandler := locker.NewHandler(lk, "test-secret")
+	// Locker with no auth in integration test
+	lockerHandler := locker.NewHandler(lk, nil, nil)
 	lockerServer := httptest.NewServer(lockerHandler)
 	defer lockerServer.Close()
 
@@ -81,7 +82,9 @@ func TestFullLifecycle(t *testing.T) {
 	policySet, err := authz.LoadEmbeddedPolicies()
 	require.NoError(t, err)
 
-	gwHandler := gateway.NewHandler(trustStore, js, eventPublisher, lockerServer.URL, "test-secret")
+	// Gateway with plain HTTP client (locker has no auth in integration test)
+	lockerClient := &http.Client{Timeout: 30 * time.Second}
+	gwHandler := gateway.NewHandler(trustStore, js, eventPublisher, lockerServer.URL, lockerClient)
 
 	// Build gateway router
 	r := chi.NewRouter()
@@ -112,7 +115,8 @@ func TestFullLifecycle(t *testing.T) {
 	defer gatewayServer.Close()
 
 	// Start worker
-	worker := gateway.NewWorker(js, lockerServer.URL, "test-secret", eventPublisher, &gwHandler.Jobs)
+	// Worker with plain HTTP client (locker has no auth in integration test)
+	worker := gateway.NewWorker(js, lockerServer.URL, lockerClient, eventPublisher, &gwHandler.Jobs)
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	defer workerCancel()
 
@@ -228,7 +232,8 @@ func TestDSSELifecycle(t *testing.T) {
 	require.NoError(t, err)
 	defer lk.Close(ctx)
 
-	lockerHandler := locker.NewHandler(lk, "test-secret")
+	// Locker with no auth in integration test
+	lockerHandler := locker.NewHandler(lk, nil, nil)
 	lockerServer := httptest.NewServer(lockerHandler)
 	defer lockerServer.Close()
 
@@ -249,7 +254,9 @@ func TestDSSELifecycle(t *testing.T) {
 	policySet, err := authz.LoadEmbeddedPolicies()
 	require.NoError(t, err)
 
-	gwHandler := gateway.NewHandler(trustStore, js, eventPublisher, lockerServer.URL, "test-secret")
+	// Gateway with plain HTTP client (locker has no auth in integration test)
+	lockerClient := &http.Client{Timeout: 30 * time.Second}
+	gwHandler := gateway.NewHandler(trustStore, js, eventPublisher, lockerServer.URL, lockerClient)
 
 	// Build gateway router
 	r := chi.NewRouter()
@@ -280,7 +287,8 @@ func TestDSSELifecycle(t *testing.T) {
 	defer gatewayServer.Close()
 
 	// Start worker
-	worker := gateway.NewWorker(js, lockerServer.URL, "test-secret", eventPublisher, &gwHandler.Jobs)
+	// Worker with plain HTTP client (locker has no auth in integration test)
+	worker := gateway.NewWorker(js, lockerServer.URL, lockerClient, eventPublisher, &gwHandler.Jobs)
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	defer workerCancel()
 
