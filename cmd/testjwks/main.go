@@ -30,7 +30,7 @@ func main() {
 		listenAddr = ":8888"
 	}
 
-	tokenDir := os.Getenv("TESTJWKS_TOKEN_DIR")
+	tokenDir := os.Getenv("TESTJWKS_OUTPUT_DIR")
 	if tokenDir == "" {
 		tokenDir = "/tokens"
 	}

@@ -21,7 +21,7 @@ COPY --from=builder /build/testjwks /app/testjwks
 RUN mkdir -p /tokens && chown 1001:1001 /tokens
 
 ENV TESTJWKS_LISTEN_ADDR=":8888"
-ENV TESTJWKS_TOKEN_DIR="/tokens"
+ENV TESTJWKS_OUTPUT_DIR="/tokens"
 ENV ISSUER_URL="http://testjwks:8888"
 
 EXPOSE 8888
