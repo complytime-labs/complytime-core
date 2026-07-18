@@ -14,6 +14,20 @@ services:
       timeout: 5s
       retries: 3
 
+  testjwks:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.testjwks
+    volumes:
+      - service-tokens:/tokens
+    ports:
+      - "8888:8888"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8888/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   locker:
     build:
       context: ../..
@@ -21,13 +35,16 @@ services:
     environment:
       - LOCKER_DATA_PATH=/data/ledgers
       - LOCKER_LISTEN_ADDR=:8081
-      - LOCKER_SECRET=dev-secret
+      - JWT_ISSUERS=http://testjwks:8888
+      - JWT_AUDIENCE=complytime-locker
     volumes:
       - locker-data:/data/ledgers
     ports:
       - "8081:8081"
     depends_on:
       nats:
+        condition: service_healthy
+      testjwks:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8081/healthz"]
@@ -42,16 +59,20 @@ services:
     environment:
       - NATS_URL=nats://nats:4222
       - LOCKER_URL=http://locker:8081
-      - LOCKER_SECRET=dev-secret
       - JWT_ISSUERS=http://testjwks:8888
       - JWT_AUDIENCE=complytime-gateway
+      - TOKEN_FILE=/tokens/gateway-token
       - GATEWAY_LISTEN_ADDR=:8080
+    volumes:
+      - service-tokens:/tokens:ro
     ports:
       - "8080:8080"
     depends_on:
       nats:
         condition: service_healthy
       locker:
+        condition: service_healthy
+      testjwks:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/healthz"]
@@ -62,3 +83,4 @@ services:
 volumes:
   nats-data:
   locker-data:
+  service-tokens:
