@@ -26,18 +26,22 @@ func NewHandler(lk *Locker, auth authn.Authenticator, policySet *cedar.PolicySet
 
 	r := chi.NewRouter()
 
-	// If auth is provided, apply auth+authz middleware to all routes except /healthz and tiles
+	// If auth is provided, apply auth+authz middleware to all routes except /healthz
 	if auth != nil {
+		// Build the middleware chain once at init time
+		authChain := func(next http.Handler) http.Handler {
+			return authn.AuthMiddleware(auth)(authz.Middleware(policySet, nil)(next))
+		}
+
 		r.Use(func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-				// Skip auth for /healthz and tile routes
+				// Skip auth for /healthz
 				if req.URL.Path == "/healthz" {
 					next.ServeHTTP(w, req)
 					return
 				}
-				// Apply JWT + Cedar auth middleware for all other routes
-				chain := authn.AuthMiddleware(auth)(authz.Middleware(policySet, nil)(next))
-				chain.ServeHTTP(w, req)
+				// Apply pre-built auth chain for all other routes
+				authChain(next).ServeHTTP(w, req)
 			})
 		})
 	}

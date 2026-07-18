@@ -3,13 +3,22 @@ package locker
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/complytime-labs/complytime-core/internal/authn"
+	"github.com/complytime-labs/complytime-core/internal/authz"
 )
 
 func TestHandler_CreateLedger(t *testing.T) {
@@ -391,4 +400,158 @@ func TestHandler_HealthzNoAuth(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 	})
+}
+
+func TestHandler_WithAuth(t *testing.T) {
+	tmpDir := t.TempDir()
+	lk, err := NewLocker(tmpDir)
+	require.NoError(t, err)
+	defer lk.Close(context.Background())
+
+	// Create Ed25519 test keys and JWKS server
+	_, priv, jwksServer := setupJWKSServer(t)
+	defer jwksServer.Close()
+
+	// Create JWT authenticator
+	auth, err := authn.NewJWTAuthenticator(context.Background(), []string{jwksServer.URL}, "complytime-locker")
+	require.NoError(t, err)
+
+	// Load Cedar policies
+	policySet, err := authz.LoadEmbeddedPolicies()
+	require.NoError(t, err)
+
+	// Create handler with auth enabled
+	handler := NewHandler(lk, auth, policySet)
+
+	t.Run("unauthenticated request to /ledgers returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/ledgers", nil)
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+	})
+
+	t.Run("authenticated service can create ledger", func(t *testing.T) {
+		token := createServiceJWT(t, priv, jwksServer.URL, "gateway-worker")
+
+		reqBody := CreateLedgerRequest{SubjectId: "subject-auth-1"}
+		body, _ := json.Marshal(reqBody)
+		req := httptest.NewRequest(http.MethodPost, "/ledgers", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusCreated, w.Code)
+		var resp LedgerInfo
+		err := json.NewDecoder(w.Body).Decode(&resp)
+		require.NoError(t, err)
+		assert.Equal(t, "subject-auth-1", resp.SubjectId)
+	})
+
+	t.Run("authenticated service can seal receipt", func(t *testing.T) {
+		token := createServiceJWT(t, priv, jwksServer.URL, "gateway-worker")
+
+		// First create a ledger
+		_, err := lk.CreateLedger(context.Background(), "subject-auth-2")
+		require.NoError(t, err)
+
+		// Seal a receipt
+		receiptData := []byte("test receipt with auth")
+		req := httptest.NewRequest(http.MethodPost, "/ledgers/subject-auth-2/seal", bytes.NewReader(receiptData))
+		req.Header.Set("Content-Type", "application/octet-stream")
+		req.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusCreated, w.Code)
+		var resp SealResponse
+		err = json.NewDecoder(w.Body).Decode(&resp)
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), resp.Index)
+		assert.Equal(t, SHA256Hex(receiptData), resp.Digest)
+	})
+
+	t.Run("authenticated service can read ledger", func(t *testing.T) {
+		token := createServiceJWT(t, priv, jwksServer.URL, "gateway-worker")
+
+		// Create a ledger
+		_, err := lk.CreateLedger(context.Background(), "subject-auth-3")
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/ledgers/subject-auth-3", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		var resp LedgerInfo
+		err = json.NewDecoder(w.Body).Decode(&resp)
+		require.NoError(t, err)
+		assert.Equal(t, "subject-auth-3", resp.SubjectId)
+	})
+
+	t.Run("/healthz works without auth", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+}
+
+// setupJWKSServer creates Ed25519 keys and starts a test JWKS server
+func setupJWKSServer(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey, *httptest.Server) {
+	t.Helper()
+
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	jwks := jwk.NewSet()
+	key, err := jwk.Import(pub)
+	require.NoError(t, err)
+	require.NoError(t, key.Set(jwk.KeyIDKey, "test-key-1"))
+	require.NoError(t, key.Set(jwk.AlgorithmKey, jwa.EdDSA()))
+	require.NoError(t, jwks.AddKey(key))
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/.well-known/jwks.json" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(jwks)
+		} else {
+			http.NotFound(w, r)
+		}
+	}))
+
+	return pub, priv, server
+}
+
+// createServiceJWT creates a JWT with service and admin claims
+func createServiceJWT(t *testing.T, privateKey ed25519.PrivateKey, issuer, sub string) string {
+	t.Helper()
+
+	token, err := jwt.NewBuilder().
+		Issuer(issuer).
+		Subject(sub).
+		Audience([]string{"complytime-locker"}).
+		IssuedAt(time.Now()).
+		Expiration(time.Now().Add(1*time.Hour)).
+		Claim("service", true).
+		Claim("admin", true).
+		Build()
+	require.NoError(t, err)
+
+	privKey, err := jwk.Import(privateKey)
+	require.NoError(t, err)
+	require.NoError(t, privKey.Set(jwk.KeyIDKey, "test-key-1"))
+
+	signed, err := jwt.Sign(token, jwt.WithKey(jwa.EdDSA(), privKey))
+	require.NoError(t, err)
+
+	return string(signed)
 }
