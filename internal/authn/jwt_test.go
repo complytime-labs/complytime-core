@@ -33,7 +33,7 @@ func TestJWTAuthenticator_Authenticate(t *testing.T) {
 
 	jwksServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(jwks)
+		_ = json.NewEncoder(w).Encode(jwks)
 	}))
 	defer jwksServer.Close()
 
@@ -90,7 +90,7 @@ func TestJWTAuthenticator_RejectsWrongAudience(t *testing.T) {
 
 	jwksServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(jwks)
+		_ = json.NewEncoder(w).Encode(jwks)
 	}))
 	defer jwksServer.Close()
 
@@ -133,7 +133,7 @@ func TestAuthMiddleware(t *testing.T) {
 
 	jwksServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(jwks)
+		_ = json.NewEncoder(w).Encode(jwks)
 	}))
 	defer jwksServer.Close()
 
@@ -203,7 +203,7 @@ func TestJWTAuthenticator_RejectsSpoofedIssuer(t *testing.T) {
 
 	jwksServerA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(jwksA)
+		_ = json.NewEncoder(w).Encode(jwksA)
 	}))
 	defer jwksServerA.Close()
 
@@ -217,7 +217,7 @@ func TestJWTAuthenticator_RejectsSpoofedIssuer(t *testing.T) {
 
 	jwksServerB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(jwksB)
+		_ = json.NewEncoder(w).Encode(jwksB)
 	}))
 	defer jwksServerB.Close()
 

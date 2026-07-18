@@ -522,7 +522,7 @@ func setupJWKSServer(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey, *http
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/.well-known/jwks.json" {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(jwks)
+			_ = json.NewEncoder(w).Encode(jwks)
 		} else {
 			http.NotFound(w, r)
 		}
