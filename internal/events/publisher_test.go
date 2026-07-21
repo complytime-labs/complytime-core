@@ -1,4 +1,4 @@
-package gateway_test
+package events_test
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
+	natsserver "github.com/nats-io/nats-server/v2/server"
 	natsgo "github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,6 +16,28 @@ import (
 	eventspkg "github.com/complytime-labs/complytime-core/internal/events"
 	natsinfra "github.com/complytime-labs/complytime-core/internal/nats"
 )
+
+func startTestNATS(t *testing.T) *natsgo.Conn {
+	t.Helper()
+	opts := &natsserver.Options{
+		Port:      -1,
+		JetStream: true,
+		StoreDir:  t.TempDir(),
+	}
+	ns, err := natsserver.NewServer(opts)
+	require.NoError(t, err)
+	ns.Start()
+	t.Cleanup(ns.Shutdown)
+
+	if !ns.ReadyForConnections(5 * time.Second) {
+		t.Fatal("nats server not ready")
+	}
+
+	nc, err := natsgo.Connect(ns.ClientURL())
+	require.NoError(t, err)
+	t.Cleanup(nc.Close)
+	return nc
+}
 
 func TestEventPublisher_PublishEvidenceIngested(t *testing.T) {
 	nc := startTestNATS(t)

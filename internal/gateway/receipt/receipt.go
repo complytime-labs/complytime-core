@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/cyberphone/json-canonicalization/go/src/webpki.org/jsoncanonicalizer"
 	v1 "github.com/in-toto/attestation/go/v1"
@@ -42,6 +43,7 @@ func Wrap(content []byte, publisher Publisher, subjectID, artifactType string) (
 		"contentDigest": contentDigest,
 		"publisher":     publisher,
 		"artifactType":  artifactType,
+		"receivedAt":    time.Now().UTC().Format(time.RFC3339),
 	}
 
 	predicateStruct, err := predicateToStruct(predicate)
