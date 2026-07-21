@@ -7,7 +7,6 @@ require (
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467
 	github.com/go-chi/chi/v5 v5.3.1
-	github.com/go-chi/jwtauth/v5 v5.4.0
 	github.com/google/uuid v1.6.0
 	github.com/in-toto/attestation v1.2.0
 	github.com/lestrrat-go/httprc/v3 v3.0.0-beta2
@@ -15,8 +14,10 @@ require (
 	github.com/nats-io/nats-server/v2 v2.14.3
 	github.com/nats-io/nats.go v1.52.0
 	github.com/oapi-codegen/runtime v1.4.2
+	github.com/onsi/ginkgo/v2 v2.32.0
+	github.com/onsi/gomega v1.42.1
 	github.com/stretchr/testify v1.11.1
-	github.com/transparency-dev/tessera v1.0.2
+	github.com/transparency-dev/tessera v1.0.4
 	golang.org/x/mod v0.38.0
 	google.golang.org/protobuf v1.36.11
 )
@@ -48,8 +49,6 @@ require (
 	github.com/nats-io/jwt/v2 v2.8.2 // indirect
 	github.com/nats-io/nkeys v0.4.16 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
-	github.com/onsi/ginkgo/v2 v2.32.0 // indirect
-	github.com/onsi/gomega v1.42.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/transparency-dev/formats v0.0.0-20251017110053-404c0d5b696c // indirect
