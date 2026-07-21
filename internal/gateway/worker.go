@@ -27,12 +27,11 @@ const (
 
 // Worker is the async JetStream consumer that seals receipts into the locker.
 type Worker struct {
-	js           jetstream.JetStream
-	lockerURL    string
-	lockerSecret string
-	events       *EventPublisher
-	jobs         *sync.Map // map[string]*JobInfo
-	httpClient   *http.Client
+	js         jetstream.JetStream
+	lockerURL  string
+	events     *EventPublisher
+	jobs       *sync.Map // map[string]*JobInfo
+	httpClient *http.Client
 
 	// Shutdown coordination
 	stopCh   chan struct{}
@@ -44,20 +43,17 @@ type Worker struct {
 func NewWorker(
 	js jetstream.JetStream,
 	lockerURL string,
-	lockerSecret string,
+	lockerClient *http.Client,
 	events *EventPublisher,
 	jobs *sync.Map,
 ) *Worker {
 	return &Worker{
-		js:           js,
-		lockerURL:    lockerURL,
-		lockerSecret: lockerSecret,
-		events:       events,
-		jobs:         jobs,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
-		stopCh: make(chan struct{}),
+		js:         js,
+		lockerURL:  lockerURL,
+		events:     events,
+		jobs:       jobs,
+		httpClient: lockerClient,
+		stopCh:     make(chan struct{}),
 	}
 }
 
@@ -305,7 +301,6 @@ func (w *Worker) sealToLocker(ctx context.Context, subjectID string, data []byte
 	}
 
 	req.Header.Set("Content-Type", "application/octet-stream")
-	req.Header.Set("Authorization", "Bearer "+w.lockerSecret)
 
 	resp, err := w.httpClient.Do(req)
 	if err != nil {
@@ -336,8 +331,6 @@ func (w *Worker) verifyDigest(ctx context.Context, subjectID, digest string) (*V
 	if err != nil {
 		return nil, err
 	}
-
-	req.Header.Set("Authorization", "Bearer "+w.lockerSecret)
 
 	resp, err := w.httpClient.Do(req)
 	if err != nil {

@@ -6,7 +6,11 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/cedar-policy/cedar-go"
 	"github.com/go-chi/chi/v5"
+
+	"github.com/complytime-labs/complytime-core/internal/authn"
+	"github.com/complytime-labs/complytime-core/internal/authz"
 )
 
 // APIHandler implements the ServerInterface for the locker API.
@@ -16,23 +20,29 @@ type APIHandler struct {
 
 // NewHandler creates a new HTTP handler for the locker API.
 // It returns a Chi router with all routes registered.
-// If secret is non-empty, all routes except /healthz require Bearer token authentication.
-func NewHandler(lk *Locker, secret string) http.Handler {
+// If auth is non-nil, all routes except /healthz require JWT+Cedar authentication.
+func NewHandler(lk *Locker, auth authn.Authenticator, policySet *cedar.PolicySet) http.Handler {
 	h := &APIHandler{locker: lk}
 
 	r := chi.NewRouter()
 
-	// If secret is provided, apply auth middleware to all routes except /healthz
-	if secret != "" {
+	// If auth is provided, apply auth+authz middleware to all routes except /healthz
+	if auth != nil {
+		// Build the middleware chain once at init time
+		authChain := func(next http.Handler) http.Handler {
+			return authn.AuthMiddleware(auth)(authz.Middleware(policySet, nil)(next))
+		}
+
 		r.Use(func(next http.Handler) http.Handler {
+			authed := authChain(next)
 			return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 				// Skip auth for /healthz
 				if req.URL.Path == "/healthz" {
 					next.ServeHTTP(w, req)
 					return
 				}
-				// Apply shared secret middleware for all other routes
-				SharedSecretMiddleware(secret)(next).ServeHTTP(w, req)
+				// Apply pre-built auth chain for all other routes
+				authed.ServeHTTP(w, req)
 			})
 		})
 	}

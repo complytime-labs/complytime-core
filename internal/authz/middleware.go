@@ -39,6 +39,19 @@ func SetAdminContext(ctx context.Context, isAdmin bool) context.Context {
 	return context.WithValue(ctx, contextKey("admin"), isAdmin)
 }
 
+const serviceKey contextKey = "service"
+
+func SetServiceContext(ctx context.Context, isService bool) context.Context {
+	return context.WithValue(ctx, serviceKey, isService)
+}
+
+func GetService(ctx context.Context) bool {
+	if v, ok := ctx.Value(serviceKey).(bool); ok {
+		return v
+	}
+	return false
+}
+
 // GetPublisher retrieves publisher identity from the context.
 // Returns empty strings if not set.
 func GetPublisher(ctx context.Context) (issuer, sub string) {
@@ -113,8 +126,12 @@ func Middleware(ps *cedar.PolicySet, trustLookup TrustLookupFunc) func(http.Hand
 			if subjectID == "" {
 				// Admin actions and read operations can proceed without a subject ID.
 				// Admin: the subject may not exist yet. Read: job status is not subject-scoped.
+				// Locker manage: ledger create doesn't have a subject ID yet.
+				// Locker seal/verify: evidence operations don't require subject ID extraction.
 				// The resource will be a placeholder and Cedar checks admin flag or permits reads.
-				if action == ActionRegisterSubject || action == ActionModifyTrust || action == ActionReadEvidence {
+				if action == ActionRegisterSubject || action == ActionModifyTrust ||
+					action == ActionReadEvidence || action == ActionManageLedger ||
+					action == ActionSealEvidence || action == ActionVerifyEvidence {
 					subjectID = "*"
 				} else {
 					http.Error(w, "Forbidden: missing subject ID", http.StatusForbidden)
@@ -124,12 +141,16 @@ func Middleware(ps *cedar.PolicySet, trustLookup TrustLookupFunc) func(http.Hand
 
 			// Look up trust status (skip for actions where subject may not exist or isn't relevant)
 			trusted := false
-			if action != ActionRegisterSubject && action != ActionModifyTrust && action != ActionReadEvidence {
-				var err error
-				trusted, err = trustLookup(ctx, subjectID, issuer, sub)
-				if err != nil {
-					http.Error(w, "Forbidden: trust lookup failed", http.StatusForbidden)
-					return
+			if action != ActionRegisterSubject && action != ActionModifyTrust &&
+				action != ActionReadEvidence && action != ActionManageLedger &&
+				action != ActionSealEvidence && action != ActionVerifyEvidence {
+				if trustLookup != nil {
+					var err error
+					trusted, err = trustLookup(ctx, subjectID, issuer, sub)
+					if err != nil {
+						http.Error(w, "Forbidden: trust lookup failed", http.StatusForbidden)
+						return
+					}
 				}
 			}
 
@@ -147,10 +168,15 @@ func Middleware(ps *cedar.PolicySet, trustLookup TrustLookupFunc) func(http.Hand
 				}
 			}
 
+			isService := GetService(ctx)
+
 			entities := cedar.EntityMap{
 				principal: cedar.Entity{
-					UID:        principal,
-					Attributes: cedar.NewRecord(cedar.RecordMap{"admin": cedar.Boolean(isAdmin)}),
+					UID: principal,
+					Attributes: cedar.NewRecord(cedar.RecordMap{
+						"admin":   cedar.Boolean(isAdmin),
+						"service": cedar.Boolean(isService),
+					}),
 				},
 				resource: cedar.Entity{
 					UID:        resource,

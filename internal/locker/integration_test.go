@@ -26,8 +26,8 @@ func TestIntegration(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { lk.Close(ctx) })
 
-	// Create a handler
-	handler := NewHandler(lk, "")
+	// Create a handler with no auth (for integration test)
+	handler := NewHandler(lk, nil, nil)
 
 	const subjectID = "test-subject"
 	testReceipt := []byte("test-receipt-data")

@@ -39,7 +39,7 @@ type GatewayHandler struct {
 	js             jetstream.JetStream
 	eventPublisher *EventPublisher
 	lockerURL      string
-	lockerSecret   string
+	lockerClient   *http.Client
 
 	// In-memory job tracking (exported so worker can share it)
 	Jobs sync.Map // map[string]*JobInfo
@@ -72,14 +72,14 @@ func NewHandler(
 	js jetstream.JetStream,
 	eventPublisher *EventPublisher,
 	lockerURL string,
-	lockerSecret string,
+	lockerClient *http.Client,
 ) *GatewayHandler {
 	return &GatewayHandler{
 		trustStore:     trustStore,
 		js:             js,
 		eventPublisher: eventPublisher,
 		lockerURL:      lockerURL,
-		lockerSecret:   lockerSecret,
+		lockerClient:   lockerClient,
 	}
 }
 
@@ -298,9 +298,8 @@ func (h *GatewayHandler) RegisterSubject(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	createReq.Header.Set("Content-Type", "application/json")
-	createReq.Header.Set("Authorization", "Bearer "+h.lockerSecret)
 
-	lockerResp, err := http.DefaultClient.Do(createReq)
+	lockerResp, err := h.lockerClient.Do(createReq)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to create ledger: %v", err), http.StatusInternalServerError)
 		return
@@ -343,9 +342,8 @@ func (h *GatewayHandler) RegisterSubject(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	sealReq.Header.Set("Content-Type", "application/json")
-	sealReq.Header.Set("Authorization", "Bearer "+h.lockerSecret)
 
-	sealResp, err := http.DefaultClient.Do(sealReq)
+	sealResp, err := h.lockerClient.Do(sealReq)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to seal registration: %v", err), http.StatusInternalServerError)
 		return

@@ -8,9 +8,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/complytime-labs/complytime-core/internal/authn"
+	"github.com/complytime-labs/complytime-core/internal/authz"
 	"github.com/complytime-labs/complytime-core/internal/locker"
 )
 
@@ -26,16 +29,23 @@ func main() {
 		listenAddr = ":8081"
 	}
 
-	// Read shared secret for service-to-service authentication
-	secret := os.Getenv("LOCKER_SECRET")
-	if secret == "" {
-		fmt.Fprintln(os.Stderr, "LOCKER_SECRET is required")
+	jwtIssuers := os.Getenv("JWT_ISSUERS")
+	if jwtIssuers == "" {
+		fmt.Fprintln(os.Stderr, "JWT_ISSUERS is required")
+		os.Exit(1)
+	}
+
+	jwtAudience := os.Getenv("JWT_AUDIENCE")
+	if jwtAudience == "" {
+		fmt.Fprintln(os.Stderr, "JWT_AUDIENCE is required")
 		os.Exit(1)
 	}
 
 	// Initialize logger
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
+
+	ctx := context.Background()
 
 	// Create locker
 	lk, err := locker.NewLocker(dataPath)
@@ -45,16 +55,29 @@ func main() {
 	}
 
 	// Open existing ledgers on startup
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	err = lk.OpenExistingLedgers(ctx)
+	openCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	err = lk.OpenExistingLedgers(openCtx)
 	cancel()
 	if err != nil {
 		slog.Error("failed to open existing ledgers", "error", err)
 		os.Exit(1)
 	}
 
+	issuerList := strings.Split(jwtIssuers, ",")
+	auth, err := authn.NewJWTAuthenticator(ctx, issuerList, jwtAudience)
+	if err != nil {
+		slog.Error("failed to create jwt authenticator", "error", err)
+		os.Exit(1)
+	}
+
+	policySet, err := authz.LoadEmbeddedPolicies()
+	if err != nil {
+		slog.Error("failed to load cedar policies", "error", err)
+		os.Exit(1)
+	}
+
 	// Create HTTP handler and server
-	handler := locker.NewHandler(lk, secret)
+	handler := locker.NewHandler(lk, auth, policySet)
 	server := &http.Server{
 		Addr:              listenAddr,
 		Handler:           handler,

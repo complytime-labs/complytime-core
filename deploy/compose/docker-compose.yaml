@@ -9,10 +9,24 @@ services:
       - "4222:4222"
       - "8222:8222"
     healthcheck:
-      test: ["CMD", "nats-server", "--signal", "ldm"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8222/varz"]
       interval: 10s
       timeout: 5s
       retries: 3
+
+  testjwks:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.testjwks
+    volumes:
+      - service-tokens:/tokens
+    ports:
+      - "8888:8888"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8888/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   locker:
     build:
@@ -21,7 +35,8 @@ services:
     environment:
       - LOCKER_DATA_PATH=/data/ledgers
       - LOCKER_LISTEN_ADDR=:8081
-      - LOCKER_SECRET=dev-secret
+      - JWT_ISSUERS=http://testjwks:8888
+      - JWT_AUDIENCE=complytime-locker
     volumes:
       - locker-data:/data/ledgers
     ports:
@@ -29,8 +44,10 @@ services:
     depends_on:
       nats:
         condition: service_healthy
+      testjwks:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8081/healthz"]
+      test: ["CMD", "curl", "-sf", "http://localhost:8081/healthz"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -42,10 +59,12 @@ services:
     environment:
       - NATS_URL=nats://nats:4222
       - LOCKER_URL=http://locker:8081
-      - LOCKER_SECRET=dev-secret
       - JWT_ISSUERS=http://testjwks:8888
       - JWT_AUDIENCE=complytime-gateway
+      - TOKEN_FILE=/tokens/gateway-token
       - GATEWAY_LISTEN_ADDR=:8080
+    volumes:
+      - service-tokens:/tokens:ro
     ports:
       - "8080:8080"
     depends_on:
@@ -53,8 +72,10 @@ services:
         condition: service_healthy
       locker:
         condition: service_healthy
+      testjwks:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/healthz"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -62,3 +83,4 @@ services:
 volumes:
   nats-data:
   locker-data:
+  service-tokens:

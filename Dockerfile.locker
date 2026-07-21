@@ -4,31 +4,30 @@ FROM golang:1.26.5-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149a
 
 WORKDIR /build
 
-# Copy go.mod and go.sum
 COPY go.mod go.sum ./
+RUN go mod download
 
-# Copy source code
 COPY cmd cmd/
+COPY events events/
 COPY internal internal/
 
 # Build the binary
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o locker ./cmd/locker
 
 # Stage 2: Runtime
-FROM gcr.io/distroless/static-debian12:nonroot@sha256:b7bb25d9f7c31d2bdd1982feb4dafcaf137703c7075dbe2febb41c24212b946f
+FROM registry.access.redhat.com/ubi9/ubi-minimal@sha256:062c52ff973065752b0965787649db2bcf551a6c727a00e95a3eb42cebadbdab
+
+RUN microdnf install -y curl-minimal && microdnf clean all
 
 WORKDIR /app
 
-# Copy the binary from the builder stage
 COPY --from=builder /build/locker /app/locker
 
-# Create data directory
-WORKDIR /data/ledgers
+RUN mkdir -p /data/ledgers && chown 1001:1001 /data/ledgers
 
-# Set default environment variables
 ENV LOCKER_DATA_PATH="/data/ledgers" \
     LOCKER_LISTEN_ADDR=":8081"
 
-USER nonroot:nonroot
+USER 1001:1001
 
 ENTRYPOINT ["/app/locker"]

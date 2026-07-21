@@ -35,6 +35,36 @@ permit (
   resource
 );
 
+// Permit service identities to seal evidence
+permit (
+  principal,
+  action == Action::"seal:evidence",
+  resource
+)
+when {
+  principal.service == true
+};
+
+// Permit service identities to verify evidence
+permit (
+  principal,
+  action == Action::"verify:evidence",
+  resource
+)
+when {
+  principal.service == true
+};
+
+// Permit admin service identities to manage ledgers
+permit (
+  principal,
+  action == Action::"manage:ledger",
+  resource
+)
+when {
+  principal.service == true && principal.admin == true
+};
+
 // SAFETY FLOOR: Forbid untrusted publishers from publishing artifacts
 // This cannot be overridden by any permit
 forbid (

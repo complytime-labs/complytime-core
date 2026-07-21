@@ -1,5 +1,6 @@
 entity Publisher = {
   admin: Bool,
+  service: Bool,
 };
 
 entity Subject = {
@@ -22,6 +23,21 @@ action "admin:modify-trust" appliesTo {
 };
 
 action "read:evidence" appliesTo {
+  principal: [Publisher],
+  resource: [Subject],
+};
+
+action "seal:evidence" appliesTo {
+  principal: [Publisher],
+  resource: [Subject],
+};
+
+action "verify:evidence" appliesTo {
+  principal: [Publisher],
+  resource: [Subject],
+};
+
+action "manage:ledger" appliesTo {
   principal: [Publisher],
   resource: [Subject],
 };

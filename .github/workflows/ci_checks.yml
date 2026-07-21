@@ -57,6 +57,40 @@ jobs:
       - name: Validate Cedar policies against schema
         run: make cedar-validate
 
+  acceptance-test:
+    name: Acceptance Tests
+    runs-on: ubuntu-latest
+    needs: [go-test, docker-build]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+      - name: Start services
+        run: docker compose -f deploy/compose/docker-compose.yaml up -d --wait --timeout 120
+      - name: Wait for services
+        run: |
+          for svc in gateway locker; do
+            port=$( [ "$svc" = "gateway" ] && echo 8080 || echo 8081 )
+            for _ in $(seq 1 30); do
+              if curl -sf "http://localhost:${port}/healthz" > /dev/null 2>&1; then
+                echo "$svc is healthy"
+                break
+              fi
+              sleep 2
+            done
+          done
+      - name: Run acceptance tests
+        run: go test -tags acceptance ./test/acceptance/ -v -timeout 5m -ginkgo.label-filter='!graph'
+      - name: Service logs on failure
+        if: failure()
+        run: docker compose -f deploy/compose/docker-compose.yaml logs
+      - name: Teardown
+        if: always()
+        run: docker compose -f deploy/compose/docker-compose.yaml down -v
+
   call_reusable_ci:
     name: Standardized CI
     uses: complytime/org-infra/.github/workflows/reusable_ci.yml@638b2037394ca0f0b860a135c7c27dce75fd3c03 # v0.5.0

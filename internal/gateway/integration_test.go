@@ -18,8 +18,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/jwtauth/v5"
 	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go/jetstream"
@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/complytime-labs/complytime-core/internal/authn"
 	"github.com/complytime-labs/complytime-core/internal/authz"
 	"github.com/complytime-labs/complytime-core/internal/gateway"
 	"github.com/complytime-labs/complytime-core/internal/locker"
@@ -59,12 +60,13 @@ func TestFullLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	defer lk.Close(ctx)
 
-	lockerHandler := locker.NewHandler(lk, "test-secret")
+	// Locker with no auth in integration test
+	lockerHandler := locker.NewHandler(lk, nil, nil)
 	lockerServer := httptest.NewServer(lockerHandler)
 	defer lockerServer.Close()
 
 	// Create JWT test keys and auth
-	privateKey, tokenAuth := createTestJWTAuth(t)
+	privateKey, jwtAuth, issuer := createTestJWTAuth(t)
 
 	// Start gateway in-process
 	trustStore, err := gateway.NewTrustStore(js)
@@ -80,7 +82,9 @@ func TestFullLifecycle(t *testing.T) {
 	policySet, err := authz.LoadEmbeddedPolicies()
 	require.NoError(t, err)
 
-	gwHandler := gateway.NewHandler(trustStore, js, eventPublisher, lockerServer.URL, "test-secret")
+	// Gateway with plain HTTP client (locker has no auth in integration test)
+	lockerClient := &http.Client{Timeout: 30 * time.Second}
+	gwHandler := gateway.NewHandler(trustStore, js, eventPublisher, lockerServer.URL, lockerClient)
 
 	// Build gateway router
 	r := chi.NewRouter()
@@ -89,8 +93,7 @@ func TestFullLifecycle(t *testing.T) {
 
 	// Authenticated routes
 	r.Group(func(r chi.Router) {
-		r.Use(jwtauth.Verifier(tokenAuth))
-		r.Use(testJWTAuthenticator)
+		r.Use(authn.AuthMiddleware(jwtAuth))
 		r.Use(gateway.SubjectIDExtractor)
 		r.Use(authz.Middleware(policySet, trustStore.IsPublisherTrusted))
 
@@ -112,7 +115,8 @@ func TestFullLifecycle(t *testing.T) {
 	defer gatewayServer.Close()
 
 	// Start worker
-	worker := gateway.NewWorker(js, lockerServer.URL, "test-secret", eventPublisher, &gwHandler.Jobs)
+	// Worker with plain HTTP client (locker has no auth in integration test)
+	worker := gateway.NewWorker(js, lockerServer.URL, lockerClient, eventPublisher, &gwHandler.Jobs)
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	defer workerCancel()
 
@@ -126,7 +130,6 @@ func TestFullLifecycle(t *testing.T) {
 
 	// 1. Register subject
 	subjectID := "test-subject-1"
-	issuer := "https://test.issuer.example"
 	sub := "test-publisher"
 
 	registerReq := gateway.SubjectRegistrationRequest{
@@ -229,12 +232,13 @@ func TestDSSELifecycle(t *testing.T) {
 	require.NoError(t, err)
 	defer lk.Close(ctx)
 
-	lockerHandler := locker.NewHandler(lk, "test-secret")
+	// Locker with no auth in integration test
+	lockerHandler := locker.NewHandler(lk, nil, nil)
 	lockerServer := httptest.NewServer(lockerHandler)
 	defer lockerServer.Close()
 
 	// Create JWT test keys and auth
-	privateKey, tokenAuth := createTestJWTAuth(t)
+	privateKey, jwtAuth, issuer := createTestJWTAuth(t)
 
 	// Start gateway in-process
 	trustStore, err := gateway.NewTrustStore(js)
@@ -250,7 +254,9 @@ func TestDSSELifecycle(t *testing.T) {
 	policySet, err := authz.LoadEmbeddedPolicies()
 	require.NoError(t, err)
 
-	gwHandler := gateway.NewHandler(trustStore, js, eventPublisher, lockerServer.URL, "test-secret")
+	// Gateway with plain HTTP client (locker has no auth in integration test)
+	lockerClient := &http.Client{Timeout: 30 * time.Second}
+	gwHandler := gateway.NewHandler(trustStore, js, eventPublisher, lockerServer.URL, lockerClient)
 
 	// Build gateway router
 	r := chi.NewRouter()
@@ -259,8 +265,7 @@ func TestDSSELifecycle(t *testing.T) {
 
 	// Authenticated routes
 	r.Group(func(r chi.Router) {
-		r.Use(jwtauth.Verifier(tokenAuth))
-		r.Use(testJWTAuthenticator)
+		r.Use(authn.AuthMiddleware(jwtAuth))
 		r.Use(gateway.SubjectIDExtractor)
 		r.Use(authz.Middleware(policySet, trustStore.IsPublisherTrusted))
 
@@ -282,7 +287,8 @@ func TestDSSELifecycle(t *testing.T) {
 	defer gatewayServer.Close()
 
 	// Start worker
-	worker := gateway.NewWorker(js, lockerServer.URL, "test-secret", eventPublisher, &gwHandler.Jobs)
+	// Worker with plain HTTP client (locker has no auth in integration test)
+	worker := gateway.NewWorker(js, lockerServer.URL, lockerClient, eventPublisher, &gwHandler.Jobs)
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	defer workerCancel()
 
@@ -296,7 +302,6 @@ func TestDSSELifecycle(t *testing.T) {
 
 	// 1. Register subject
 	subjectID := "test-subject-dsse"
-	issuer := "https://test.issuer.example"
 	sub := "test-publisher"
 
 	registerReq := gateway.SubjectRegistrationRequest{
@@ -408,15 +413,34 @@ func startEmbeddedNATS(t *testing.T) (*server.Server, jetstream.JetStream) {
 	return ns, js
 }
 
-func createTestJWTAuth(t *testing.T) (*ecdsa.PrivateKey, *jwtauth.JWTAuth) {
+func createTestJWTAuth(t *testing.T) (*ecdsa.PrivateKey, *authn.JWTAuthenticator, string) {
 	t.Helper()
 
-	// Create ECDSA key pair for testing
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 
-	tokenAuth := jwtauth.New(jwa.ES256().String(), privateKey, privateKey.Public())
-	return privateKey, tokenAuth
+	// Serve JWKS
+	jwks := jwk.NewSet()
+	key, err := jwk.Import(privateKey.Public())
+	require.NoError(t, err)
+	require.NoError(t, key.Set(jwk.KeyIDKey, "test-key-1"))
+	require.NoError(t, key.Set(jwk.AlgorithmKey, jwa.ES256()))
+	require.NoError(t, jwks.AddKey(key))
+
+	jwksServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/.well-known/jwks.json" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(jwks)
+		} else {
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(jwksServer.Close)
+
+	auth, err := authn.NewJWTAuthenticator(context.Background(), []string{jwksServer.URL}, "complytime-gateway")
+	require.NoError(t, err)
+
+	return privateKey, auth, jwksServer.URL
 }
 
 func createTestJWT(t *testing.T, privateKey *ecdsa.PrivateKey, issuer, sub string) string {
@@ -436,60 +460,16 @@ func createTestJWTWithAdmin(t *testing.T, privateKey *ecdsa.PrivateKey, issuer, 
 		Build()
 	require.NoError(t, err)
 
-	signed, err := jwt.Sign(token, jwt.WithKey(jwa.ES256(), privateKey))
+	// Sign with key ID matching the JWKS key
+	key, err := jwk.Import(privateKey)
+	require.NoError(t, err)
+	require.NoError(t, key.Set(jwk.KeyIDKey, "test-key-1"))
+	require.NoError(t, key.Set(jwk.AlgorithmKey, jwa.ES256()))
+
+	signed, err := jwt.Sign(token, jwt.WithKey(jwa.ES256(), key))
 	require.NoError(t, err)
 
 	return string(signed)
-}
-
-func testJWTAuthenticator(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token, _, err := jwtauth.FromContext(r.Context())
-		if err != nil || token == nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		// Validate audience
-		audiences, ok := token.Audience()
-		if !ok || len(audiences) == 0 {
-			http.Error(w, "Unauthorized: missing audience", http.StatusUnauthorized)
-			return
-		}
-		audFound := false
-		for _, aud := range audiences {
-			if aud == "complytime-gateway" {
-				audFound = true
-				break
-			}
-		}
-		if !audFound {
-			http.Error(w, "Unauthorized: invalid audience", http.StatusUnauthorized)
-			return
-		}
-
-		issuer, ok := token.Issuer()
-		if !ok || issuer == "" {
-			http.Error(w, "Unauthorized: missing issuer", http.StatusUnauthorized)
-			return
-		}
-
-		subject, ok := token.Subject()
-		if !ok || subject == "" {
-			http.Error(w, "Unauthorized: missing subject", http.StatusUnauthorized)
-			return
-		}
-
-		ctx := authz.SetPublisherContext(r.Context(), issuer, subject)
-
-		// Extract admin claim if present
-		var isAdmin bool
-		if err := token.Get("admin", &isAdmin); err == nil {
-			ctx = authz.SetAdminContext(ctx, isAdmin)
-		}
-
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
 }
 
 func makeAuthenticatedRequest(t *testing.T, url, method, token string, body interface{}) *http.Response {

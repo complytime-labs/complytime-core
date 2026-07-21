@@ -56,7 +56,9 @@ func setupTestHandler(t *testing.T, js jetstream.JetStream, nc *natsgo.Conn, loc
 
 	eventPublisher := NewEventPublisher(nc)
 
-	handler := NewHandler(trustStore, js, eventPublisher, lockerURL, "test-secret")
+	// For unit tests, use a plain HTTP client (locker is mocked)
+	lockerClient := &http.Client{}
+	handler := NewHandler(trustStore, js, eventPublisher, lockerURL, lockerClient)
 	return handler
 }
 

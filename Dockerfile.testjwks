@@ -1,36 +1,34 @@
-# Multi-stage build for gateway service
-# Stage 1: Build
 FROM golang:1.26.5-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS builder
 
 WORKDIR /build
 
-# Copy go.mod and go.sum
 COPY go.mod go.sum ./
-
-# Download dependencies
 RUN go mod download
 
-# Copy source code
 COPY cmd cmd/
 COPY events events/
 COPY internal internal/
 
-# Build the binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o gateway ./cmd/gateway
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o testjwks ./cmd/testjwks
 
-# Stage 2: Runtime
 FROM registry.access.redhat.com/ubi9/ubi-minimal@sha256:062c52ff973065752b0965787649db2bcf551a6c727a00e95a3eb42cebadbdab
 
 RUN microdnf install -y curl-minimal && microdnf clean all
 
 WORKDIR /app
+COPY --from=builder /build/testjwks /app/testjwks
 
-COPY --from=builder /build/gateway /app/gateway
+RUN mkdir -p /tokens && chown 1001:1001 /tokens
 
-ENV NATS_URL="nats://localhost:4222" \
-    LOCKER_URL="http://localhost:8081" \
-    GATEWAY_LISTEN_ADDR=":8080"
+ENV TESTJWKS_LISTEN_ADDR=":8888"
+ENV TESTJWKS_OUTPUT_DIR="/tokens"
+ENV ISSUER_URL="http://testjwks:8888"
+
+EXPOSE 8888
+
+HEALTHCHECK --interval=5s --timeout=3s --retries=5 \
+  CMD curl -sf http://localhost:8888/healthz || exit 1
 
 USER 1001:1001
 
-ENTRYPOINT ["/app/gateway"]
+ENTRYPOINT ["/app/testjwks"]
