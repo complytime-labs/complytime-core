@@ -12,27 +12,6 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
-// Defines values for JobStatusStatus.
-const (
-	Failed  JobStatusStatus = "failed"
-	Pending JobStatusStatus = "pending"
-	Sealed  JobStatusStatus = "sealed"
-)
-
-// Valid indicates whether the value is a known member of the JobStatusStatus enum.
-func (e JobStatusStatus) Valid() bool {
-	switch e {
-	case Failed:
-		return true
-	case Pending:
-		return true
-	case Sealed:
-		return true
-	default:
-		return false
-	}
-}
-
 // Error defines model for Error.
 type Error struct {
 	// Error Error message
@@ -45,46 +24,16 @@ type IngestResponse struct {
 	JobId openapi_types.UUID `json:"jobId"`
 }
 
-// JobStatus defines model for JobStatus.
-type JobStatus struct {
-	// Digest Hex-encoded SHA-256 digest (only present if status is sealed)
-	Digest *string `json:"digest,omitempty"`
+// ValidationError defines model for ValidationError.
+type ValidationError struct {
+	// ArtifactType Type of artifact that failed validation
+	ArtifactType string `json:"artifactType"`
 
-	// JobId Job identifier
-	JobId openapi_types.UUID `json:"jobId"`
+	// Details Field-level validation errors
+	Details []string `json:"details"`
 
-	// LogIndex Log index (only present if status is sealed)
-	LogIndex *int64 `json:"logIndex,omitempty"`
-
-	// Status Current job status
-	Status JobStatusStatus `json:"status"`
-}
-
-// JobStatusStatus Current job status
-type JobStatusStatus string
-
-// SubjectRegistrationRequest defines model for SubjectRegistrationRequest.
-type SubjectRegistrationRequest struct {
-	// SubjectId Unique identifier for the subject
-	SubjectId string `json:"subjectId"`
-
-	// TrustedPublishers List of trusted OIDC publishers for this subject
-	TrustedPublishers []TrustedPublisher `json:"trustedPublishers"`
-}
-
-// SubjectRegistrationResponse defines model for SubjectRegistrationResponse.
-type SubjectRegistrationResponse struct {
-	// SubjectId Subject identifier
-	SubjectId string `json:"subjectId"`
-}
-
-// TrustedPublisher defines model for TrustedPublisher.
-type TrustedPublisher struct {
-	// Issuer OIDC issuer URL
-	Issuer string `json:"issuer"`
-
-	// Sub OIDC subject claim pattern
-	Sub string `json:"sub"`
+	// Error Error message
+	Error string `json:"error"`
 }
 
 // IngestArtifactJSONBody defines parameters for IngestArtifact.
@@ -93,8 +42,11 @@ type IngestArtifactJSONBody = map[string]interface{}
 // IngestArtifactApplicationVndDssePlusJSONBody defines parameters for IngestArtifact.
 type IngestArtifactApplicationVndDssePlusJSONBody = map[string]interface{}
 
-// RegisterSubjectJSONRequestBody defines body for RegisterSubject for application/json ContentType.
-type RegisterSubjectJSONRequestBody = SubjectRegistrationRequest
+// IngestArtifactParams defines parameters for IngestArtifact.
+type IngestArtifactParams struct {
+	// XSubjectID Subject identifier for the artifact
+	XSubjectID string `json:"X-Subject-ID"`
+}
 
 // IngestArtifactJSONRequestBody defines body for IngestArtifact for application/json ContentType.
 type IngestArtifactJSONRequestBody = IngestArtifactJSONBody
@@ -104,15 +56,9 @@ type IngestArtifactApplicationVndDssePlusJSONRequestBody = IngestArtifactApplica
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// Register subject with trusted publishers
-	// (POST /api/admin/subjects)
-	RegisterSubject(w http.ResponseWriter, r *http.Request)
 	// Submit artifact for ingestion
 	// (POST /api/ingest)
-	IngestArtifact(w http.ResponseWriter, r *http.Request)
-	// Poll job status
-	// (GET /api/ingest/jobs/{jobId})
-	GetJobStatus(w http.ResponseWriter, r *http.Request, jobId openapi_types.UUID)
+	IngestArtifact(w http.ResponseWriter, r *http.Request, params IngestArtifactParams)
 	// Health check endpoint
 	// (GET /healthz)
 	HealthCheck(w http.ResponseWriter, r *http.Request)
@@ -122,21 +68,9 @@ type ServerInterface interface {
 
 type Unimplemented struct{}
 
-// Register subject with trusted publishers
-// (POST /api/admin/subjects)
-func (_ Unimplemented) RegisterSubject(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
 // Submit artifact for ingestion
 // (POST /api/ingest)
-func (_ Unimplemented) IngestArtifact(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Poll job status
-// (GET /api/ingest/jobs/{jobId})
-func (_ Unimplemented) GetJobStatus(w http.ResponseWriter, r *http.Request, jobId openapi_types.UUID) {
+func (_ Unimplemented) IngestArtifact(w http.ResponseWriter, r *http.Request, params IngestArtifactParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -155,51 +89,42 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
-// RegisterSubject operation middleware
-func (siw *ServerInterfaceWrapper) RegisterSubject(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.RegisterSubject(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // IngestArtifact operation middleware
 func (siw *ServerInterfaceWrapper) IngestArtifact(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.IngestArtifact(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetJobStatus operation middleware
-func (siw *ServerInterfaceWrapper) GetJobStatus(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	_ = err
 
-	// ------------- Path parameter "jobId" -------------
-	var jobId openapi_types.UUID
+	// Parameter object where we will unmarshal all parameters from the context
+	var params IngestArtifactParams
 
-	err = runtime.BindStyledParameterWithOptions("simple", "jobId", chi.URLParam(r, "jobId"), &jobId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "jobId", Err: err})
+	headers := r.Header
+
+	// ------------- Required header parameter "X-Subject-ID" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Subject-ID")]; found {
+		var XSubjectID string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Subject-ID", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Subject-ID", valueList[0], &XSubjectID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Subject-ID", Err: err})
+			return
+		}
+
+		params.XSubjectID = XSubjectID
+
+	} else {
+		err := fmt.Errorf("Header parameter X-Subject-ID is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Subject-ID", Err: err})
 		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetJobStatus(w, r, jobId)
+		siw.Handler.IngestArtifact(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -337,13 +262,7 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/admin/subjects", wrapper.RegisterSubject)
-	})
-	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/ingest", wrapper.IngestArtifact)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/ingest/jobs/{jobId}", wrapper.GetJobStatus)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/healthz", wrapper.HealthCheck)

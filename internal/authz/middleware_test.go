@@ -58,24 +58,10 @@ func TestActionForRoute(t *testing.T) {
 			wantOK:     true,
 		},
 		{
-			name:       "POST /api/admin/subjects maps to admin:register-subject",
+			name:       "POST /admin/subjects maps to admin:register-subject",
 			method:     "POST",
-			path:       "/api/admin/subjects",
+			path:       "/admin/subjects",
 			wantAction: ActionRegisterSubject,
-			wantOK:     true,
-		},
-		{
-			name:       "PUT /api/admin/trust maps to admin:modify-trust",
-			method:     "PUT",
-			path:       "/api/admin/trust",
-			wantAction: ActionModifyTrust,
-			wantOK:     true,
-		},
-		{
-			name:       "PATCH /api/admin/trust maps to admin:modify-trust",
-			method:     "PATCH",
-			path:       "/api/admin/trust",
-			wantAction: ActionModifyTrust,
 			wantOK:     true,
 		},
 		{

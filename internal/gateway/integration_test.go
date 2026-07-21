@@ -9,8 +9,6 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -23,27 +21,24 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go/jetstream"
-	"github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/complytime-labs/complytime-core/internal/authn"
 	"github.com/complytime-labs/complytime-core/internal/authz"
+	eventspkg "github.com/complytime-labs/complytime-core/internal/events"
 	"github.com/complytime-labs/complytime-core/internal/gateway"
-	"github.com/complytime-labs/complytime-core/internal/locker"
+	"github.com/complytime-labs/complytime-core/internal/ingest"
 	natsinfra "github.com/complytime-labs/complytime-core/internal/nats"
+	"github.com/complytime-labs/complytime-core/internal/trust"
 )
 
-// TestFullLifecycle tests the complete evidence gateway flow:
-// - Start embedded NATS
-// - Start locker in-process
-// - Start gateway in-process
-// - Register subject via admin API
-// - Submit unsigned artifact via ingest API
-// - Poll until sealed
-// - Verify in locker
-func TestFullLifecycle(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+// TestGatewayIngest tests the simplified gateway flow:
+// - Submit artifact → get 202 with jobId
+// - Job status starts as pending (via NATS KV)
+// - Verify receipt was published to JetStream
+func TestGatewayIngest(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	// Start embedded NATS server
@@ -54,22 +49,23 @@ func TestFullLifecycle(t *testing.T) {
 	err := natsinfra.EnsureInfrastructure(ctx, js)
 	require.NoError(t, err)
 
-	// Start locker in-process
-	lockerDir := t.TempDir()
-	lk, err := locker.NewLocker(lockerDir)
-	require.NoError(t, err)
-	defer lk.Close(ctx)
-
-	// Locker with no auth in integration test
-	lockerHandler := locker.NewHandler(lk, nil, nil)
-	lockerServer := httptest.NewServer(lockerHandler)
-	defer lockerServer.Close()
-
 	// Create JWT test keys and auth
 	privateKey, jwtAuth, issuer := createTestJWTAuth(t)
 
-	// Start gateway in-process
-	trustStore, err := gateway.NewTrustStore(js)
+	// Create trust store
+	trustStore, err := trust.NewTrustStore(js)
+	require.NoError(t, err)
+
+	// Register a subject in the trust store
+	subjectID := "test-subject-gateway"
+	sub := "test-publisher"
+
+	err = trustStore.RegisterSubject(ctx, subjectID)
+	require.NoError(t, err)
+
+	err = trustStore.SetPublisherTrust(ctx, subjectID, []trust.TrustEntry{
+		{Issuer: issuer, Sub: sub},
+	})
 	require.NoError(t, err)
 
 	// Get NATS connection from server
@@ -77,14 +73,16 @@ func TestFullLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	defer nc.Close()
 
-	eventPublisher := gateway.NewEventPublisher(nc)
+	eventPublisher := eventspkg.NewEventPublisher(nc, "complytime-test")
 
 	policySet, err := authz.LoadEmbeddedPolicies()
 	require.NoError(t, err)
 
-	// Gateway with plain HTTP client (locker has no auth in integration test)
-	lockerClient := &http.Client{Timeout: 30 * time.Second}
-	gwHandler := gateway.NewHandler(trustStore, js, eventPublisher, lockerServer.URL, lockerClient)
+	// Load Gemara schemas
+	schemas, err := gateway.NewSchemaRegistry()
+	require.NoError(t, err)
+
+	gwHandler := gateway.NewHandler(trustStore, js, eventPublisher, schemas)
 
 	// Build gateway router
 	r := chi.NewRouter()
@@ -98,67 +96,22 @@ func TestFullLifecycle(t *testing.T) {
 		r.Use(authz.Middleware(policySet, trustStore.IsPublisherTrusted))
 
 		r.Post("/api/ingest", gwHandler.IngestArtifact)
-		r.Get("/api/ingest/jobs/{jobId}", func(w http.ResponseWriter, r *http.Request) {
-			jobIDStr := chi.URLParam(r, "jobId")
-			var jobID types.UUID
-			err := jobID.UnmarshalText([]byte(jobIDStr))
-			if err != nil {
-				http.Error(w, "Invalid job ID", http.StatusBadRequest)
-				return
-			}
-			gwHandler.GetJobStatus(w, r, jobID)
-		})
-		r.Post("/api/admin/subjects", gwHandler.RegisterSubject)
 	})
 
 	gatewayServer := httptest.NewServer(r)
 	defer gatewayServer.Close()
 
-	// Start worker
-	// Worker with plain HTTP client (locker has no auth in integration test)
-	worker := gateway.NewWorker(js, lockerServer.URL, lockerClient, eventPublisher, &gwHandler.Jobs)
-	workerCtx, workerCancel := context.WithCancel(ctx)
-	defer workerCancel()
-
-	go worker.Start(workerCtx)
-	defer worker.Stop()
-
-	// Wait for worker to start
-	time.Sleep(100 * time.Millisecond)
-
 	// Test flow begins
 
-	// 1. Register subject
-	subjectID := "test-subject-1"
-	sub := "test-publisher"
-
-	registerReq := gateway.SubjectRegistrationRequest{
-		SubjectId: subjectID,
-		TrustedPublishers: []gateway.TrustedPublisher{
-			{
-				Issuer: issuer,
-				Sub:    sub,
-			},
-		},
-	}
-
-	token := createTestJWT(t, privateKey, issuer, sub)
-	registerResp := makeAuthenticatedRequest(t, gatewayServer.URL+"/api/admin/subjects", "POST", token, registerReq)
-	require.Equal(t, http.StatusCreated, registerResp.StatusCode)
-
-	var registerResult gateway.SubjectRegistrationResponse
-	err = json.NewDecoder(registerResp.Body).Decode(&registerResult)
-	require.NoError(t, err)
-	assert.Equal(t, subjectID, registerResult.SubjectId)
-
-	// 2. Submit unsigned artifact
+	// 1. Submit artifact
 	artifact := map[string]interface{}{
 		"type":      "test-artifact",
 		"target":    map[string]string{"id": subjectID},
 		"timestamp": time.Now().Format(time.RFC3339),
-		"data":      "test data",
+		"data":      "gateway integration test",
 	}
 
+	token := createTestJWT(t, privateKey, issuer, sub)
 	ingestResp := makeAuthenticatedRequestWithSubject(t, gatewayServer.URL+"/api/ingest", "POST", token, subjectID, artifact)
 	require.Equal(t, http.StatusAccepted, ingestResp.StatusCode)
 
@@ -167,55 +120,29 @@ func TestFullLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, ingestResult.JobId)
 
-	// 3. Poll until sealed
+	// 2. Verify IngestRef was published to JetStream
 	jobID := ingestResult.JobId
-	var finalStatus gateway.JobStatus
-	deadline := time.Now().Add(30 * time.Second)
-	for time.Now().Before(deadline) {
-		statusResp := makeAuthenticatedRequestNoBody(t, gatewayServer.URL+"/api/ingest/jobs/"+jobID.String(), "GET", token)
-		if statusResp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(statusResp.Body)
-			statusResp.Body.Close()
-			t.Fatalf("Failed to get job status: %d body=%s", statusResp.StatusCode, string(body))
-		}
-
-		err = json.NewDecoder(statusResp.Body).Decode(&finalStatus)
-		require.NoError(t, err)
-
-		if finalStatus.Status == gateway.Sealed {
-			break
-		}
-
-		time.Sleep(500 * time.Millisecond)
-	}
-
-	assert.Equal(t, gateway.Sealed, finalStatus.Status, "Job should be sealed")
-	require.NotNil(t, finalStatus.Digest, "Sealed job should have a digest")
-	require.NotNil(t, finalStatus.LogIndex, "Sealed job should have a log index")
-
-	// 4. Verify in locker
-	verifyURL := fmt.Sprintf("%s/ledgers/%s/verify/%s", lockerServer.URL, subjectID, *finalStatus.Digest)
-	verifyReq, err := http.NewRequest("GET", verifyURL, nil)
+	consumer, err := js.Consumer(ctx, natsinfra.StreamIngest, natsinfra.ConsumerIngestWorker)
 	require.NoError(t, err)
-	verifyReq.Header.Set("Authorization", "Bearer test-secret")
-	verifyResp, err := http.DefaultClient.Do(verifyReq)
-	require.NoError(t, err)
-	defer verifyResp.Body.Close()
 
-	require.Equal(t, http.StatusOK, verifyResp.StatusCode)
-
-	var verifyResult map[string]interface{}
-	err = json.NewDecoder(verifyResp.Body).Decode(&verifyResult)
+	msgs, err := consumer.Fetch(1, jetstream.FetchMaxWait(5*time.Second))
 	require.NoError(t, err)
-	assert.True(t, verifyResult["found"].(bool), "Digest should be found in locker")
+
+	msg := <-msgs.Messages()
+	require.NotNil(t, msg)
+
+	var ingestRef ingest.IngestRef
+	err = json.Unmarshal(msg.Data(), &ingestRef)
+	require.NoError(t, err)
+	assert.Equal(t, jobID.String(), ingestRef.JobID)
+	assert.Equal(t, subjectID, ingestRef.SubjectID)
+	assert.NotEmpty(t, ingestRef.ContentDigest)
+	assert.NotEmpty(t, ingestRef.ReceiptBytes)
 }
 
-// TestDSSELifecycle tests the DSSE artifact flow:
-// - Register subject
-// - Submit DSSE artifact
-// - Verify both DSSE and DSSE channel receipt are sealed
-func TestDSSELifecycle(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+// TestGatewayDSSE tests DSSE artifact submission
+func TestGatewayDSSE(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	// Start embedded NATS server
@@ -226,22 +153,23 @@ func TestDSSELifecycle(t *testing.T) {
 	err := natsinfra.EnsureInfrastructure(ctx, js)
 	require.NoError(t, err)
 
-	// Start locker in-process
-	lockerDir := t.TempDir()
-	lk, err := locker.NewLocker(lockerDir)
-	require.NoError(t, err)
-	defer lk.Close(ctx)
-
-	// Locker with no auth in integration test
-	lockerHandler := locker.NewHandler(lk, nil, nil)
-	lockerServer := httptest.NewServer(lockerHandler)
-	defer lockerServer.Close()
-
 	// Create JWT test keys and auth
 	privateKey, jwtAuth, issuer := createTestJWTAuth(t)
 
-	// Start gateway in-process
-	trustStore, err := gateway.NewTrustStore(js)
+	// Create trust store
+	trustStore, err := trust.NewTrustStore(js)
+	require.NoError(t, err)
+
+	// Register a subject in the trust store
+	subjectID := "test-subject-dsse"
+	sub := "test-publisher"
+
+	err = trustStore.RegisterSubject(ctx, subjectID)
+	require.NoError(t, err)
+
+	err = trustStore.SetPublisherTrust(ctx, subjectID, []trust.TrustEntry{
+		{Issuer: issuer, Sub: sub},
+	})
 	require.NoError(t, err)
 
 	// Get NATS connection from server
@@ -249,14 +177,16 @@ func TestDSSELifecycle(t *testing.T) {
 	require.NoError(t, err)
 	defer nc.Close()
 
-	eventPublisher := gateway.NewEventPublisher(nc)
+	eventPublisher := eventspkg.NewEventPublisher(nc, "complytime-test")
 
 	policySet, err := authz.LoadEmbeddedPolicies()
 	require.NoError(t, err)
 
-	// Gateway with plain HTTP client (locker has no auth in integration test)
-	lockerClient := &http.Client{Timeout: 30 * time.Second}
-	gwHandler := gateway.NewHandler(trustStore, js, eventPublisher, lockerServer.URL, lockerClient)
+	// Load Gemara schemas
+	schemas, err := gateway.NewSchemaRegistry()
+	require.NoError(t, err)
+
+	gwHandler := gateway.NewHandler(trustStore, js, eventPublisher, schemas)
 
 	// Build gateway router
 	r := chi.NewRouter()
@@ -270,58 +200,15 @@ func TestDSSELifecycle(t *testing.T) {
 		r.Use(authz.Middleware(policySet, trustStore.IsPublisherTrusted))
 
 		r.Post("/api/ingest", gwHandler.IngestArtifact)
-		r.Get("/api/ingest/jobs/{jobId}", func(w http.ResponseWriter, r *http.Request) {
-			jobIDStr := chi.URLParam(r, "jobId")
-			var jobID types.UUID
-			err := jobID.UnmarshalText([]byte(jobIDStr))
-			if err != nil {
-				http.Error(w, "Invalid job ID", http.StatusBadRequest)
-				return
-			}
-			gwHandler.GetJobStatus(w, r, jobID)
-		})
-		r.Post("/api/admin/subjects", gwHandler.RegisterSubject)
 	})
 
 	gatewayServer := httptest.NewServer(r)
 	defer gatewayServer.Close()
 
-	// Start worker
-	// Worker with plain HTTP client (locker has no auth in integration test)
-	worker := gateway.NewWorker(js, lockerServer.URL, lockerClient, eventPublisher, &gwHandler.Jobs)
-	workerCtx, workerCancel := context.WithCancel(ctx)
-	defer workerCancel()
-
-	go worker.Start(workerCtx)
-	defer worker.Stop()
-
-	// Wait for worker to start
-	time.Sleep(100 * time.Millisecond)
-
-	// Test flow begins
-
-	// 1. Register subject
-	subjectID := "test-subject-dsse"
-	sub := "test-publisher"
-
-	registerReq := gateway.SubjectRegistrationRequest{
-		SubjectId: subjectID,
-		TrustedPublishers: []gateway.TrustedPublisher{
-			{
-				Issuer: issuer,
-				Sub:    sub,
-			},
-		},
-	}
-
-	token := createTestJWT(t, privateKey, issuer, sub)
-	registerResp := makeAuthenticatedRequest(t, gatewayServer.URL+"/api/admin/subjects", "POST", token, registerReq)
-	require.Equal(t, http.StatusCreated, registerResp.StatusCode)
-
-	// 2. Submit DSSE artifact
+	// Test DSSE submission
 	dsseEnvelope := map[string]interface{}{
 		"payloadType": "application/vnd.in-toto+json",
-		"payload":     "eyJ0ZXN0IjogImRhdGEifQ==",
+		"payload":     "eyJ0ZXN0IjogImRzc2UgaW50ZWdyYXRpb24ifQ==",
 		"signatures": []map[string]string{
 			{"sig": "test-signature"},
 		},
@@ -329,6 +216,8 @@ func TestDSSELifecycle(t *testing.T) {
 
 	dsseJSON, err := json.Marshal(dsseEnvelope)
 	require.NoError(t, err)
+
+	token := createTestJWT(t, privateKey, issuer, sub)
 
 	req, err := http.NewRequest("POST", gatewayServer.URL+"/api/ingest", bytes.NewReader(dsseJSON))
 	require.NoError(t, err)
@@ -345,46 +234,7 @@ func TestDSSELifecycle(t *testing.T) {
 	var ingestResult gateway.IngestResponse
 	err = json.NewDecoder(ingestResp.Body).Decode(&ingestResult)
 	require.NoError(t, err)
-	require.NotEmpty(t, ingestResult.JobId)
-
-	// 3. Poll until sealed
-	jobID := ingestResult.JobId
-	var finalStatus gateway.JobStatus
-	deadline := time.Now().Add(30 * time.Second)
-	for time.Now().Before(deadline) {
-		statusResp := makeAuthenticatedRequestNoBody(t, gatewayServer.URL+"/api/ingest/jobs/"+jobID.String(), "GET", token)
-		if statusResp.StatusCode != http.StatusOK {
-			t.Fatalf("Failed to get job status: %d", statusResp.StatusCode)
-		}
-
-		err = json.NewDecoder(statusResp.Body).Decode(&finalStatus)
-		require.NoError(t, err)
-
-		if finalStatus.Status == gateway.Sealed {
-			break
-		}
-
-		time.Sleep(500 * time.Millisecond)
-	}
-
-	assert.Equal(t, gateway.Sealed, finalStatus.Status, "Job should be sealed")
-	require.NotNil(t, finalStatus.Digest, "Sealed job should have a digest")
-
-	// 4. Verify DSSE channel receipt is in locker
-	verifyURL := fmt.Sprintf("%s/ledgers/%s/verify/%s", lockerServer.URL, subjectID, *finalStatus.Digest)
-	verifyReq, err := http.NewRequest("GET", verifyURL, nil)
-	require.NoError(t, err)
-	verifyReq.Header.Set("Authorization", "Bearer test-secret")
-	verifyResp, err := http.DefaultClient.Do(verifyReq)
-	require.NoError(t, err)
-	defer verifyResp.Body.Close()
-
-	require.Equal(t, http.StatusOK, verifyResp.StatusCode)
-
-	var verifyResult map[string]interface{}
-	err = json.NewDecoder(verifyResp.Body).Decode(&verifyResult)
-	require.NoError(t, err)
-	assert.True(t, verifyResult["found"].(bool), "Channel attestation should be found in locker")
+	require.NotEmpty(t, ingestResult.JobId, "Gateway should return a job ID for correlation")
 }
 
 // Helper functions
@@ -444,10 +294,6 @@ func createTestJWTAuth(t *testing.T) (*ecdsa.PrivateKey, *authn.JWTAuthenticator
 }
 
 func createTestJWT(t *testing.T, privateKey *ecdsa.PrivateKey, issuer, sub string) string {
-	return createTestJWTWithAdmin(t, privateKey, issuer, sub, true)
-}
-
-func createTestJWTWithAdmin(t *testing.T, privateKey *ecdsa.PrivateKey, issuer, sub string, isAdmin bool) string {
 	t.Helper()
 
 	token, err := jwt.NewBuilder().
@@ -455,8 +301,8 @@ func createTestJWTWithAdmin(t *testing.T, privateKey *ecdsa.PrivateKey, issuer, 
 		Subject(sub).
 		Audience([]string{"complytime-gateway"}).
 		IssuedAt(time.Now()).
-		Expiration(time.Now().Add(1 * time.Hour)).
-		Claim("admin", isAdmin).
+		Expiration(time.Now().Add(1*time.Hour)).
+		Claim("admin", false).
 		Build()
 	require.NoError(t, err)
 
@@ -470,24 +316,6 @@ func createTestJWTWithAdmin(t *testing.T, privateKey *ecdsa.PrivateKey, issuer, 
 	require.NoError(t, err)
 
 	return string(signed)
-}
-
-func makeAuthenticatedRequest(t *testing.T, url, method, token string, body interface{}) *http.Response {
-	t.Helper()
-
-	bodyJSON, err := json.Marshal(body)
-	require.NoError(t, err)
-
-	req, err := http.NewRequest(method, url, bytes.NewReader(bodyJSON))
-	require.NoError(t, err)
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-
-	return resp
 }
 
 func makeAuthenticatedRequestWithSubject(t *testing.T, url, method, token, subjectID string, body interface{}) *http.Response {

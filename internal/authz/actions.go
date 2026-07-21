@@ -27,16 +27,14 @@ type routeMapping struct {
 var routeMappings = []routeMapping{
 	// Gateway routes
 	{"POST", "/api/ingest", ActionPublishArtifact},
-	{"POST", "/api/admin/subjects", ActionRegisterSubject},
-	{"PUT", "/api/admin/trust", ActionModifyTrust},
-	{"PATCH", "/api/admin/trust", ActionModifyTrust},
 	{"GET", "/api/evidence", ActionReadEvidence},
-	{"GET", "/api/ingest/jobs/", ActionReadEvidence},
 	// Locker routes — order matters: longer prefixes first
-	{"POST", "/ledgers", ActionManageLedger},  // POST /ledgers (exact — create)
-	{"POST", "/ledgers/", ActionSealEvidence}, // POST /ledgers/{subjectId}/seal
-	{"GET", "/ledgers", ActionReadEvidence},   // GET /ledgers (exact — list)
-	{"GET", "/ledgers/", ActionReadEvidence},  // GET /ledgers/... (info, fetch, verify, tiles)
+	{"POST", "/admin/subjects", ActionRegisterSubject}, // Locker subject registration
+	{"PUT", "/admin/subjects/", ActionModifyTrust},     // PUT /admin/subjects/{subjectId}/trust
+	{"POST", "/ledgers", ActionManageLedger},           // POST /ledgers (exact — create)
+	{"POST", "/ledgers/", ActionSealEvidence},          // POST /ledgers/{subjectId}/seal
+	{"GET", "/ledgers", ActionReadEvidence},            // GET /ledgers (exact — list)
+	{"GET", "/ledgers/", ActionReadEvidence},           // GET /ledgers/... (info, fetch, verify, tiles)
 }
 
 // PrincipalFromJWT constructs a Cedar Publisher entity UID from JWT issuer and subject.

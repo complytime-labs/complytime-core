@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/complytime-labs/complytime-core/internal/authz"
-	"github.com/complytime-labs/complytime-core/internal/locker"
+	"github.com/complytime-labs/complytime-core/internal/subjects"
 )
 
 // SubjectIDExtractor is Chi middleware that reads X-Subject-ID from the
@@ -18,7 +18,7 @@ func SubjectIDExtractor(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		subjectID := r.Header.Get(HeaderSubjectID)
 		if subjectID != "" {
-			if err := locker.ValidateSubjectID(subjectID); err != nil {
+			if err := subjects.ValidateSubjectID(subjectID); err != nil {
 				http.Error(w, "Invalid X-Subject-ID", http.StatusBadRequest)
 				return
 			}

@@ -14,12 +14,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/nats-io/nats.go/jetstream"
-	openapitypes "github.com/oapi-codegen/runtime/types"
 
 	"github.com/complytime-labs/complytime-core/internal/authn"
 	"github.com/complytime-labs/complytime-core/internal/authz"
+	eventspkg "github.com/complytime-labs/complytime-core/internal/events"
 	"github.com/complytime-labs/complytime-core/internal/gateway"
 	natsinfra "github.com/complytime-labs/complytime-core/internal/nats"
+	"github.com/complytime-labs/complytime-core/internal/trust"
 )
 
 func main() {
@@ -31,18 +32,6 @@ func main() {
 	natsURL := os.Getenv("NATS_URL")
 	if natsURL == "" {
 		natsURL = "nats://localhost:4222"
-	}
-
-	lockerURL := os.Getenv("LOCKER_URL")
-	if lockerURL == "" {
-		lockerURL = "http://localhost:8081"
-	}
-
-	tokenFile := os.Getenv("TOKEN_FILE")
-	if tokenFile == "" {
-		// Fail-closed: TOKEN_FILE must be set
-		slog.Error("TOKEN_FILE environment variable is required (fail-closed)")
-		os.Exit(1)
 	}
 
 	jwtIssuers := os.Getenv("JWT_ISSUERS")
@@ -88,14 +77,14 @@ func main() {
 	}
 
 	// Create trust store
-	trustStore, err := gateway.NewTrustStore(js)
+	trustStore, err := trust.NewTrustStore(js)
 	if err != nil {
 		slog.Error("failed to create trust store", "error", err)
 		os.Exit(1)
 	}
 
 	// Create event publisher
-	eventPublisher := gateway.NewEventPublisher(nc)
+	eventPublisher := eventspkg.NewEventPublisher(nc, "complytime-gateway")
 
 	// Load Cedar policies
 	policySet, err := authz.LoadEmbeddedPolicies()
@@ -112,15 +101,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Build locker HTTP client with token auth
-	lockerTokenSource := authn.NewFileTokenSource(tokenFile)
-	lockerClient := &http.Client{
-		Timeout:   30 * time.Second,
-		Transport: authn.NewTokenTransport(lockerTokenSource, http.DefaultTransport),
+	// Load Gemara schemas
+	schemas, err := gateway.NewSchemaRegistry()
+	if err != nil {
+		slog.Error("failed to load gemara schemas", "error", err)
+		os.Exit(1)
 	}
 
 	// Create gateway handler
-	gwHandler := gateway.NewHandler(trustStore, js, eventPublisher, lockerURL, lockerClient)
+	gwHandler := gateway.NewHandler(trustStore, js, eventPublisher, schemas)
 
 	// Build Chi router
 	r := chi.NewRouter()
@@ -140,31 +129,7 @@ func main() {
 
 		// API routes
 		r.Post("/api/ingest", gwHandler.IngestArtifact)
-		r.Post("/api/admin/subjects", gwHandler.RegisterSubject)
-		r.Get("/api/ingest/jobs/{jobId}", func(w http.ResponseWriter, r *http.Request) {
-			jobIDStr := chi.URLParam(r, "jobId")
-			var jobID openapitypes.UUID
-			if err := jobID.UnmarshalText([]byte(jobIDStr)); err != nil {
-				http.Error(w, "Invalid job ID", http.StatusBadRequest)
-				return
-			}
-			gwHandler.GetJobStatus(w, r, jobID)
-		})
 	})
-
-	// Create worker (needs access to the same jobs map as the handler)
-	worker := gateway.NewWorker(js, lockerURL, lockerClient, eventPublisher, &gwHandler.Jobs)
-
-	// Start worker in background
-	workerCtx, workerCancel := context.WithCancel(ctx)
-	defer workerCancel()
-
-	workerErrCh := make(chan error, 1)
-	go func() {
-		if err := worker.Start(workerCtx); err != nil {
-			workerErrCh <- err
-		}
-	}()
 
 	// Create HTTP server
 	server := &http.Server{
@@ -196,17 +161,11 @@ func main() {
 	case err := <-serverErrCh:
 		slog.Error("server error", "error", err)
 		os.Exit(1)
-	case err := <-workerErrCh:
-		slog.Error("worker error", "error", err)
-		os.Exit(1)
 	}
 
 	// Graceful shutdown
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-
-	// Stop worker first
-	workerCancel()
 
 	// Shutdown HTTP server
 	if err := server.Shutdown(shutdownCtx); err != nil {
