@@ -1,0 +1,964 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$defs": {
+        "#AcceptedMethod": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "executor": {
+                    "$ref": "#/$defs/%23Actor"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "mode": {
+                    "$ref": "#/$defs/%23ModeType"
+                },
+                "required": {
+                    "type": "boolean"
+                },
+                "type": {
+                    "$ref": "#/$defs/%23MethodType"
+                }
+            },
+            "required": [
+                "id",
+                "mode",
+                "type"
+            ]
+        },
+        "#AcceptedRisk": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "justification": {
+                    "type": "string"
+                },
+                "risk": {
+                    "$ref": "#/$defs/%23EntryMapping"
+                },
+                "scope": {
+                    "$ref": "#/$defs/%23Scope"
+                },
+                "target-id": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "risk"
+            ]
+        },
+        "#Actor": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "contact": {
+                    "$ref": "#/$defs/%23Contact"
+                }
+            },
+            "$ref": "#/$defs/%23Entity"
+        },
+        "#Adherence": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "assessment-plans": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23AssessmentPlan"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23AssessmentPlan"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "enforcement-methods": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "type": {
+                                "$ref": "#/$defs/%23EnforcementMethodType"
+                            }
+                        },
+                        "$ref": "#/$defs/%23AcceptedMethod",
+                        "required": [
+                            "type"
+                        ]
+                    },
+                    "prefixItems": [
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "type": {
+                                    "$ref": "#/$defs/%23EnforcementMethodType"
+                                }
+                            },
+                            "$ref": "#/$defs/%23AcceptedMethod",
+                            "required": [
+                                "type"
+                            ]
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "evaluation-methods": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "type": {
+                                "$ref": "#/$defs/%23EvaluationMethodType"
+                            }
+                        },
+                        "$ref": "#/$defs/%23AcceptedMethod",
+                        "required": [
+                            "type"
+                        ]
+                    },
+                    "prefixItems": [
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "type": {
+                                    "$ref": "#/$defs/%23EvaluationMethodType"
+                                }
+                            },
+                            "$ref": "#/$defs/%23AcceptedMethod",
+                            "required": [
+                                "type"
+                            ]
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "non-compliance": {
+                    "type": "string"
+                }
+            }
+        },
+        "#ArtifactMapping": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "reference-id": {
+                    "type": "string"
+                },
+                "remarks": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "reference-id"
+            ]
+        },
+        "#ArtifactType": {
+            "enum": [
+                "CapabilityCatalog",
+                "ControlCatalog",
+                "GuidanceCatalog",
+                "ThreatCatalog",
+                "RiskCatalog",
+                "Policy",
+                "MappingDocument",
+                "Lexicon",
+                "EvaluationLog",
+                "EnforcementLog",
+                "VectorCatalog",
+                "PrincipleCatalog",
+                "AuditLog"
+            ]
+        },
+        "#AssessmentPlan": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "evaluation-methods": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "type": {
+                                "$ref": "#/$defs/%23EvaluationMethodType"
+                            }
+                        },
+                        "$ref": "#/$defs/%23AcceptedMethod",
+                        "required": [
+                            "type"
+                        ]
+                    },
+                    "prefixItems": [
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "type": {
+                                    "$ref": "#/$defs/%23EvaluationMethodType"
+                                }
+                            },
+                            "$ref": "#/$defs/%23AcceptedMethod",
+                            "required": [
+                                "type"
+                            ]
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "evidence-requirements": {
+                    "type": "string"
+                },
+                "frequency": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "parameters": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23Parameter"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23Parameter"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "requirement-id": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "evaluation-methods",
+                "frequency",
+                "id",
+                "requirement-id"
+            ]
+        },
+        "#AssessmentRequirementModifier": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "applicability": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "prefixItems": [
+                        {
+                            "type": "string"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "id": {
+                    "type": "string"
+                },
+                "modification-rationale": {
+                    "type": "string"
+                },
+                "modification-type": {
+                    "$ref": "#/$defs/%23ModType"
+                },
+                "recommendation": {
+                    "type": "string"
+                },
+                "target-id": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "modification-rationale",
+                "modification-type",
+                "target-id"
+            ]
+        },
+        "#CatalogImport": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "assessment-requirement-modifications": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23AssessmentRequirementModifier"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23AssessmentRequirementModifier"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "constraints": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23Constraint"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23Constraint"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "exclusions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "prefixItems": [
+                        {
+                            "type": "string"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "reference-id": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "reference-id"
+            ]
+        },
+        "#Constraint": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "target-id": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "target-id",
+                "text"
+            ]
+        },
+        "#Contact": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "affiliation": {
+                    "type": "string"
+                },
+                "email": {
+                    "$ref": "#/$defs/%23Email"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "social": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "name"
+            ]
+        },
+        "#Datetime": {
+            "type": "string",
+            "format": "date-time"
+        },
+        "#Dimensions": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "geopolitical": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "prefixItems": [
+                        {
+                            "type": "string"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "prefixItems": [
+                        {
+                            "type": "string"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "sensitivity": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "prefixItems": [
+                        {
+                            "type": "string"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "technologies": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "prefixItems": [
+                        {
+                            "type": "string"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "users": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "prefixItems": [
+                        {
+                            "type": "string"
+                        }
+                    ],
+                    "minItems": 1
+                }
+            }
+        },
+        "#Email": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
+        },
+        "#EnforcementMethodType": {
+            "enum": [
+                "Gate",
+                "Remediation"
+            ]
+        },
+        "#Entity": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/$defs/%23EntityType"
+                },
+                "uri": {
+                    "type": "string",
+                    "pattern": "^https?://[^\\s]+$"
+                },
+                "version": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "name",
+                "type"
+            ]
+        },
+        "#EntityType": {
+            "enum": [
+                "Human",
+                "Software",
+                "Software Assisted"
+            ]
+        },
+        "#EntryMapping": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "entry-id": {
+                    "type": "string"
+                },
+                "reference-id": {
+                    "type": "string"
+                },
+                "remarks": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "entry-id",
+                "reference-id"
+            ]
+        },
+        "#EvaluationMethodType": {
+            "enum": [
+                "Intent",
+                "Behavioral"
+            ]
+        },
+        "#Group": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "description",
+                "id",
+                "title"
+            ]
+        },
+        "#GuidanceImport": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "constraints": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23Constraint"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23Constraint"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "exclusions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "prefixItems": [
+                        {
+                            "type": "string"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "reference-id": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "reference-id"
+            ]
+        },
+        "#ImplementationDetails": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "end": {
+                    "$ref": "#/$defs/%23Datetime"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "start": {
+                    "$ref": "#/$defs/%23Datetime"
+                }
+            },
+            "required": [
+                "notes",
+                "start"
+            ]
+        },
+        "#ImplementationPlan": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "enforcement-timeline": {
+                    "$ref": "#/$defs/%23ImplementationDetails"
+                },
+                "evaluation-timeline": {
+                    "$ref": "#/$defs/%23ImplementationDetails"
+                },
+                "notification-process": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "enforcement-timeline",
+                "evaluation-timeline"
+            ]
+        },
+        "#Imports": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "catalogs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23CatalogImport"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23CatalogImport"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "guidance": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23GuidanceImport"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23GuidanceImport"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "policies": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23ArtifactMapping"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23ArtifactMapping"
+                        }
+                    ],
+                    "minItems": 1
+                }
+            }
+        },
+        "#MappingReference": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string",
+                    "pattern": "^(https?|file)://[^\\s]+$"
+                },
+                "version": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "title",
+                "version"
+            ]
+        },
+        "#Metadata": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "applicability-groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23Group"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23Group"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "author": {
+                    "$ref": "#/$defs/%23Actor"
+                },
+                "date": {
+                    "$ref": "#/$defs/%23Datetime"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "draft": {
+                    "type": "boolean"
+                },
+                "gemara-version": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "lexicon": {
+                    "$ref": "#/$defs/%23ArtifactMapping"
+                },
+                "mapping-references": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23MappingReference"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23MappingReference"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "type": {
+                    "$ref": "#/$defs/%23ArtifactType"
+                },
+                "version": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "author",
+                "description",
+                "gemara-version",
+                "id",
+                "type"
+            ]
+        },
+        "#MethodType": {
+            "enum": [
+                "Behavioral",
+                "Intent",
+                "Remediation",
+                "Gate"
+            ]
+        },
+        "#MitigatedRisk": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "risk": {
+                    "$ref": "#/$defs/%23EntryMapping"
+                }
+            },
+            "required": [
+                "id",
+                "risk"
+            ]
+        },
+        "#ModType": {
+            "enum": [
+                "Add",
+                "Modify",
+                "Remove",
+                "Replace",
+                "Override"
+            ]
+        },
+        "#ModeType": {
+            "enum": [
+                "Manual",
+                "Automated"
+            ]
+        },
+        "#Parameter": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "accepted-values": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "prefixItems": [
+                        {
+                            "type": "string"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "description",
+                "id",
+                "label"
+            ]
+        },
+        "#RACI": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "accountable": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23Contact"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23Contact"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "consulted": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23Contact"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23Contact"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "informed": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23Contact"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23Contact"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "responsible": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23Contact"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23Contact"
+                        }
+                    ],
+                    "minItems": 1
+                }
+            },
+            "required": [
+                "accountable",
+                "responsible"
+            ]
+        },
+        "#Risks": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "accepted": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23AcceptedRisk"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23AcceptedRisk"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "mitigated": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23MitigatedRisk"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23MitigatedRisk"
+                        }
+                    ],
+                    "minItems": 1
+                }
+            }
+        },
+        "#Scope": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "in": {
+                    "$ref": "#/$defs/%23Dimensions"
+                },
+                "out": {
+                    "$ref": "#/$defs/%23Dimensions"
+                }
+            }
+        }
+    },
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "adherence": {
+            "$ref": "#/$defs/%23Adherence"
+        },
+        "contacts": {
+            "$ref": "#/$defs/%23RACI"
+        },
+        "implementation-plan": {
+            "$ref": "#/$defs/%23ImplementationPlan"
+        },
+        "imports": {
+            "$ref": "#/$defs/%23Imports"
+        },
+        "metadata": {
+            "type": "object",
+            "properties": {
+                "type": {
+                    "const": "Policy"
+                }
+            },
+            "$ref": "#/$defs/%23Metadata"
+        },
+        "risks": {
+            "$ref": "#/$defs/%23Risks"
+        },
+        "scope": {
+            "$ref": "#/$defs/%23Scope"
+        },
+        "title": {
+            "type": "string"
+        }
+    },
+    "required": [
+        "contacts",
+        "metadata",
+        "title"
+    ]
+}

@@ -1,0 +1,413 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$defs": {
+        "#Actor": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "contact": {
+                    "$ref": "#/$defs/%23Contact"
+                }
+            },
+            "$ref": "#/$defs/%23Entity"
+        },
+        "#ArtifactMapping": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "reference-id": {
+                    "type": "string"
+                },
+                "remarks": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "reference-id"
+            ]
+        },
+        "#ArtifactType": {
+            "enum": [
+                "CapabilityCatalog",
+                "ControlCatalog",
+                "GuidanceCatalog",
+                "ThreatCatalog",
+                "RiskCatalog",
+                "Policy",
+                "MappingDocument",
+                "Lexicon",
+                "EvaluationLog",
+                "EnforcementLog",
+                "VectorCatalog",
+                "PrincipleCatalog",
+                "AuditLog"
+            ]
+        },
+        "#ConfidenceLevel": {
+            "enum": [
+                "Undetermined",
+                "Low",
+                "Medium",
+                "High"
+            ]
+        },
+        "#Contact": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "affiliation": {
+                    "type": "string"
+                },
+                "email": {
+                    "$ref": "#/$defs/%23Email"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "social": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "name"
+            ]
+        },
+        "#Datetime": {
+            "type": "string",
+            "format": "date-time"
+        },
+        "#Email": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
+        },
+        "#Entity": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/$defs/%23EntityType"
+                },
+                "uri": {
+                    "type": "string",
+                    "pattern": "^https?://[^\\s]+$"
+                },
+                "version": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "name",
+                "type"
+            ]
+        },
+        "#EntityType": {
+            "enum": [
+                "Human",
+                "Software",
+                "Software Assisted"
+            ]
+        },
+        "#EntryType": {
+            "enum": [
+                "Guideline",
+                "Statement",
+                "Control",
+                "AssessmentRequirement",
+                "Capability",
+                "Threat",
+                "Risk",
+                "Vector",
+                "Principle"
+            ]
+        },
+        "#Group": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "description",
+                "id",
+                "title"
+            ]
+        },
+        "#Mapping": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "relationship": {
+                    "$ref": "#/$defs/%23RelationshipType"
+                },
+                "remarks": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "targets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23MappingTarget"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23MappingTarget"
+                        }
+                    ],
+                    "minItems": 1
+                }
+            },
+            "required": [
+                "id",
+                "relationship",
+                "source"
+            ]
+        },
+        "#MappingReference": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string",
+                    "pattern": "^(https?|file)://[^\\s]+$"
+                },
+                "version": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "title",
+                "version"
+            ]
+        },
+        "#MappingTarget": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "applicability": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "prefixItems": [
+                        {
+                            "type": "string"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "confidence-level": {
+                    "$ref": "#/$defs/%23ConfidenceLevel"
+                },
+                "entry-id": {
+                    "type": "string"
+                },
+                "rationale": {
+                    "type": "string"
+                },
+                "remarks": {
+                    "type": "string"
+                },
+                "strength": {
+                    "allOf": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "integer",
+                            "maximum": 10,
+                            "minimum": 1
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "entry-id"
+            ]
+        },
+        "#Metadata": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "applicability-groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23Group"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23Group"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "author": {
+                    "$ref": "#/$defs/%23Actor"
+                },
+                "date": {
+                    "$ref": "#/$defs/%23Datetime"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "draft": {
+                    "type": "boolean"
+                },
+                "gemara-version": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "lexicon": {
+                    "$ref": "#/$defs/%23ArtifactMapping"
+                },
+                "mapping-references": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23MappingReference"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23MappingReference"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "type": {
+                    "$ref": "#/$defs/%23ArtifactType"
+                },
+                "version": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "author",
+                "description",
+                "gemara-version",
+                "id",
+                "type"
+            ]
+        },
+        "#RelationshipType": {
+            "enum": [
+                "implements",
+                "implemented-by",
+                "supports",
+                "supported-by",
+                "equivalent",
+                "subsumes",
+                "no-match",
+                "relates-to"
+            ]
+        },
+        "#TypedMapping": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "entry-type": {
+                    "$ref": "#/$defs/%23EntryType"
+                }
+            },
+            "$ref": "#/$defs/%23ArtifactMapping",
+            "required": [
+                "entry-type"
+            ]
+        },
+        "#_MappingStrict": {
+            "type": "object",
+            "$ref": "#/$defs/%23Mapping"
+        }
+    },
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "mappings": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/%23_MappingStrict"
+            },
+            "prefixItems": [
+                {
+                    "$ref": "#/$defs/%23_MappingStrict"
+                }
+            ],
+            "minItems": 1
+        },
+        "metadata": {
+            "type": "object",
+            "properties": {
+                "mapping-references": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23MappingReference"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23MappingReference"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "type": {
+                    "const": "MappingDocument"
+                }
+            },
+            "$ref": "#/$defs/%23Metadata",
+            "required": [
+                "mapping-references"
+            ]
+        },
+        "remarks": {
+            "type": "string"
+        },
+        "source-reference": {
+            "$ref": "#/$defs/%23TypedMapping"
+        },
+        "target-reference": {
+            "$ref": "#/$defs/%23TypedMapping"
+        },
+        "title": {
+            "type": "string"
+        }
+    },
+    "required": [
+        "mappings",
+        "metadata",
+        "source-reference",
+        "target-reference",
+        "title"
+    ]
+}
