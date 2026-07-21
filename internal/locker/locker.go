@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/complytime-labs/complytime-core/internal/subjects"
 )
 
 // SanitizeLogValue strips line breaks and control characters from a string before logging.
@@ -32,11 +33,6 @@ var (
 	ErrIndexOutOfRange = errors.New("index out of range")
 )
 
-// subjectIDPattern validates subjectID as a flat slug.
-// Allows alphanumeric, underscores, hyphens. No dots (NATS subject delimiter).
-// Must start with alphanumeric. Max 254 characters.
-var subjectIDPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,253}$`)
-
 // Locker manages N ledgers, one per subject. Each ledger is an independent
 // Tessera transparency log stored under basePath/{subjectID}/.
 type Locker struct {
@@ -44,17 +40,6 @@ type Locker struct {
 
 	mu      sync.RWMutex
 	ledgers map[string]*Ledger
-}
-
-// ValidateSubjectID checks if a subjectID is valid and safe for use as a directory name.
-func ValidateSubjectID(subjectID string) error {
-	if subjectID == "" {
-		return fmt.Errorf("subjectID cannot be empty")
-	}
-	if !subjectIDPattern.MatchString(subjectID) {
-		return fmt.Errorf("subjectID must start with alphanumeric and contain only alphanumeric, dot, underscore, hyphen (max 254 chars)")
-	}
-	return nil
 }
 
 // NewLocker creates a new locker that stores ledgers under basePath.
@@ -71,7 +56,7 @@ func NewLocker(basePath string) (*Locker, error) {
 // CreateLedger initializes a new ledger for the given subject.
 // Returns an error if a ledger for this subject already exists.
 func (lk *Locker) CreateLedger(ctx context.Context, subjectID string) (*Ledger, error) {
-	if err := ValidateSubjectID(subjectID); err != nil {
+	if err := subjects.ValidateSubjectID(subjectID); err != nil {
 		return nil, err
 	}
 

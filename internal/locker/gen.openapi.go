@@ -37,6 +37,18 @@ type LedgerList struct {
 	Ledgers []LedgerInfo `json:"ledgers"`
 }
 
+// ModifyTrustRequest defines model for ModifyTrustRequest.
+type ModifyTrustRequest struct {
+	// TrustedPublishers List of trusted OIDC publishers for this subject
+	TrustedPublishers []TrustedPublisher `json:"trustedPublishers"`
+}
+
+// ModifyTrustResponse defines model for ModifyTrustResponse.
+type ModifyTrustResponse struct {
+	// SubjectId Subject identifier
+	SubjectId string `json:"subjectId"`
+}
+
 // SealResponse defines model for SealResponse.
 type SealResponse struct {
 	// Digest Hex-encoded SHA-256 digest of the receipt
@@ -44,6 +56,30 @@ type SealResponse struct {
 
 	// Index Log index assigned to the sealed receipt
 	Index int64 `json:"index"`
+}
+
+// SubjectRegistrationRequest defines model for SubjectRegistrationRequest.
+type SubjectRegistrationRequest struct {
+	// SubjectId Unique identifier for the subject
+	SubjectId string `json:"subjectId"`
+
+	// TrustedPublishers List of trusted OIDC publishers for this subject
+	TrustedPublishers []TrustedPublisher `json:"trustedPublishers"`
+}
+
+// SubjectRegistrationResponse defines model for SubjectRegistrationResponse.
+type SubjectRegistrationResponse struct {
+	// SubjectId Subject identifier
+	SubjectId string `json:"subjectId"`
+}
+
+// TrustedPublisher defines model for TrustedPublisher.
+type TrustedPublisher struct {
+	// Issuer OIDC issuer URL
+	Issuer string `json:"issuer"`
+
+	// Sub OIDC subject claim pattern
+	Sub string `json:"sub"`
 }
 
 // VerifyResponse defines model for VerifyResponse.
@@ -55,11 +91,23 @@ type VerifyResponse struct {
 	Index *int64 `json:"index,omitempty"`
 }
 
+// RegisterSubjectJSONRequestBody defines body for RegisterSubject for application/json ContentType.
+type RegisterSubjectJSONRequestBody = SubjectRegistrationRequest
+
+// ModifyTrustJSONRequestBody defines body for ModifyTrust for application/json ContentType.
+type ModifyTrustJSONRequestBody = ModifyTrustRequest
+
 // CreateLedgerJSONRequestBody defines body for CreateLedger for application/json ContentType.
 type CreateLedgerJSONRequestBody = CreateLedgerRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Register subject with trusted publishers
+	// (POST /admin/subjects)
+	RegisterSubject(w http.ResponseWriter, r *http.Request)
+	// Update trusted publishers for a subject
+	// (PUT /admin/subjects/{subjectId}/trust)
+	ModifyTrust(w http.ResponseWriter, r *http.Request, subjectId string)
 	// Health check endpoint
 	// (GET /healthz)
 	HealthCheck(w http.ResponseWriter, r *http.Request)
@@ -86,6 +134,18 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// Register subject with trusted publishers
+// (POST /admin/subjects)
+func (_ Unimplemented) RegisterSubject(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Update trusted publishers for a subject
+// (PUT /admin/subjects/{subjectId}/trust)
+func (_ Unimplemented) ModifyTrust(w http.ResponseWriter, r *http.Request, subjectId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // Health check endpoint
 // (GET /healthz)
@@ -137,6 +197,46 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// RegisterSubject operation middleware
+func (siw *ServerInterfaceWrapper) RegisterSubject(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RegisterSubject(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ModifyTrust operation middleware
+func (siw *ServerInterfaceWrapper) ModifyTrust(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "subjectId" -------------
+	var subjectId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "subjectId", chi.URLParam(r, "subjectId"), &subjectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subjectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ModifyTrust(w, r, subjectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // HealthCheck operation middleware
 func (siw *ServerInterfaceWrapper) HealthCheck(w http.ResponseWriter, r *http.Request) {
@@ -415,6 +515,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/subjects", wrapper.RegisterSubject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/admin/subjects/{subjectId}/trust", wrapper.ModifyTrust)
+	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/healthz", wrapper.HealthCheck)
 	})
