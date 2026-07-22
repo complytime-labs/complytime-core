@@ -19,11 +19,11 @@ var _ = Describe("Consumer", Ordered, func() {
 
 	Describe("NATS subscriber", Ordered, func() {
 		var (
-			nc            *natsgo.Conn
-			ingestedCh    chan *natsgo.Msg
-			sealedCh      chan *natsgo.Msg
+			nc             *natsgo.Conn
+			ingestedCh     chan *natsgo.Msg
+			sealedCh       chan *natsgo.Msg
 			publisherToken string
-			submittedBody []byte
+			submittedBody  []byte
 		)
 
 		BeforeAll(func() {
@@ -60,7 +60,7 @@ var _ = Describe("Consumer", Ordered, func() {
 			})
 
 			// Trigger ingest — don't need the return values, events arrive via NATS
-			ingestAndSeal(publisherToken, subjectID, submittedBody)
+			ingestAndSeal(publisherToken, subjectID, submittedBody, 1)
 		})
 
 		AfterAll(func() {
@@ -162,7 +162,7 @@ var _ = Describe("Consumer", Ordered, func() {
 				"target": map[string]string{"id": subjectID},
 				"data":   "direct locker verification",
 			})
-			digest, logIndex = ingestAndSeal(publisherToken, subjectID, body)
+			digest, logIndex = ingestAndSeal(publisherToken, subjectID, body, 1)
 		})
 
 		It("fetches a sealed receipt by index", func() {

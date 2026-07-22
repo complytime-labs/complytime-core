@@ -122,7 +122,10 @@ func TestGatewayIngest(t *testing.T) {
 
 	// 2. Verify IngestRef was published to JetStream
 	jobID := ingestResult.JobId
-	consumer, err := js.Consumer(ctx, natsinfra.StreamIngest, natsinfra.ConsumerIngestWorker)
+	consumer, err := js.CreateOrUpdateConsumer(ctx, natsinfra.StreamIngest, jetstream.ConsumerConfig{
+		FilterSubject: natsinfra.SubjectIngest,
+		AckPolicy:     jetstream.AckExplicitPolicy,
+	})
 	require.NoError(t, err)
 
 	msgs, err := consumer.Fetch(1, jetstream.FetchMaxWait(5*time.Second))
