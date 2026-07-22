@@ -38,6 +38,6 @@ var _ = BeforeSuite(func() {
 	}
 
 	By("registering a test subject with a trusted publisher")
-	adminToken := mintToken("test-admin", "complytime-gateway", true, false)
+	adminToken := mintToken("test-admin", "complytime-locker", true, false)
 	registerSubject(adminToken, "acceptance-test-subject", "http://testjwks:8888", "test-publisher")
 })

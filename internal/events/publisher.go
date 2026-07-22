@@ -1,4 +1,4 @@
-package gateway
+package events
 
 import (
 	"context"
@@ -12,25 +12,22 @@ import (
 	natsinfra "github.com/complytime-labs/complytime-core/internal/nats"
 )
 
-const (
-	EventSource = "complytime-gateway"
-)
-
 // EventPublisher publishes CloudEvents to NATS for evidence lifecycle notifications.
 type EventPublisher struct {
-	nc *natsgo.Conn
+	nc     *natsgo.Conn
+	source string
 }
 
 // NewEventPublisher creates a CloudEvents publisher backed by NATS.
-func NewEventPublisher(nc *natsgo.Conn) *EventPublisher {
-	return &EventPublisher{nc: nc}
+func NewEventPublisher(nc *natsgo.Conn, source string) *EventPublisher {
+	return &EventPublisher{nc: nc, source: source}
 }
 
 // PublishEvidenceIngested publishes a CloudEvent when evidence is ingested (before sealing).
 func (p *EventPublisher) PublishEvidenceIngested(ctx context.Context, data events.EvidenceIngestedData) error {
 	event := cloudevents.NewEvent()
 	event.SetType(events.TypeEvidenceIngested)
-	event.SetSource(EventSource)
+	event.SetSource(p.source)
 	event.SetSubject(data.SubjectID)
 
 	if err := event.SetData(cloudevents.ApplicationJSON, data); err != nil {
@@ -53,7 +50,7 @@ func (p *EventPublisher) PublishEvidenceIngested(ctx context.Context, data event
 func (p *EventPublisher) PublishEvidenceSealed(ctx context.Context, data events.EvidenceSealedData) error {
 	event := cloudevents.NewEvent()
 	event.SetType(events.TypeEvidenceSealed)
-	event.SetSource(EventSource)
+	event.SetSource(p.source)
 	event.SetSubject(data.SubjectID)
 
 	if err := event.SetData(cloudevents.ApplicationJSON, data); err != nil {
@@ -76,7 +73,7 @@ func (p *EventPublisher) PublishEvidenceSealed(ctx context.Context, data events.
 func (p *EventPublisher) PublishSubjectRegistered(ctx context.Context, subjectID string) error {
 	event := cloudevents.NewEvent()
 	event.SetType(events.TypeSubjectRegistered)
-	event.SetSource(EventSource)
+	event.SetSource(p.source)
 	event.SetSubject(subjectID)
 
 	data := events.SubjectRegisteredData{

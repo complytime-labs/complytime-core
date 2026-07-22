@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/complytime-labs/complytime-core/internal/gateway/receipt"
 	"github.com/stretchr/testify/assert"
@@ -67,6 +68,13 @@ func TestWrap(t *testing.T) {
 
 	// Verify artifactType
 	assert.Equal(t, artifactType, predicate["artifactType"])
+
+	// Verify receivedAt is present and valid RFC 3339
+	receivedAt, ok := predicate["receivedAt"].(string)
+	require.True(t, ok)
+	require.NotEmpty(t, receivedAt)
+	_, err = time.Parse(time.RFC3339, receivedAt)
+	require.NoError(t, err, "receivedAt should be valid RFC 3339")
 }
 
 func TestWrap_Determinism(t *testing.T) {

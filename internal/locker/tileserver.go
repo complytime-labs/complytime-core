@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/complytime-labs/complytime-core/internal/subjects"
 )
 
 // tilePathSegment validates tile path components (level, index, width).
@@ -21,7 +23,7 @@ func registerTileRoutes(r chi.Router, locker *Locker) {
 	// Checkpoint endpoint: /ledgers/{subjectId}/checkpoint
 	r.Get("/ledgers/{subjectId}/checkpoint", func(w http.ResponseWriter, r *http.Request) {
 		subjectID := chi.URLParam(r, "subjectId")
-		if err := ValidateSubjectID(subjectID); err != nil {
+		if err := subjects.ValidateSubjectID(subjectID); err != nil {
 			http.Error(w, "invalid subject ID", http.StatusBadRequest)
 			return
 		}
@@ -31,7 +33,7 @@ func registerTileRoutes(r chi.Router, locker *Locker) {
 	// Tile endpoint: /ledgers/{subjectId}/tile/{level}/{index}/{width}
 	r.Get("/ledgers/{subjectId}/tile/{level}/{index}/{width}", func(w http.ResponseWriter, r *http.Request) {
 		subjectID := chi.URLParam(r, "subjectId")
-		if err := ValidateSubjectID(subjectID); err != nil {
+		if err := subjects.ValidateSubjectID(subjectID); err != nil {
 			http.Error(w, "invalid subject ID", http.StatusBadRequest)
 			return
 		}

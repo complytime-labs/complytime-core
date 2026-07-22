@@ -1,0 +1,505 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$defs": {
+        "#Actor": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "contact": {
+                    "$ref": "#/$defs/%23Contact"
+                }
+            },
+            "$ref": "#/$defs/%23Entity"
+        },
+        "#ArtifactMapping": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "reference-id": {
+                    "type": "string"
+                },
+                "remarks": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "reference-id"
+            ]
+        },
+        "#ArtifactType": {
+            "enum": [
+                "CapabilityCatalog",
+                "ControlCatalog",
+                "GuidanceCatalog",
+                "ThreatCatalog",
+                "RiskCatalog",
+                "Policy",
+                "MappingDocument",
+                "Lexicon",
+                "EvaluationLog",
+                "EnforcementLog",
+                "VectorCatalog",
+                "PrincipleCatalog",
+                "AuditLog"
+            ]
+        },
+        "#AssessmentLog": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "applicability": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "prefixItems": [
+                        {
+                            "type": "string"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "confidence-level": {
+                    "$ref": "#/$defs/%23ConfidenceLevel"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "end": {
+                    "$ref": "#/$defs/%23Datetime"
+                },
+                "evidence": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23Evidence"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23Evidence"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "message": {
+                    "type": "string"
+                },
+                "plan": {
+                    "$ref": "#/$defs/%23EntryMapping"
+                },
+                "recommendation": {
+                    "type": "string"
+                },
+                "requirement": {
+                    "$ref": "#/$defs/%23EntryMapping"
+                },
+                "result": {
+                    "$ref": "#/$defs/%23Result"
+                },
+                "start": {
+                    "$ref": "#/$defs/%23Datetime"
+                },
+                "steps": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23AssessmentStep"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23AssessmentStep"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "steps-executed": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "applicability",
+                "description",
+                "message",
+                "requirement",
+                "result",
+                "start",
+                "steps"
+            ]
+        },
+        "#AssessmentStep": {
+            "type": "string"
+        },
+        "#ConfidenceLevel": {
+            "enum": [
+                "Undetermined",
+                "Low",
+                "Medium",
+                "High"
+            ]
+        },
+        "#Contact": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "affiliation": {
+                    "type": "string"
+                },
+                "email": {
+                    "$ref": "#/$defs/%23Email"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "social": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "name"
+            ]
+        },
+        "#ControlEvaluation": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "assessment-logs": {
+                    "allOf": [
+                        {
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "requirement": {
+                                        "type": "object",
+                                        "properties": {
+                                            "reference-id": {
+                                                "$ref": "#/$defs/%23ControlEvaluation.control.%22reference-id%22"
+                                            }
+                                        },
+                                        "required": [
+                                            "reference-id"
+                                        ]
+                                    }
+                                },
+                                "required": [
+                                    "requirement"
+                                ]
+                            }
+                        },
+                        {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/$defs/%23AssessmentLog"
+                            },
+                            "prefixItems": [
+                                {
+                                    "$ref": "#/$defs/%23AssessmentLog"
+                                }
+                            ],
+                            "minItems": 1
+                        }
+                    ]
+                },
+                "control": {
+                    "$ref": "#/$defs/%23EntryMapping"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "result": {
+                    "$ref": "#/$defs/%23Result"
+                }
+            },
+            "required": [
+                "assessment-logs",
+                "control",
+                "message",
+                "name",
+                "result"
+            ]
+        },
+        "#ControlEvaluation.control.\"reference-id\"": {
+            "type": "string"
+        },
+        "#Datetime": {
+            "type": "string",
+            "format": "date-time"
+        },
+        "#Email": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
+        },
+        "#Entity": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/$defs/%23EntityType"
+                },
+                "uri": {
+                    "type": "string",
+                    "pattern": "^https?://[^\\s]+$"
+                },
+                "version": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "name",
+                "type"
+            ]
+        },
+        "#EntityType": {
+            "enum": [
+                "Human",
+                "Software",
+                "Software Assisted"
+            ]
+        },
+        "#EntryMapping": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "entry-id": {
+                    "type": "string"
+                },
+                "reference-id": {
+                    "type": "string"
+                },
+                "remarks": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "entry-id",
+                "reference-id"
+            ]
+        },
+        "#Evidence": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "collected-at": {
+                    "$ref": "#/$defs/%23Datetime"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "payload": true,
+                "type": {
+                    "$ref": "#/$defs/%23EvidenceType"
+                }
+            },
+            "required": [
+                "collected-at",
+                "id",
+                "type"
+            ]
+        },
+        "#EvidenceType": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/%23ArtifactType"
+                },
+                {
+                    "type": "string"
+                }
+            ]
+        },
+        "#Group": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "description",
+                "id",
+                "title"
+            ]
+        },
+        "#Log": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "metadata": {
+                    "$ref": "#/$defs/%23Metadata"
+                },
+                "target": {
+                    "$ref": "#/$defs/%23Resource"
+                }
+            },
+            "required": [
+                "metadata",
+                "target"
+            ]
+        },
+        "#MappingReference": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string",
+                    "pattern": "^(https?|file)://[^\\s]+$"
+                },
+                "version": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "title",
+                "version"
+            ]
+        },
+        "#Metadata": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "applicability-groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23Group"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23Group"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "author": {
+                    "$ref": "#/$defs/%23Actor"
+                },
+                "date": {
+                    "$ref": "#/$defs/%23Datetime"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "draft": {
+                    "type": "boolean"
+                },
+                "gemara-version": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "lexicon": {
+                    "$ref": "#/$defs/%23ArtifactMapping"
+                },
+                "mapping-references": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23MappingReference"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23MappingReference"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "type": {
+                    "$ref": "#/$defs/%23ArtifactType"
+                },
+                "version": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "author",
+                "description",
+                "gemara-version",
+                "id",
+                "type"
+            ]
+        },
+        "#Resource": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "environment": {
+                    "type": "string"
+                },
+                "owner": {
+                    "$ref": "#/$defs/%23Contact"
+                }
+            },
+            "$ref": "#/$defs/%23Entity"
+        },
+        "#Result": {
+            "enum": [
+                "Not Run",
+                "Passed",
+                "Failed",
+                "Needs Review",
+                "Not Applicable",
+                "Unknown"
+            ]
+        }
+    },
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "evaluations": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/%23ControlEvaluation"
+            },
+            "prefixItems": [
+                {
+                    "$ref": "#/$defs/%23ControlEvaluation"
+                }
+            ],
+            "minItems": 1
+        },
+        "metadata": {
+            "type": "object",
+            "properties": {
+                "type": {
+                    "const": "EvaluationLog"
+                }
+            }
+        },
+        "result": {
+            "$ref": "#/$defs/%23Result"
+        }
+    },
+    "$ref": "#/$defs/%23Log",
+    "required": [
+        "evaluations",
+        "result"
+    ]
+}

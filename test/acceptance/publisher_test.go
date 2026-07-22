@@ -37,7 +37,7 @@ var _ = Describe("Publisher", Ordered, func() {
 			body, err := json.Marshal(artifact)
 			Expect(err).NotTo(HaveOccurred())
 
-			digest, logIndex = ingestAndSeal(publisherToken, subjectID, body)
+			digest, logIndex = ingestAndSeal(publisherToken, subjectID, body, 1)
 		})
 
 		It("sealed evidence has a valid digest", func() {
@@ -107,19 +107,7 @@ var _ = Describe("Publisher", Ordered, func() {
 				JobId string `json:"jobId"`
 			}
 			Expect(json.NewDecoder(resp.Body).Decode(&result)).To(Succeed())
-			Expect(result.JobId).NotTo(BeEmpty())
-
-			// Poll until sealed
-			Eventually(func() string {
-				statusResp := authenticatedRequest("GET",
-					gatewayURL("/api/ingest/jobs/"+result.JobId), publisherToken, nil)
-				defer statusResp.Body.Close()
-				var status struct {
-					Status string `json:"status"`
-				}
-				json.NewDecoder(statusResp.Body).Decode(&status)
-				return status.Status
-			}, 30*time.Second, 500*time.Millisecond).Should(Equal("sealed"))
+			Expect(result.JobId).NotTo(BeEmpty(), "Gateway should return correlation ID")
 		})
 	})
 

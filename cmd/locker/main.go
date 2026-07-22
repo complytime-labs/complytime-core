@@ -12,9 +12,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nats-io/nats.go/jetstream"
+
 	"github.com/complytime-labs/complytime-core/internal/authn"
 	"github.com/complytime-labs/complytime-core/internal/authz"
+	eventspkg "github.com/complytime-labs/complytime-core/internal/events"
 	"github.com/complytime-labs/complytime-core/internal/locker"
+	natsinfra "github.com/complytime-labs/complytime-core/internal/nats"
+	"github.com/complytime-labs/complytime-core/internal/trust"
 )
 
 func main() {
@@ -27,6 +32,11 @@ func main() {
 	listenAddr := os.Getenv("LOCKER_LISTEN_ADDR")
 	if listenAddr == "" {
 		listenAddr = ":8081"
+	}
+
+	natsURL := os.Getenv("NATS_URL")
+	if natsURL == "" {
+		natsURL = "nats://localhost:4222"
 	}
 
 	jwtIssuers := os.Getenv("JWT_ISSUERS")
@@ -63,6 +73,38 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Connect to NATS
+	slog.Info("connecting to nats", "url", natsURL)
+	nc, err := natsinfra.Connect(natsURL)
+	if err != nil {
+		slog.Error("failed to connect to nats", "error", err)
+		os.Exit(1)
+	}
+
+	// Get JetStream context
+	js, err := jetstream.New(nc)
+	if err != nil {
+		slog.Error("failed to get jetstream context", "error", err)
+		os.Exit(1)
+	}
+
+	// Ensure NATS infrastructure
+	slog.Info("ensuring nats infrastructure")
+	if err := natsinfra.EnsureInfrastructure(ctx, js); err != nil {
+		slog.Error("failed to ensure nats infrastructure", "error", err)
+		os.Exit(1)
+	}
+
+	// Create trust store
+	trustStore, err := trust.NewTrustStore(js)
+	if err != nil {
+		slog.Error("failed to create trust store", "error", err)
+		os.Exit(1)
+	}
+
+	// Create event publisher
+	eventPublisher := eventspkg.NewEventPublisher(nc, "complytime-locker")
+
 	issuerList := strings.Split(jwtIssuers, ",")
 	auth, err := authn.NewJWTAuthenticator(ctx, issuerList, jwtAudience)
 	if err != nil {
@@ -76,8 +118,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create worker
+	worker := locker.NewWorker(js, lk, eventPublisher)
+
+	// Start worker in background
+	workerCtx, workerCancel := context.WithCancel(ctx)
+	defer workerCancel()
+
+	workerErrCh := make(chan error, 1)
+	go func() {
+		if err := worker.Start(workerCtx); err != nil {
+			workerErrCh <- err
+		}
+	}()
+
 	// Create HTTP handler and server
-	handler := locker.NewHandler(lk, auth, policySet)
+	handler := locker.NewHandler(lk, auth, policySet, trustStore, eventPublisher)
 	server := &http.Server{
 		Addr:              listenAddr,
 		Handler:           handler,
@@ -95,7 +151,7 @@ func main() {
 		}
 	}()
 
-	// Wait for shutdown signal or server error
+	// Wait for shutdown signal or error
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
@@ -105,14 +161,27 @@ func main() {
 	case err := <-errCh:
 		slog.Error("server error", "error", err)
 		os.Exit(1)
+	case err := <-workerErrCh:
+		slog.Error("worker error", "error", err)
+		os.Exit(1)
 	}
 
-	// Shutdown with timeout
+	// Graceful shutdown
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// Stop worker first
+	workerCancel()
+
+	// Shutdown HTTP server
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		slog.Error("server shutdown error", "error", err)
+		os.Exit(1)
+	}
+
+	// Drain NATS
+	if err := nc.Drain(); err != nil {
+		slog.Error("nats drain error", "error", err)
 		os.Exit(1)
 	}
 

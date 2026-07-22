@@ -4,7 +4,9 @@ package acceptance_test
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -77,7 +79,7 @@ func registerSubject(adminToken, subjectID, issuer, sub string) {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	resp := authenticatedRequest("POST", gatewayURL("/api/admin/subjects"), adminToken, reqBody)
+	resp := authenticatedRequest("POST", lockerURL("/admin/subjects"), adminToken, reqBody)
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusConflict {
@@ -86,7 +88,8 @@ func registerSubject(adminToken, subjectID, issuer, sub string) {
 	Expect(resp.StatusCode).To(Equal(http.StatusCreated))
 }
 
-func ingestAndSeal(token, subjectID string, body []byte) (string, int64) {
+func ingestAndSeal(token, subjectID string, body []byte, entryIndex int64) (string, int64) {
+	// Submit artifact to gateway
 	req, err := http.NewRequest("POST", gatewayURL("/api/ingest"), bytes.NewReader(body))
 	Expect(err).NotTo(HaveOccurred())
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -98,38 +101,32 @@ func ingestAndSeal(token, subjectID string, body []byte) (string, int64) {
 	defer resp.Body.Close()
 	Expect(resp.StatusCode).To(Equal(http.StatusAccepted))
 
-	var ingestResult struct {
-		JobId string `json:"jobId"`
-	}
-	Expect(json.NewDecoder(resp.Body).Decode(&ingestResult)).To(Succeed())
-
-	// Poll until sealed
+	// Wait for the receipt to appear in the locker at the expected index.
+	// The locker seals asynchronously via NATS — poll the entry endpoint.
+	// entryIndex 0 is the registration receipt, so evidence starts at 1.
+	serviceToken := lockerServiceToken()
 	var digest string
-	var logIndex int64
 
-	Eventually(func() string {
-		statusResp := authenticatedRequest("GET",
-			gatewayURL("/api/ingest/jobs/"+ingestResult.JobId), token, nil)
-		defer statusResp.Body.Close()
-		Expect(statusResp.StatusCode).To(Equal(http.StatusOK))
+	Eventually(func() bool {
+		url := lockerURL(fmt.Sprintf("/ledgers/%s/entry/%d", subjectID, entryIndex))
+		fetchResp := authenticatedRequest("GET", url, serviceToken, nil)
+		defer fetchResp.Body.Close()
 
-		var status struct {
-			Status   string  `json:"status"`
-			Digest   *string `json:"digest"`
-			LogIndex *int64  `json:"logIndex"`
+		if fetchResp.StatusCode != http.StatusOK {
+			return false
 		}
-		Expect(json.NewDecoder(statusResp.Body).Decode(&status)).To(Succeed())
 
-		if status.Status == "sealed" {
-			Expect(status.Digest).NotTo(BeNil())
-			Expect(status.LogIndex).NotTo(BeNil())
-			digest = *status.Digest
-			logIndex = *status.LogIndex
+		entryBytes, err := io.ReadAll(fetchResp.Body)
+		if err != nil || len(entryBytes) == 0 {
+			return false
 		}
-		return status.Status
-	}, 30*time.Second, 500*time.Millisecond).Should(Equal("sealed"))
 
-	return digest, logIndex
+		h := sha256.Sum256(entryBytes)
+		digest = hex.EncodeToString(h[:])
+		return true
+	}, 30*time.Second, 500*time.Millisecond).Should(BeTrue(), "Receipt should be sealed in locker")
+
+	return digest, entryIndex
 }
 
 func fetchLockerEntry(serviceToken, subjectID string, index int64) []byte {

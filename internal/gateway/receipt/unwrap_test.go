@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestUnwrapContent_Receipt(t *testing.T) {
+func TestUnwrapContent_JSONReceipt(t *testing.T) {
 	publisher := receipt.Publisher{
 		Issuer: "https://auth.example.com",
 		Sub:    "service-account-123",
@@ -26,8 +26,6 @@ func TestUnwrapContent_Receipt(t *testing.T) {
 	result, err := receipt.UnwrapContent(wrapped)
 	require.NoError(t, err)
 
-	assert.False(t, result.IsDSSE)
-	assert.False(t, result.IsDSSEChannelReceipt)
 	assert.Equal(t, "gemara-receipt/v1", result.Format)
 
 	require.NotNil(t, result.Publisher)
@@ -42,7 +40,13 @@ func TestUnwrapContent_Receipt(t *testing.T) {
 	assert.Equal(t, original["timestamp"], unwrapped["timestamp"])
 }
 
-func TestUnwrapContent_DSSE(t *testing.T) {
+func TestUnwrapContent_DSSEReceipt(t *testing.T) {
+	publisher := receipt.Publisher{
+		Issuer: "https://auth.example.com",
+		Sub:    "service-account-123",
+	}
+
+	// DSSE envelope as the content
 	dsseEnvelope := map[string]any{
 		"payloadType": "application/vnd.in-toto+json",
 		"payload":     base64.StdEncoding.EncodeToString([]byte(`{"_type":"https://in-toto.io/Statement/v1"}`)),
@@ -53,44 +57,29 @@ func TestUnwrapContent_DSSE(t *testing.T) {
 			},
 		},
 	}
-
 	dsseJSON, err := json.Marshal(dsseEnvelope)
 	require.NoError(t, err)
 
-	result, err := receipt.UnwrapContent(dsseJSON)
-	require.NoError(t, err)
-
-	assert.True(t, result.IsDSSE)
-	assert.False(t, result.IsDSSEChannelReceipt)
-	assert.Equal(t, "dsse", result.Format)
-	assert.Equal(t, dsseJSON, result.Content)
-	assert.Nil(t, result.Publisher)
-}
-
-func TestUnwrapContent_DSSEChannelReceipt(t *testing.T) {
-	publisher := receipt.Publisher{
-		Issuer: "https://auth.example.com",
-		Sub:    "service-account-123",
-	}
-
-	dsseDigest := "sha256:abc123def456"
-	dsseIndex := int64(42)
 	subjectID := "github-com-org-repo"
-	payloadType := "https://in-toto.io/attestation/scai/attribute-report/v0.2"
+	artifactType := "dsse"
 
-	channelReceipt, err := receipt.BuildDSSEChannelReceipt(dsseDigest, dsseIndex, publisher, subjectID, payloadType)
+	// Wrap DSSE as receipt
+	wrapped, err := receipt.Wrap(dsseJSON, publisher, subjectID, artifactType)
 	require.NoError(t, err)
 
-	result, err := receipt.UnwrapContent(channelReceipt)
+	result, err := receipt.UnwrapContent(wrapped)
 	require.NoError(t, err)
 
-	assert.False(t, result.IsDSSE)
-	assert.True(t, result.IsDSSEChannelReceipt)
-	assert.Equal(t, "gemara-dsse-channel-receipt/v1", result.Format)
+	assert.Equal(t, "gemara-receipt/v1", result.Format)
 
 	require.NotNil(t, result.Publisher)
 	assert.Equal(t, publisher.Issuer, result.Publisher.Issuer)
 	assert.Equal(t, publisher.Sub, result.Publisher.Sub)
 
-	assert.Nil(t, result.Content)
+	require.NotNil(t, result.Content)
+	// Verify unwrapped content is the DSSE envelope
+	var unwrapped map[string]any
+	require.NoError(t, json.Unmarshal(result.Content, &unwrapped))
+	assert.Equal(t, "application/vnd.in-toto+json", unwrapped["payloadType"])
+	assert.NotEmpty(t, unwrapped["signatures"])
 }

@@ -5,7 +5,7 @@ info:
   version: 1.0.0
 
 servers:
-  - url: http://localhost:8081
+  - url: http://localhost:8080
     description: Local development server
 
 paths:
@@ -31,6 +31,13 @@ paths:
     post:
       summary: Submit artifact for ingestion
       operationId: ingestArtifact
+      parameters:
+        - name: X-Subject-ID
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Subject identifier for the artifact
       requestBody:
         required: true
         content:
@@ -67,85 +74,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '500':
-          description: Internal server error
+        '422':
+          description: Artifact failed Gemara schema validation
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-
-  /api/ingest/jobs/{jobId}:
-    get:
-      summary: Poll job status
-      operationId: getJobStatus
-      parameters:
-        - name: jobId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Job status
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/JobStatus'
-        '404':
-          description: Job not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /api/admin/subjects:
-    post:
-      summary: Register subject with trusted publishers
-      operationId: registerSubject
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/SubjectRegistrationRequest'
-      responses:
-        '201':
-          description: Subject registered successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SubjectRegistrationResponse'
-        '400':
-          description: Invalid request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '403':
-          description: Forbidden
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '409':
-          description: Subject already exists
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+                $ref: '#/components/schemas/ValidationError'
         '500':
           description: Internal server error
           content:
@@ -165,68 +99,6 @@ components:
           format: uuid
           description: Unique identifier for the ingestion job
 
-    SubjectRegistrationRequest:
-      type: object
-      required:
-        - subjectId
-        - trustedPublishers
-      properties:
-        subjectId:
-          type: string
-          description: Unique identifier for the subject
-        trustedPublishers:
-          type: array
-          items:
-            $ref: '#/components/schemas/TrustedPublisher'
-          description: List of trusted OIDC publishers for this subject
-
-    TrustedPublisher:
-      type: object
-      required:
-        - issuer
-        - sub
-      properties:
-        issuer:
-          type: string
-          description: OIDC issuer URL
-        sub:
-          type: string
-          description: OIDC subject claim pattern
-
-    SubjectRegistrationResponse:
-      type: object
-      required:
-        - subjectId
-      properties:
-        subjectId:
-          type: string
-          description: Subject identifier
-
-    JobStatus:
-      type: object
-      required:
-        - jobId
-        - status
-      properties:
-        jobId:
-          type: string
-          format: uuid
-          description: Job identifier
-        status:
-          type: string
-          enum:
-            - pending
-            - sealed
-            - failed
-          description: Current job status
-        logIndex:
-          type: integer
-          format: int64
-          description: Log index (only present if status is sealed)
-        digest:
-          type: string
-          description: Hex-encoded SHA-256 digest (only present if status is sealed)
-
     Error:
       type: object
       required:
@@ -235,3 +107,22 @@ components:
         error:
           type: string
           description: Error message
+
+    ValidationError:
+      type: object
+      required:
+        - error
+        - artifactType
+        - details
+      properties:
+        error:
+          type: string
+          description: Error message
+        artifactType:
+          type: string
+          description: Type of artifact that failed validation
+        details:
+          type: array
+          items:
+            type: string
+          description: Field-level validation errors

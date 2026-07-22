@@ -35,6 +35,7 @@ services:
     environment:
       - LOCKER_DATA_PATH=/data/ledgers
       - LOCKER_LISTEN_ADDR=:8081
+      - NATS_URL=nats://nats:4222
       - JWT_ISSUERS=http://testjwks:8888
       - JWT_AUDIENCE=complytime-locker
     volumes:
@@ -58,13 +59,9 @@ services:
       dockerfile: Dockerfile.gateway
     environment:
       - NATS_URL=nats://nats:4222
-      - LOCKER_URL=http://locker:8081
       - JWT_ISSUERS=http://testjwks:8888
       - JWT_AUDIENCE=complytime-gateway
-      - TOKEN_FILE=/tokens/gateway-token
       - GATEWAY_LISTEN_ADDR=:8080
-    volumes:
-      - service-tokens:/tokens:ro
     ports:
       - "8080:8080"
     depends_on:

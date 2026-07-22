@@ -1,0 +1,423 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$defs": {
+        "#ActionResult": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "disposition": {
+                    "$ref": "#/$defs/%23Disposition"
+                },
+                "end": {
+                    "$ref": "#/$defs/%23Datetime"
+                },
+                "justification": {
+                    "$ref": "#/$defs/%23Justification"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "method": {
+                    "$ref": "#/$defs/%23EntryMapping"
+                },
+                "start": {
+                    "$ref": "#/$defs/%23Datetime"
+                },
+                "steps": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23EnforcementStep"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23EnforcementStep"
+                        }
+                    ],
+                    "minItems": 1
+                }
+            },
+            "required": [
+                "disposition",
+                "justification",
+                "method",
+                "start",
+                "steps"
+            ]
+        },
+        "#Actor": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "contact": {
+                    "$ref": "#/$defs/%23Contact"
+                }
+            },
+            "$ref": "#/$defs/%23Entity"
+        },
+        "#ArtifactMapping": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "reference-id": {
+                    "type": "string"
+                },
+                "remarks": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "reference-id"
+            ]
+        },
+        "#ArtifactType": {
+            "enum": [
+                "CapabilityCatalog",
+                "ControlCatalog",
+                "GuidanceCatalog",
+                "ThreatCatalog",
+                "RiskCatalog",
+                "Policy",
+                "MappingDocument",
+                "Lexicon",
+                "EvaluationLog",
+                "EnforcementLog",
+                "VectorCatalog",
+                "PrincipleCatalog",
+                "AuditLog"
+            ]
+        },
+        "#AssessmentFinding": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "log": {
+                    "$ref": "#/$defs/%23EntryMapping"
+                },
+                "plan": {
+                    "$ref": "#/$defs/%23EntryMapping"
+                },
+                "requirement": {
+                    "$ref": "#/$defs/%23EntryMapping"
+                },
+                "result": {
+                    "$ref": "#/$defs/%23Result"
+                }
+            },
+            "required": [
+                "log",
+                "result"
+            ]
+        },
+        "#Contact": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "affiliation": {
+                    "type": "string"
+                },
+                "email": {
+                    "$ref": "#/$defs/%23Email"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "social": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "name"
+            ]
+        },
+        "#Datetime": {
+            "type": "string",
+            "format": "date-time"
+        },
+        "#Disposition": {
+            "enum": [
+                "Undetermined",
+                "Enforced",
+                "Tolerated",
+                "Clear"
+            ]
+        },
+        "#Email": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
+        },
+        "#EnforcementStep": {
+            "type": "string"
+        },
+        "#Entity": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/$defs/%23EntityType"
+                },
+                "uri": {
+                    "type": "string",
+                    "pattern": "^https?://[^\\s]+$"
+                },
+                "version": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "name",
+                "type"
+            ]
+        },
+        "#EntityType": {
+            "enum": [
+                "Human",
+                "Software",
+                "Software Assisted"
+            ]
+        },
+        "#EntryMapping": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "entry-id": {
+                    "type": "string"
+                },
+                "reference-id": {
+                    "type": "string"
+                },
+                "remarks": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "entry-id",
+                "reference-id"
+            ]
+        },
+        "#Group": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "description",
+                "id",
+                "title"
+            ]
+        },
+        "#Justification": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "assessments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23AssessmentFinding"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23AssessmentFinding"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "exceptions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23ArtifactMapping"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23ArtifactMapping"
+                        }
+                    ],
+                    "minItems": 1
+                }
+            },
+            "required": [
+                "assessments"
+            ]
+        },
+        "#Log": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "metadata": {
+                    "$ref": "#/$defs/%23Metadata"
+                },
+                "target": {
+                    "$ref": "#/$defs/%23Resource"
+                }
+            },
+            "required": [
+                "metadata",
+                "target"
+            ]
+        },
+        "#MappingReference": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string",
+                    "pattern": "^(https?|file)://[^\\s]+$"
+                },
+                "version": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "title",
+                "version"
+            ]
+        },
+        "#Metadata": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "applicability-groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23Group"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23Group"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "author": {
+                    "$ref": "#/$defs/%23Actor"
+                },
+                "date": {
+                    "$ref": "#/$defs/%23Datetime"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "draft": {
+                    "type": "boolean"
+                },
+                "gemara-version": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "lexicon": {
+                    "$ref": "#/$defs/%23ArtifactMapping"
+                },
+                "mapping-references": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/%23MappingReference"
+                    },
+                    "prefixItems": [
+                        {
+                            "$ref": "#/$defs/%23MappingReference"
+                        }
+                    ],
+                    "minItems": 1
+                },
+                "type": {
+                    "$ref": "#/$defs/%23ArtifactType"
+                },
+                "version": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "author",
+                "description",
+                "gemara-version",
+                "id",
+                "type"
+            ]
+        },
+        "#Resource": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "environment": {
+                    "type": "string"
+                },
+                "owner": {
+                    "$ref": "#/$defs/%23Contact"
+                }
+            },
+            "$ref": "#/$defs/%23Entity"
+        },
+        "#Result": {
+            "enum": [
+                "Not Run",
+                "Passed",
+                "Failed",
+                "Needs Review",
+                "Not Applicable",
+                "Unknown"
+            ]
+        }
+    },
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "actions": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/%23ActionResult"
+            },
+            "prefixItems": [
+                {
+                    "$ref": "#/$defs/%23ActionResult"
+                }
+            ],
+            "minItems": 1
+        },
+        "disposition": {
+            "$ref": "#/$defs/%23Disposition"
+        },
+        "metadata": {
+            "type": "object",
+            "properties": {
+                "type": {
+                    "const": "EnforcementLog"
+                }
+            }
+        }
+    },
+    "$ref": "#/$defs/%23Log",
+    "required": [
+        "actions",
+        "disposition"
+    ]
+}

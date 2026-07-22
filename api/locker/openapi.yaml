@@ -5,7 +5,7 @@ info:
   version: 1.0.0
 
 servers:
-  - url: http://localhost:8080
+  - url: http://localhost:8081
     description: Local development server
 
 paths:
@@ -235,6 +235,84 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /admin/subjects:
+    post:
+      summary: Register subject with trusted publishers
+      operationId: registerSubject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubjectRegistrationRequest'
+      responses:
+        '201':
+          description: Subject registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectRegistrationResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Subject already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /admin/subjects/{subjectId}/trust:
+    put:
+      summary: Update trusted publishers for a subject
+      operationId: modifyTrust
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModifyTrustRequest'
+      responses:
+        '200':
+          description: Trust updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModifyTrustResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Subject not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 components:
   schemas:
     CreateLedgerRequest:
@@ -304,3 +382,60 @@ components:
         error:
           type: string
           description: Error message
+
+    SubjectRegistrationRequest:
+      type: object
+      required:
+        - subjectId
+        - trustedPublishers
+      properties:
+        subjectId:
+          type: string
+          description: Unique identifier for the subject
+        trustedPublishers:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrustedPublisher'
+          description: List of trusted OIDC publishers for this subject
+
+    TrustedPublisher:
+      type: object
+      required:
+        - issuer
+        - sub
+      properties:
+        issuer:
+          type: string
+          description: OIDC issuer URL
+        sub:
+          type: string
+          description: OIDC subject claim pattern
+
+    SubjectRegistrationResponse:
+      type: object
+      required:
+        - subjectId
+      properties:
+        subjectId:
+          type: string
+          description: Subject identifier
+
+    ModifyTrustRequest:
+      type: object
+      required:
+        - trustedPublishers
+      properties:
+        trustedPublishers:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrustedPublisher'
+          description: List of trusted OIDC publishers for this subject
+
+    ModifyTrustResponse:
+      type: object
+      required:
+        - subjectId
+      properties:
+        subjectId:
+          type: string
+          description: Subject identifier

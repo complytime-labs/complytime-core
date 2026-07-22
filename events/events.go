@@ -19,7 +19,7 @@ type PublisherIdentity struct {
 type EvidenceIngestedData struct {
 	ContentDigest string            `json:"contentDigest"`
 	ArtifactType  string            `json:"artifactType"`
-	StorageRef    string            `json:"storageRef"`
+	StorageRef    string            `json:"storageRef,omitempty"`
 	SubjectID     string            `json:"subjectId"`
 	Publisher     PublisherIdentity `json:"publisher"`
 	ShardID       *string           `json:"shardId,omitempty"`

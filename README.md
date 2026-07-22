@@ -8,44 +8,54 @@ Compliance evidence locker with cryptographic guarantees. Submit assessment arti
 
 ## Architecture
 
-Four components in one repo:
+Two microservices in one repo:
 
 ```
 ┌──────────────┐     JetStream      ┌──────────────┐
 │   Gateway    │ ──────────────────► │    Locker    │
-│   :8080      │                    │    :8081     │
-│              │ ◄────── index ──── │              │
-└──────┬───────┘                    └──────────────┘
-       │                                   ▲
+│   :8080      │     (receipts)     │    :8081     │
+│              │                    │              │
+└──────────────┘                    └──────────────┘
+       │               NATS KV             │
+       │          (job status, trust)       │
        │  CloudEvent                       │ tlog-tiles
-       ▼                                   │
+       ▼                                   ▼
 ┌──────────────┐                    ┌──────────────┐
 │   Thin DB    │                    │   Witness    │
-│   (Plan 3)   │                    │  (external)  │
+│   (planned)  │                    │  (external)  │
 └──────────────┘                    └──────────────┘
 ```
 
-- **Evidence Gateway** (:8080) — authenticates publishers (JWT/OIDC), evaluates Cedar authorization policies, wraps artifacts into in-toto v1 receipts, seals them into the locker via async JetStream workers.
-- **Evidence Locker** (:8081) — WORM storage. One Tessera transparency log per subject. Seals receipts, serves tlog-tiles for external verifiers. Internal only.
-- **Thin DB** (Plan 3) — read-only property graph materialized from NATS events. Memgraph for experimental; CrossCodex (PostgreSQL + Apache AGE) for production.
-- **NATS** — JetStream for reliable delivery and replay. KV buckets for publisher trust and subject registry.
+- **Evidence Gateway** (:8080) — Gemara-speaking evidence collector. Authenticates publishers (JWT/OIDC), evaluates Cedar authorization policies, validates artifacts against Gemara JSON Schemas, wraps into in-toto v1 receipts, publishes to NATS JetStream.
+- **Evidence Locker** (:8081) — content-agnostic trust store. Subscribes to NATS, seals receipt bytes into Tessera transparency logs (one per subject), serves tlog-tiles for external verifiers. Admin API for subject registration and publisher trust management.
+- **NATS** — JetStream for reliable evidence delivery. KV buckets for job status, publisher trust, and subject registry.
 
 ## How It Works
 
 ```text
+Admin (setup)
+    │
+    ▼
+POST /admin/subjects → Locker :8081
+    │  Create ledger, set trusted publishers
+    │
 Publisher (scanner, CI pipeline)
     │ Gemara artifact + JWT bearer token
     ▼
-POST /api/ingest (X-Subject-ID header)
+POST /api/ingest → Gateway :8080
     │
     ├── JWT/OIDC authentication
     ├── Cedar authorization (per-subject publisher trust)
-    ├── Wrap in in-toto v1 receipt (provenance binding)
-    ├── Enqueue to JetStream
+    ├── Validate against Gemara JSON Schema (422 if invalid)
+    ├── Wrap in in-toto v1 receipt (publisher identity + timestamp)
+    ├── Write job status (pending) to NATS KV
+    ├── Publish receipt bytes to JetStream
     │       ↓
-    │   Async worker → seal into locker → CloudEvent
+    │   Locker subscribes → seal to Tessera → update job status (sealed)
     │
     └── 202 Accepted {job_id}
+         ↓
+    GET /api/ingest/jobs/{job_id} → pending | sealed | failed
 ```
 
 Built around the [OpenSSF Gemara](https://gemara.openssf.org/) compliance schema.
