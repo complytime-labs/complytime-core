@@ -7,7 +7,10 @@ info:
 
     All public events use CloudEvents v1.0 envelope (JSON format) over NATS.
     The `core.ingest` subject is an internal JetStream work queue and is not
-    part of the external consumer contract.
+    part of the external consumer contract. The `core.mapping.imported`
+    subject is reserved for future use but not yet implemented.
+
+    All events are published by the gateway service (`complytime-gateway`).
   license:
     name: Apache-2.0
   contact:
@@ -38,8 +41,8 @@ channels:
   evidenceSealed:
     address: core.evidence.sealed.{subjectId}
     description: |
-      Published after evidence is sealed into the transparency log with a
-      verifiable receipt. Part of the EVIDENCE JetStream stream.
+      Published after evidence is sealed with a verifiable receipt.
+      Part of the EVIDENCE JetStream stream (`core.evidence.>`).
     parameters:
       subjectId:
         description: The compliance subject identifier
@@ -49,7 +52,10 @@ channels:
 
   subjectRegistered:
     address: core.subject.registered
-    description: Published when a compliance subject is registered or updated.
+    description: |
+      Published when a compliance subject is registered or updated.
+      This is a core NATS pub/sub subject with no JetStream retention —
+      consumers must be connected when the event fires.
     messages:
       subjectRegistered:
         $ref: '#/components/messages/subjectRegistered'
@@ -65,21 +71,29 @@ operations:
     action: send
     channel:
       $ref: '#/channels/evidenceSealed'
-    summary: Locker publishes after evidence is sealed with a transparency receipt.
+    summary: Gateway worker publishes after evidence is sealed with a verifiable receipt.
 
   publishSubjectRegistered:
     action: send
     channel:
       $ref: '#/channels/subjectRegistered'
-    summary: Locker publishes when a subject ledger is created.
+    summary: Gateway publishes when a subject is registered.
 
-  consumeEvidenceEvents:
+  consumeEvidenceIngested:
     action: receive
     channel:
       $ref: '#/channels/evidenceIngested'
     summary: |
-      Consumers subscribe to evidence lifecycle events via the EVIDENCE
-      JetStream stream (interest-based retention, 7-day max age).
+      Consume evidence-ingested events via the EVIDENCE JetStream stream
+      (interest-based retention, 7-day max age).
+
+  consumeEvidenceSealed:
+    action: receive
+    channel:
+      $ref: '#/channels/evidenceSealed'
+    summary: |
+      Consume evidence-sealed events via the EVIDENCE JetStream stream
+      (interest-based retention, 7-day max age).
 
 components:
   messages:
@@ -110,7 +124,7 @@ components:
     EvidenceIngestedCloudEvent:
       type: object
       description: CloudEvents v1.0 envelope for evidence.ingested
-      required: [specversion, id, type, source, subject, datacontenttype, data]
+      required: [specversion, id, type, source, subject, time, datacontenttype, data]
       properties:
         specversion:
           type: string
@@ -140,7 +154,7 @@ components:
     EvidenceSealedCloudEvent:
       type: object
       description: CloudEvents v1.0 envelope for evidence.sealed
-      required: [specversion, id, type, source, subject, datacontenttype, data]
+      required: [specversion, id, type, source, subject, time, datacontenttype, data]
       properties:
         specversion:
           type: string
@@ -153,8 +167,8 @@ components:
           const: dev.complytime.evidence.sealed
         source:
           type: string
-          description: URI identifying the producer instance
-          examples: [complytime-locker]
+          description: URI identifying the gateway instance
+          examples: [complytime-gateway]
         subject:
           type: string
           description: The compliance subject identifier
@@ -170,7 +184,7 @@ components:
     SubjectRegisteredCloudEvent:
       type: object
       description: CloudEvents v1.0 envelope for subject.registered
-      required: [specversion, id, type, source, subject, datacontenttype, data]
+      required: [specversion, id, type, source, subject, time, datacontenttype, data]
       properties:
         specversion:
           type: string
@@ -183,8 +197,8 @@ components:
           const: dev.complytime.subject.registered
         source:
           type: string
-          description: URI identifying the producer instance
-          examples: [complytime-locker]
+          description: URI identifying the gateway instance
+          examples: [complytime-gateway]
         subject:
           type: string
           description: The compliance subject identifier
@@ -244,7 +258,7 @@ components:
         receiptType:
           type: string
           description: Receipt format identifier
-          examples: [RFC6962InclusionProof]
+          examples: [gemara-receipt/v1, gemara-dsse-channel-receipt/v1]
         storageRef:
           type: string
           description: Locker storage reference for the sealed evidence
