@@ -54,7 +54,7 @@ func NewLoader(
 }
 
 // Start creates the durable consumer and begins processing CloudEvents.
-// Blocks until ctx is cancelled.
+// Launches a background goroutine and returns immediately.
 func (l *Loader) Start(ctx context.Context) error {
 	consumer, err := l.js.CreateOrUpdateConsumer(ctx, natsinfra.StreamEvidence, natsinfra.GraphLoaderConsumerConfig())
 	if err != nil {
@@ -66,8 +66,7 @@ func (l *Loader) Start(ctx context.Context) error {
 	l.wg.Add(1)
 	go l.consume(ctx, consumer)
 
-	<-ctx.Done()
-	return l.Stop()
+	return nil
 }
 
 // Stop signals the loader to stop and waits for it to drain.
@@ -182,8 +181,11 @@ func (l *Loader) handleIngested(ctx context.Context, event *cloudevents.Event) e
 		return fmt.Errorf("upserting publisher: %w", err)
 	}
 
-	// Note: Evidence node creation is deferred until sealed event when we have a logIndex.
-	// For now, just ensure subject and publisher exist.
+	// Create an IngestedEvidence stub node to track digest→publisher mapping
+	// This will be queried during sealed event processing
+	if err := l.writer.UpsertIngestedStub(ctx, data.ContentDigest, data.SubjectID, data.Publisher.Issuer, data.Publisher.Sub); err != nil {
+		return fmt.Errorf("upserting ingested stub: %w", err)
+	}
 
 	slog.Info("evidence ingested", "digest", data.ContentDigest, "artifactType", data.ArtifactType)
 	return nil
@@ -207,17 +209,28 @@ func (l *Loader) handleSealed(ctx context.Context, event *cloudevents.Event) err
 		return fmt.Errorf("upserting subject: %w", err)
 	}
 
-	// We don't have publisher info in sealed event — assume it was set in ingested event.
-	// For now, create a placeholder publisher if needed. In production, this would be
-	// resolved by correlating with the ingested event or fetching from the receipt.
-	// For the MVP, we'll use a service account placeholder.
-	publisherIssuer := "locker-service"
-	publisherSub := "locker"
+	// Sealed events don't carry publisher identity. We need to correlate with the
+	// ingested event. For MVP, look up publisher by subjectID+digest in the graph.
+	// If not found, use a placeholder (locker-service).
+	publisherIssuer, publisherSub, err := l.writer.FindPublisherByDigest(ctx, data.SubjectID, data.ContentDigest)
+	if err != nil || publisherIssuer == "" {
+		// Fallback to service account if publisher lookup fails
+		publisherIssuer = "locker-service"
+		publisherSub = "locker"
+		slog.Warn("publisher not found for digest, using placeholder", "digest", data.ContentDigest)
+	}
+
+	// Ensure publisher exists
 	if err := l.writer.UpsertPublisher(ctx, publisherIssuer, publisherSub); err != nil {
 		return fmt.Errorf("upserting publisher: %w", err)
 	}
 
 	// Upsert evidence node with sealed status
+	sealedTime := event.Time()
+	if sealedTime.IsZero() {
+		sealedTime = time.Now()
+	}
+
 	evidenceRecord := EvidenceRecord{
 		LogIndex:        data.LogIndex,
 		Digest:          data.ContentDigest,
@@ -227,7 +240,7 @@ func (l *Loader) handleSealed(ctx context.Context, event *cloudevents.Event) err
 		SubjectID:       data.SubjectID,
 		PublisherIssuer: publisherIssuer,
 		PublisherSub:    publisherSub,
-		Sealed:          time.Now(),
+		Sealed:          sealedTime,
 	}
 
 	if err := l.writer.UpsertEvidence(ctx, evidenceRecord); err != nil {

@@ -42,7 +42,7 @@ func waitForGraphMaterialization(subjectID string, timeout time.Duration) {
 		if err != nil {
 			return 0
 		}
-		token := lockerServiceToken()
+		token := graphServiceToken()
 		req.Header.Set("Authorization", "Bearer "+token)
 
 		resp, err := httpClient().Do(req)
@@ -194,6 +194,10 @@ func unwrapReceipt(entry []byte) []byte {
 
 func lockerServiceToken() string {
 	return mintToken("acceptance-test-consumer", "complytime-locker", false, true)
+}
+
+func graphServiceToken() string {
+	return mintToken("acceptance-test-consumer", "complytime-graph", false, true)
 }
 
 func newRequest(method, url string, body []byte) (*http.Request, error) {

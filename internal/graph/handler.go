@@ -65,14 +65,19 @@ func (h *APIHandler) ListSubjects(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Convert from internal result type to API response type
-	response := make([]SubjectSummary, len(subjects))
+	summaries := make([]SubjectSummary, len(subjects))
 	for i, s := range subjects {
-		response[i] = SubjectSummary{
+		summaries[i] = SubjectSummary{
 			Id:             s.SubjectID,
 			EvidenceCount:  s.EvidenceCount,
 			PublisherCount: s.PublisherCount,
 			ArtifactTypes:  s.ArtifactTypes,
 		}
+	}
+
+	// Wrap in response object as per OpenAPI spec
+	response := map[string]interface{}{
+		"subjects": summaries,
 	}
 
 	respondJSON(w, http.StatusOK, response)
@@ -129,13 +134,25 @@ func (h *APIHandler) GetThreatModel(w http.ResponseWriter, r *http.Request, id s
 
 // GetEvidence returns paginated evidence list with optional filtering.
 func (h *APIHandler) GetEvidence(w http.ResponseWriter, r *http.Request, id string, params GetEvidenceParams) {
+	// Apply default and max limit enforcement
+	limit := 50 // default
+	if params.Limit != nil {
+		limit = *params.Limit
+		if limit > 200 {
+			limit = 200 // max cap
+		}
+		if limit < 1 {
+			limit = 1
+		}
+	}
+
 	// Build filter from query params
 	filter := EvidenceFilter{
 		ArtifactType: params.Type,
 		Since:        params.Since,
 		Before:       params.Before,
 		Cursor:       params.Cursor,
-		Limit:        params.Limit,
+		Limit:        &limit,
 	}
 
 	result, err := h.writer.Evidence(r.Context(), id, filter)

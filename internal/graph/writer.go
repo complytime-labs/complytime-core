@@ -127,6 +127,60 @@ func (w *Writer) UpsertPublisher(ctx context.Context, issuer, sub string) error 
 	return err
 }
 
+// UpsertIngestedStub creates a temporary stub to track digest→publisher mapping
+// from ingested events. This is consumed by sealed event processing.
+func (w *Writer) UpsertIngestedStub(ctx context.Context, digest, subjectID, issuer, sub string) error {
+	session := w.driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	cypher := `
+		MATCH (s:Subject {id: $subjectID})
+		MATCH (p:Publisher {issuer: $issuer, sub: $sub})
+		MERGE (stub:IngestedStub {digest: $digest, subjectId: $subjectID})
+		MERGE (stub)-[:TARGETS]->(s)
+		MERGE (stub)-[:PUBLISHED_BY]->(p)
+	`
+	result, err := session.Run(ctx, cypher, map[string]any{
+		"digest":    digest,
+		"subjectID": subjectID,
+		"issuer":    issuer,
+		"sub":       sub,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = result.Consume(ctx)
+	return err
+}
+
+// FindPublisherByDigest looks up the publisher for a given digest from IngestedStub nodes.
+func (w *Writer) FindPublisherByDigest(ctx context.Context, subjectID, digest string) (issuer, sub string, err error) {
+	session := w.driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	cypher := `
+		MATCH (stub:IngestedStub {digest: $digest, subjectId: $subjectID})-[:PUBLISHED_BY]->(p:Publisher)
+		RETURN p.issuer AS issuer, p.sub AS sub
+		LIMIT 1
+	`
+	result, err := session.Run(ctx, cypher, map[string]any{
+		"digest":    digest,
+		"subjectID": subjectID,
+	})
+	if err != nil {
+		return "", "", err
+	}
+
+	if result.Next(ctx) {
+		rec := result.Record()
+		issuerVal, _ := rec.Get("issuer")
+		subVal, _ := rec.Get("sub")
+		return issuerVal.(string), subVal.(string), nil
+	}
+
+	return "", "", nil
+}
+
 // UpsertEvidence creates or updates an Evidence node with edges to subject and publisher.
 func (w *Writer) UpsertEvidence(ctx context.Context, ev EvidenceRecord) error {
 	session := w.driver.NewSession(ctx, neo4j.SessionConfig{})
@@ -349,7 +403,7 @@ func (w *Writer) ThreatModel(ctx context.Context, subjectID string) (*ThreatMode
 			threatIDs = append(threatIDs, id)
 		}
 		addressCypher := `
-			MATCH (ctrl:Control)-[:APPLIES]->(t:Threat)
+			MATCH (ctrl:Control)-[:ADDRESSES]->(t:Threat)
 			WHERE t.id IN $threatIDs
 			RETURN t.id AS threatID, ctrl.id AS controlID
 		`
@@ -432,16 +486,16 @@ func (w *Writer) ThreatModel(ctx context.Context, subjectID string) (*ThreatMode
 		controlMap[control.Id] = &control
 	}
 
-	// Get APPLIES edges
+	// Get APPLIES edges (Control->Guidance)
 	if len(controlMap) > 0 {
 		controlIDs := make([]string, 0, len(controlMap))
 		for id := range controlMap {
 			controlIDs = append(controlIDs, id)
 		}
 		appliesCypher := `
-			MATCH (c:Control)-[:APPLIES]->(t:Threat)
+			MATCH (c:Control)-[:APPLIES]->(g:Guidance)
 			WHERE c.id IN $controlIDs
-			RETURN c.id AS controlID, t.id AS threatID
+			RETURN c.id AS controlID, g.id AS guidanceID
 		`
 		appliesResult, err := session.Run(ctx, appliesCypher, map[string]any{"controlIDs": controlIDs})
 		if err != nil {
@@ -450,8 +504,8 @@ func (w *Writer) ThreatModel(ctx context.Context, subjectID string) (*ThreatMode
 		for appliesResult.Next(ctx) {
 			rec := appliesResult.Record()
 			controlID, _ := rec.Get("controlID")
-			threatID, _ := rec.Get("threatID")
-			controlMap[controlID.(string)].Applies = append(controlMap[controlID.(string)].Applies, threatID.(string))
+			guidanceID, _ := rec.Get("guidanceID")
+			controlMap[controlID.(string)].Applies = append(controlMap[controlID.(string)].Applies, guidanceID.(string))
 		}
 	}
 
@@ -637,7 +691,7 @@ func (w *Writer) Evidence(ctx context.Context, subjectID string, filter Evidence
 		}
 	}
 
-	limit := 20
+	limit := 50
 	if filter.Limit != nil && *filter.Limit > 0 {
 		limit = *filter.Limit
 	}

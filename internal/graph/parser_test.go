@@ -154,15 +154,15 @@ func TestParseThreatCatalog(t *testing.T) {
 	assert.Equal(t, int64(100), parsed.Entities[0].EvidenceLogIndex)
 
 	// Check edges
-	assert.Len(t, parsed.Edges, 4) // THREAT-001 -> CAP-001, THREAT-001 -> VEC-001, THREAT-002 -> CAP-002, THREAT-002 -> CAP-003
+	assert.Len(t, parsed.Edges, 4) // CAP-001 -> THREAT-001, THREAT-001 -> VEC-001, CAP-002 -> THREAT-002, CAP-003 -> THREAT-002
 
-	// Check capability edge
+	// Check capability INTRODUCES edge (reversed from old LEVERAGES)
 	capEdge := parsed.Edges[0]
-	assert.Equal(t, "THREAT-001", capEdge.FromID)
-	assert.Equal(t, "Threat", capEdge.FromLabel)
-	assert.Equal(t, "CAP-001", capEdge.ToID)
-	assert.Equal(t, "Capability", capEdge.ToLabel)
-	assert.Equal(t, "LEVERAGES", capEdge.EdgeType)
+	assert.Equal(t, "CAP-001", capEdge.FromID)
+	assert.Equal(t, "Capability", capEdge.FromLabel)
+	assert.Equal(t, "THREAT-001", capEdge.ToID)
+	assert.Equal(t, "Threat", capEdge.ToLabel)
+	assert.Equal(t, "INTRODUCES", capEdge.EdgeType)
 
 	// Check vector edge
 	vecEdge := parsed.Edges[1]

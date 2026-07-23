@@ -408,7 +408,7 @@ components:
           type: array
           items:
             type: string
-          description: IDs of threats this control applies to
+          description: IDs of guidance this control applies to (e.g., guide-nist-ia-2)
         assessmentRequirements:
           type: array
           items:

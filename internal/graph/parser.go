@@ -206,27 +206,27 @@ func parseThreatCatalog(data []byte, logIndex int64) (*ParsedArtifact, error) {
 			EvidenceLogIndex: logIndex,
 		})
 
-		// Create LEVERAGES edges to capabilities
+		// Create INTRODUCES edges from capabilities to threats
 		for _, capMapping := range threat.Capabilities {
 			if len(capMapping.Entries) > 0 {
 				for _, entry := range capMapping.Entries {
 					if entry.ReferenceID != "" {
 						result.Edges = append(result.Edges, EdgeRecord{
-							FromID:    threat.ID,
-							FromLabel: "Threat",
-							ToID:      entry.ReferenceID,
-							ToLabel:   "Capability",
-							EdgeType:  "LEVERAGES",
+							FromID:    entry.ReferenceID,
+							FromLabel: "Capability",
+							ToID:      threat.ID,
+							ToLabel:   "Threat",
+							EdgeType:  "INTRODUCES",
 						})
 					}
 				}
 			} else if capMapping.ReferenceID != "" {
 				result.Edges = append(result.Edges, EdgeRecord{
-					FromID:    threat.ID,
-					FromLabel: "Threat",
-					ToID:      capMapping.ReferenceID,
-					ToLabel:   "Capability",
-					EdgeType:  "LEVERAGES",
+					FromID:    capMapping.ReferenceID,
+					FromLabel: "Capability",
+					ToID:      threat.ID,
+					ToLabel:   "Threat",
+					EdgeType:  "INTRODUCES",
 				})
 			}
 		}

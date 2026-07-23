@@ -96,7 +96,7 @@ var _ = Describe("graph service", Ordered, Label("graph"), func() {
 		It("returns subject summary with artifact type counts", func() {
 			req, err := newRequest("GET", graphURL("/api/subjects/"+subjectID), nil)
 			Expect(err).NotTo(HaveOccurred())
-			token := lockerServiceToken()
+			token := graphServiceToken()
 			req.Header.Set("Authorization", "Bearer "+token)
 
 			resp, err := httpClient().Do(req)
@@ -125,7 +125,7 @@ var _ = Describe("graph service", Ordered, Label("graph"), func() {
 		It("returns threat model with controls from the catalog", func() {
 			req, err := newRequest("GET", graphURL("/api/subjects/"+subjectID+"/threat-model"), nil)
 			Expect(err).NotTo(HaveOccurred())
-			token := lockerServiceToken()
+			token := graphServiceToken()
 			req.Header.Set("Authorization", "Bearer "+token)
 
 			resp, err := httpClient().Do(req)
@@ -187,7 +187,7 @@ var _ = Describe("graph service", Ordered, Label("graph"), func() {
 		It("returns coverage for the catalog", func() {
 			req, err := newRequest("GET", graphURL(fmt.Sprintf("/api/subjects/%s/coverage?catalog=graph-test-catalog", subjectID)), nil)
 			Expect(err).NotTo(HaveOccurred())
-			token := lockerServiceToken()
+			token := graphServiceToken()
 			req.Header.Set("Authorization", "Bearer "+token)
 
 			resp, err := httpClient().Do(req)
@@ -220,7 +220,7 @@ var _ = Describe("graph service", Ordered, Label("graph"), func() {
 		It("returns paginated evidence with filtering", func() {
 			req, err := newRequest("GET", graphURL(fmt.Sprintf("/api/subjects/%s/evidence?type=ControlCatalog&limit=10", subjectID)), nil)
 			Expect(err).NotTo(HaveOccurred())
-			token := lockerServiceToken()
+			token := graphServiceToken()
 			req.Header.Set("Authorization", "Bearer "+token)
 
 			resp, err := httpClient().Do(req)
@@ -258,7 +258,7 @@ var _ = Describe("graph service", Ordered, Label("graph"), func() {
 		It("returns 404 for unknown subject", func() {
 			req, err := newRequest("GET", graphURL("/api/subjects/nonexistent-subject/threat-model"), nil)
 			Expect(err).NotTo(HaveOccurred())
-			token := lockerServiceToken()
+			token := graphServiceToken()
 			req.Header.Set("Authorization", "Bearer "+token)
 
 			resp, err := httpClient().Do(req)
@@ -270,7 +270,7 @@ var _ = Describe("graph service", Ordered, Label("graph"), func() {
 		It("returns 400 for coverage without catalog parameter", func() {
 			req, err := newRequest("GET", graphURL("/api/subjects/"+subjectID+"/coverage"), nil)
 			Expect(err).NotTo(HaveOccurred())
-			token := lockerServiceToken()
+			token := graphServiceToken()
 			req.Header.Set("Authorization", "Bearer "+token)
 
 			resp, err := httpClient().Do(req)
@@ -282,7 +282,7 @@ var _ = Describe("graph service", Ordered, Label("graph"), func() {
 		It("returns 404 for coverage with unknown catalog", func() {
 			req, err := newRequest("GET", graphURL(fmt.Sprintf("/api/subjects/%s/coverage?catalog=nonexistent", subjectID)), nil)
 			Expect(err).NotTo(HaveOccurred())
-			token := lockerServiceToken()
+			token := graphServiceToken()
 			req.Header.Set("Authorization", "Bearer "+token)
 
 			resp, err := httpClient().Do(req)
@@ -296,7 +296,7 @@ var _ = Describe("graph service", Ordered, Label("graph"), func() {
 		It("returns all subjects with summaries", func() {
 			req, err := newRequest("GET", graphURL("/api/subjects"), nil)
 			Expect(err).NotTo(HaveOccurred())
-			token := lockerServiceToken()
+			token := graphServiceToken()
 			req.Header.Set("Authorization", "Bearer "+token)
 
 			resp, err := httpClient().Do(req)
