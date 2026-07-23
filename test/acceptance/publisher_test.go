@@ -14,11 +14,13 @@ import (
 var _ = Describe("Publisher", Ordered, func() {
 	var (
 		publisherToken string
-		subjectID      = "acceptance-test-subject"
+		subjectID      = "publisher-test-subject"
 	)
 
 	BeforeAll(func() {
 		publisherToken = mintToken("test-publisher", "complytime-gateway", false, false)
+		adminToken := mintToken("test-admin", "complytime-locker", true, false)
+		registerSubject(adminToken, subjectID, "http://testjwks:8888", "test-publisher")
 	})
 
 	Describe("authenticated and trusted", func() {

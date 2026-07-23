@@ -14,8 +14,13 @@ import (
 
 var _ = Describe("Consumer", Ordered, func() {
 	var (
-		subjectID = "acceptance-test-subject"
+		subjectID = "consumer-test-subject"
 	)
+
+	BeforeAll(func() {
+		adminToken := mintToken("test-admin", "complytime-locker", true, false)
+		registerSubject(adminToken, subjectID, "http://testjwks:8888", "test-publisher")
+	})
 
 	Describe("NATS subscriber", Ordered, func() {
 		var (
@@ -60,8 +65,7 @@ var _ = Describe("Consumer", Ordered, func() {
 			})
 
 			// Trigger ingest — don't need the return values, events arrive via NATS
-			// Use index 2 since Publisher suite uses index 1
-			ingestAndSeal(publisherToken, subjectID, submittedBody, 2)
+			ingestAndSeal(publisherToken, subjectID, submittedBody, 1)
 		})
 
 		AfterAll(func() {
@@ -163,8 +167,7 @@ var _ = Describe("Consumer", Ordered, func() {
 				"target": map[string]string{"id": subjectID},
 				"data":   "direct locker verification",
 			})
-			// Use index 3 (Publisher=1, Consumer NATS=2)
-			digest, logIndex = ingestAndSeal(publisherToken, subjectID, body, 3)
+			digest, logIndex = ingestAndSeal(publisherToken, subjectID, body, 1)
 		})
 
 		It("fetches a sealed receipt by index", func() {
