@@ -78,7 +78,7 @@ services:
       retries: 3
 
   memgraph:
-    image: memgraph/memgraph:latest
+    image: memgraph/memgraph:2.21.0
     ports:
       - "7687:7687"
     volumes:
@@ -96,11 +96,13 @@ services:
     environment:
       - NATS_URL=nats://nats:4222
       - LOCKER_URL=http://locker:8081
-      - LOCKER_SECRET=${LOCKER_SECRET:-dev-secret}
+      - TOKEN_FILE=/tokens/graph-token
       - MEMGRAPH_URL=bolt://memgraph:7687
       - JWT_ISSUERS=http://testjwks:8888
       - JWT_AUDIENCE=complytime-graph
       - GRAPH_LISTEN_ADDR=:8082
+    volumes:
+      - service-tokens:/tokens:ro
     ports:
       - "8082:8082"
     depends_on:

@@ -24,7 +24,7 @@ func main() {
 	// Required env vars
 	natsURL := requireEnv("NATS_URL")
 	lockerURL := requireEnv("LOCKER_URL")
-	lockerSecret := requireEnv("LOCKER_SECRET")
+	tokenFile := requireEnv("TOKEN_FILE")
 	memgraphURL := requireEnv("MEMGRAPH_URL")
 	jwtIssuers := requireEnv("JWT_ISSUERS")
 	jwtAudience := requireEnv("JWT_AUDIENCE")
@@ -70,7 +70,7 @@ func main() {
 	}
 
 	// Create locker HTTP client with auth
-	tokenSource := authn.NewStaticTokenSource(lockerSecret)
+	tokenSource := authn.NewFileTokenSource(tokenFile)
 	lockerClient := &http.Client{
 		Transport: authn.NewTokenTransport(tokenSource, http.DefaultTransport),
 		Timeout:   30 * time.Second,
@@ -112,8 +112,12 @@ func main() {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	server.Shutdown(shutdownCtx)
-	loader.Stop()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		slog.Error("server shutdown failed", "error", err)
+	}
+	if err := loader.Stop(); err != nil {
+		slog.Error("loader stop failed", "error", err)
+	}
 }
 
 func requireEnv(key string) string {
