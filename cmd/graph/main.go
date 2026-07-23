@@ -98,7 +98,13 @@ func main() {
 	}
 
 	handler := graph.NewHandler(writer, auth, policySet)
-	server := &http.Server{Addr: listenAddr, Handler: handler}
+	server := &http.Server{
+		Addr:              listenAddr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+	}
 
 	go func() {
 		slog.Info("graph service starting", "addr", listenAddr)
