@@ -316,15 +316,19 @@ func (l *Loader) processArtifact(ctx context.Context, artifactType string, data 
 
 	// Upsert all edges
 	for _, edge := range parsed.Edges {
-		// Create stub nodes for referenced entities that don't exist yet
-		// This handles cross-catalog references
-		if err := l.writer.UpsertEntity(ctx, EntityRecord{
-			ID:               edge.ToID,
-			Label:            edge.ToLabel,
-			Properties:       map[string]any{"stub": true},
-			EvidenceLogIndex: logIndex,
-		}); err != nil {
-			return fmt.Errorf("upserting stub entity %s: %w", edge.ToID, err)
+		// Create stub nodes for both sides of cross-catalog references
+		for _, stub := range []struct{ id, label string }{
+			{edge.FromID, edge.FromLabel},
+			{edge.ToID, edge.ToLabel},
+		} {
+			if err := l.writer.UpsertEntity(ctx, EntityRecord{
+				ID:               stub.id,
+				Label:            stub.label,
+				Properties:       map[string]any{"stub": true},
+				EvidenceLogIndex: logIndex,
+			}); err != nil {
+				return fmt.Errorf("upserting stub entity %s: %w", stub.id, err)
+			}
 		}
 
 		if err := l.writer.UpsertEdge(ctx, edge); err != nil {
