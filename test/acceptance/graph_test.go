@@ -85,7 +85,8 @@ var _ = Describe("graph service", Ordered, Label("graph"), func() {
 			body, err := json.Marshal(catalog)
 			Expect(err).NotTo(HaveOccurred())
 
-			catalogDigest, _ = ingestAndSeal(publisherToken, subjectID, body, 1)
+			// Use index 4 (Publisher=1, Consumer NATS=2, Consumer verify=3)
+			catalogDigest, _ = ingestAndSeal(publisherToken, subjectID, body, 4)
 			Expect(catalogDigest).NotTo(BeEmpty())
 		})
 

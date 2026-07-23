@@ -60,7 +60,8 @@ var _ = Describe("Consumer", Ordered, func() {
 			})
 
 			// Trigger ingest — don't need the return values, events arrive via NATS
-			ingestAndSeal(publisherToken, subjectID, submittedBody, 1)
+			// Use index 2 since Publisher suite uses index 1
+			ingestAndSeal(publisherToken, subjectID, submittedBody, 2)
 		})
 
 		AfterAll(func() {
@@ -162,7 +163,8 @@ var _ = Describe("Consumer", Ordered, func() {
 				"target": map[string]string{"id": subjectID},
 				"data":   "direct locker verification",
 			})
-			digest, logIndex = ingestAndSeal(publisherToken, subjectID, body, 1)
+			// Use index 3 (Publisher=1, Consumer NATS=2)
+			digest, logIndex = ingestAndSeal(publisherToken, subjectID, body, 3)
 		})
 
 		It("fetches a sealed receipt by index", func() {
