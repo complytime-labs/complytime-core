@@ -33,7 +33,10 @@ func TestParseControlCatalog(t *testing.T) {
 				],
 				"threats": [
 					{
-						"reference-id": "THREAT-001"
+						"reference-id": "threat-catalog-v1",
+						"entries": [
+							{"reference-id": "THREAT-001"}
+						]
 					}
 				]
 			},
@@ -114,12 +117,18 @@ func TestParseThreatCatalog(t *testing.T) {
 				"group": "access",
 				"capabilities": [
 					{
-						"reference-id": "CAP-001"
+						"reference-id": "cap-catalog-v1",
+						"entries": [
+							{"reference-id": "CAP-001"}
+						]
 					}
 				],
 				"vectors": [
 					{
-						"reference-id": "VEC-001"
+						"reference-id": "vec-catalog-v1",
+						"entries": [
+							{"reference-id": "VEC-001"}
+						]
 					}
 				]
 			},
