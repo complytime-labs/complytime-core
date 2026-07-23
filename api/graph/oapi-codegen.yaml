@@ -1,0 +1,7 @@
+package: graph
+generate:
+  chi-server: true
+  models: true
+output: ../../internal/graph/gen.openapi.go
+output-options:
+  skip-prune: true
