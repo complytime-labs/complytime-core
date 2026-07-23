@@ -87,12 +87,12 @@ func TestParseControlCatalog(t *testing.T) {
 	assert.Equal(t, "Control", parsed.Edges[0].FromLabel)
 	assert.Equal(t, "THREAT-001", parsed.Edges[0].ToID)
 	assert.Equal(t, "Threat", parsed.Edges[0].ToLabel)
-	assert.Equal(t, "APPLIES", parsed.Edges[0].EdgeType)
+	assert.Equal(t, "ADDRESSES", parsed.Edges[0].EdgeType)
 
 	// Nested edges
 	assert.Equal(t, "CTRL-002", parsed.Edges[1].FromID)
 	assert.Equal(t, "THREAT-002", parsed.Edges[1].ToID)
-	assert.Equal(t, "APPLIES", parsed.Edges[1].EdgeType)
+	assert.Equal(t, "ADDRESSES", parsed.Edges[1].EdgeType)
 }
 
 func TestParseThreatCatalog(t *testing.T) {

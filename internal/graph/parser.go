@@ -148,7 +148,7 @@ func parseControlCatalog(data []byte, logIndex int64) (*ParsedArtifact, error) {
 			EvidenceLogIndex: logIndex,
 		})
 
-		// Create APPLIES edges to threats
+		// Create ADDRESSES edges to threats
 		for _, threatMapping := range control.Threats {
 			// If there are nested entries, only use those (reference-id is a catalog pointer)
 			if len(threatMapping.Entries) > 0 {
@@ -159,7 +159,7 @@ func parseControlCatalog(data []byte, logIndex int64) (*ParsedArtifact, error) {
 							FromLabel: "Control",
 							ToID:      entry.ReferenceID,
 							ToLabel:   "Threat",
-							EdgeType:  "APPLIES",
+							EdgeType:  "ADDRESSES",
 						})
 					}
 				}
@@ -170,7 +170,7 @@ func parseControlCatalog(data []byte, logIndex int64) (*ParsedArtifact, error) {
 					FromLabel: "Control",
 					ToID:      threatMapping.ReferenceID,
 					ToLabel:   "Threat",
-					EdgeType:  "APPLIES",
+					EdgeType:  "ADDRESSES",
 				})
 			}
 		}
