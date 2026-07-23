@@ -23,6 +23,13 @@ WORKDIR /app
 
 COPY --from=builder /build/graph /app/graph
 
+ENV GRAPH_LISTEN_ADDR=":8082" \
+    NATS_URL="nats://localhost:4222" \
+    LOCKER_URL="http://localhost:8081" \
+    MEMGRAPH_URL="bolt://localhost:7687"
+
 EXPOSE 8082
+
+USER 1001:1001
 
 ENTRYPOINT ["/app/graph"]
