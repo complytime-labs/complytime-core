@@ -3,17 +3,16 @@
     "$defs": {
         "#Actor": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "contact": {
                     "$ref": "#/$defs/%23Contact"
                 }
             },
-            "$ref": "#/$defs/%23Entity"
+            "$ref": "#/$defs/%23Entity",
+            "unevaluatedProperties": false
         },
         "#ArtifactMapping": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "reference-id": {
                     "type": "string"
@@ -45,7 +44,6 @@
         },
         "#Catalog": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "extends": {
                     "type": "array",
@@ -79,8 +77,8 @@
                 },
                 "metadata": {
                     "type": "object",
-                    "additionalProperties": false,
-                    "$ref": "#/$defs/%23Metadata"
+                    "$ref": "#/$defs/%23Metadata",
+                    "unevaluatedProperties": false
                 },
                 "title": {
                     "type": "string"
@@ -122,7 +120,6 @@
         },
         "#Entity": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "description": {
                     "type": "string"
@@ -270,7 +267,6 @@
         },
         "#MultiEntryMapping": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "entries": {
                     "type": "array",
@@ -288,7 +284,8 @@
             "$ref": "#/$defs/%23ArtifactMapping",
             "required": [
                 "entries"
-            ]
+            ],
+            "unevaluatedProperties": false
         },
         "#Threat": {
             "type": "object",
@@ -353,7 +350,6 @@
         }
     },
     "type": "object",
-    "additionalProperties": false,
     "properties": {
         "metadata": {
             "type": "object",
@@ -376,5 +372,6 @@
             "minItems": 1
         }
     },
-    "$ref": "#/$defs/%23Catalog"
+    "$ref": "#/$defs/%23Catalog",
+    "unevaluatedProperties": false
 }

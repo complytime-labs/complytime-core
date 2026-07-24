@@ -128,10 +128,12 @@ func Middleware(ps *cedar.PolicySet, trustLookup TrustLookupFunc) func(http.Hand
 				// Admin: the subject may not exist yet. Read: job status is not subject-scoped.
 				// Locker manage: ledger create doesn't have a subject ID yet.
 				// Locker seal/verify: evidence operations don't require subject ID extraction.
+				// Query: graph service routes carry subject ID in URL path, not context header.
 				// The resource will be a placeholder and Cedar checks admin flag or permits reads.
 				if action == ActionRegisterSubject || action == ActionModifyTrust ||
 					action == ActionReadEvidence || action == ActionManageLedger ||
-					action == ActionSealEvidence || action == ActionVerifyEvidence {
+					action == ActionSealEvidence || action == ActionVerifyEvidence ||
+					action == ActionQueryEvidence {
 					subjectID = "*"
 				} else {
 					http.Error(w, "Forbidden: missing subject ID", http.StatusForbidden)
@@ -143,7 +145,8 @@ func Middleware(ps *cedar.PolicySet, trustLookup TrustLookupFunc) func(http.Hand
 			trusted := false
 			if action != ActionRegisterSubject && action != ActionModifyTrust &&
 				action != ActionReadEvidence && action != ActionManageLedger &&
-				action != ActionSealEvidence && action != ActionVerifyEvidence {
+				action != ActionSealEvidence && action != ActionVerifyEvidence &&
+				action != ActionQueryEvidence {
 				if trustLookup != nil {
 					var err error
 					trusted, err = trustLookup(ctx, subjectID, issuer, sub)

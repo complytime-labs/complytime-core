@@ -3,17 +3,16 @@
     "$defs": {
         "#Actor": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "contact": {
                     "$ref": "#/$defs/%23Contact"
                 }
             },
-            "$ref": "#/$defs/%23Entity"
+            "$ref": "#/$defs/%23Entity",
+            "unevaluatedProperties": false
         },
         "#ArtifactMapping": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "reference-id": {
                     "type": "string"
@@ -126,7 +125,6 @@
         },
         "#Entity": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "description": {
                     "type": "string"
@@ -324,7 +322,6 @@
         },
         "#MultiEntryMapping": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "entries": {
                     "type": "array",
@@ -342,7 +339,8 @@
             "$ref": "#/$defs/%23ArtifactMapping",
             "required": [
                 "entries"
-            ]
+            ],
+            "unevaluatedProperties": false
         },
         "#RACI": {
             "type": "object",
@@ -422,7 +420,6 @@
         },
         "#Resource": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "environment": {
                     "type": "string"
@@ -431,7 +428,8 @@
                     "$ref": "#/$defs/%23Contact"
                 }
             },
-            "$ref": "#/$defs/%23Entity"
+            "$ref": "#/$defs/%23Entity",
+            "unevaluatedProperties": false
         },
         "#ResultType": {
             "enum": [
@@ -443,7 +441,6 @@
         }
     },
     "type": "object",
-    "additionalProperties": false,
     "properties": {
         "criteria": {
             "type": "array",
@@ -489,5 +486,6 @@
         "criteria",
         "results",
         "summary"
-    ]
+    ],
+    "unevaluatedProperties": false
 }

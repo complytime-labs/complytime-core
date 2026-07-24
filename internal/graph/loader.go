@@ -14,6 +14,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/complytime-labs/complytime-core/events"
+	"github.com/complytime-labs/complytime-core/internal/gateway/receipt"
 	natsinfra "github.com/complytime-labs/complytime-core/internal/nats"
 )
 
@@ -198,11 +199,17 @@ func (l *Loader) handleSealed(ctx context.Context, event *cloudevents.Event) err
 		return fmt.Errorf("extracting sealed data: %w", err)
 	}
 
-	// Fetch artifact from locker
-	artifactData, err := l.fetchArtifact(ctx, data.StorageRef)
+	// Fetch sealed receipt from locker and unwrap to get the original artifact bytes
+	receiptBytes, err := l.fetchArtifact(ctx, data.StorageRef)
 	if err != nil {
 		return fmt.Errorf("fetching artifact: %w", err)
 	}
+
+	unwrapped, err := receipt.UnwrapContent(receiptBytes)
+	if err != nil {
+		return fmt.Errorf("unwrapping receipt: %w", err)
+	}
+	artifactData := unwrapped.Content
 
 	// Upsert subject (idempotent)
 	if err := l.writer.UpsertSubject(ctx, data.SubjectID); err != nil {
@@ -273,9 +280,9 @@ func (l *Loader) handleSubjectRegistered(ctx context.Context, event *cloudevents
 
 // fetchArtifact fetches an artifact from the locker via HTTP GET.
 func (l *Loader) fetchArtifact(ctx context.Context, storageRef string) ([]byte, error) {
-	// Parse storage ref: locker://subject-id/entry/N
-	// For MVP, assume storageRef is a full URL to the locker HTTP endpoint
-	url := l.lockerURL + "/" + storageRef[len("locker://"):]
+	// storageRef format: locker://subject-id/entry/N
+	// Locker HTTP endpoint: GET /ledgers/{subjectId}/entry/{index}
+	url := l.lockerURL + "/ledgers/" + storageRef[len("locker://"):]
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
