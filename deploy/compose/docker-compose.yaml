@@ -77,7 +77,51 @@ services:
       timeout: 5s
       retries: 3
 
+  memgraph:
+    image: memgraph/memgraph:2.21.0
+    ports:
+      - "7687:7687"
+    volumes:
+      - memgraph-data:/var/lib/memgraph
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'RETURN 1;' | mgconsole || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  graph:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.graph
+    environment:
+      - NATS_URL=nats://nats:4222
+      - LOCKER_URL=http://locker:8081
+      - TOKEN_FILE=/tokens/graph-token
+      - MEMGRAPH_URL=bolt://memgraph:7687
+      - JWT_ISSUERS=http://testjwks:8888
+      - JWT_AUDIENCE=complytime-graph
+      - GRAPH_LISTEN_ADDR=:8082
+    volumes:
+      - service-tokens:/tokens:ro
+    ports:
+      - "8082:8082"
+    depends_on:
+      nats:
+        condition: service_healthy
+      locker:
+        condition: service_healthy
+      memgraph:
+        condition: service_healthy
+      testjwks:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8082/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
 volumes:
   nats-data:
   locker-data:
   service-tokens:
+  memgraph-data:

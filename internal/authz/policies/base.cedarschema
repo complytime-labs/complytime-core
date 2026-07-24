@@ -41,3 +41,8 @@ action "manage:ledger" appliesTo {
   principal: [Publisher],
   resource: [Subject],
 };
+
+action "query:evidence" appliesTo {
+  principal: [Publisher],
+  resource: [Subject],
+};

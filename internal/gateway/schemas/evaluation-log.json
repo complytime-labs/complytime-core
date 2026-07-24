@@ -3,17 +3,16 @@
     "$defs": {
         "#Actor": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "contact": {
                     "$ref": "#/$defs/%23Contact"
                 }
             },
-            "$ref": "#/$defs/%23Entity"
+            "$ref": "#/$defs/%23Entity",
+            "unevaluatedProperties": false
         },
         "#ArtifactMapping": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "reference-id": {
                     "type": "string"
@@ -231,7 +230,6 @@
         },
         "#Entity": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "description": {
                     "type": "string"
@@ -448,7 +446,6 @@
         },
         "#Resource": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "environment": {
                     "type": "string"
@@ -457,7 +454,8 @@
                     "$ref": "#/$defs/%23Contact"
                 }
             },
-            "$ref": "#/$defs/%23Entity"
+            "$ref": "#/$defs/%23Entity",
+            "unevaluatedProperties": false
         },
         "#Result": {
             "enum": [
@@ -471,7 +469,6 @@
         }
     },
     "type": "object",
-    "additionalProperties": false,
     "properties": {
         "evaluations": {
             "type": "array",
@@ -501,5 +498,6 @@
     "required": [
         "evaluations",
         "result"
-    ]
+    ],
+    "unevaluatedProperties": false
 }

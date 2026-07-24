@@ -3,17 +3,16 @@
     "$defs": {
         "#Actor": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "contact": {
                     "$ref": "#/$defs/%23Contact"
                 }
             },
-            "$ref": "#/$defs/%23Entity"
+            "$ref": "#/$defs/%23Entity",
+            "unevaluatedProperties": false
         },
         "#ArtifactMapping": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "reference-id": {
                     "type": "string"
@@ -82,7 +81,6 @@
         },
         "#Entity": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "description": {
                     "type": "string"
@@ -335,7 +333,6 @@
         },
         "#TypedMapping": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "entry-type": {
                     "$ref": "#/$defs/%23EntryType"
@@ -344,7 +341,8 @@
             "$ref": "#/$defs/%23ArtifactMapping",
             "required": [
                 "entry-type"
-            ]
+            ],
+            "unevaluatedProperties": false
         },
         "#_MappingStrict": {
             "type": "object",

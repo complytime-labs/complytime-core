@@ -15,6 +15,7 @@ var (
 	ActionSealEvidence    = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("seal:evidence"))
 	ActionVerifyEvidence  = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("verify:evidence"))
 	ActionManageLedger    = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("manage:ledger"))
+	ActionQueryEvidence   = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("query:evidence"))
 )
 
 // routeMapping maps HTTP method + path patterns to Cedar actions
@@ -28,6 +29,9 @@ var routeMappings = []routeMapping{
 	// Gateway routes
 	{"POST", "/api/ingest", ActionPublishArtifact},
 	{"GET", "/api/evidence", ActionReadEvidence},
+	// Graph routes
+	{"GET", "/api/subjects", ActionQueryEvidence},  // GET /api/subjects (list)
+	{"GET", "/api/subjects/", ActionQueryEvidence}, // GET /api/subjects/{id}... (detail, threat-model, evidence, coverage)
 	// Locker routes — order matters: longer prefixes first
 	{"POST", "/admin/subjects", ActionRegisterSubject}, // Locker subject registration
 	{"PUT", "/admin/subjects/", ActionModifyTrust},     // PUT /admin/subjects/{subjectId}/trust

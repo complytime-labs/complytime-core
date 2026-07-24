@@ -65,6 +65,13 @@ when {
   principal.service == true && principal.admin == true
 };
 
+// Permit all authenticated publishers to query evidence
+permit (
+  principal,
+  action == Action::"query:evidence",
+  resource
+);
+
 // SAFETY FLOOR: Forbid untrusted publishers from publishing artifacts
 // This cannot be overridden by any permit
 forbid (

@@ -14,8 +14,13 @@ import (
 
 var _ = Describe("Consumer", Ordered, func() {
 	var (
-		subjectID = "acceptance-test-subject"
+		subjectID = "consumer-test-subject"
 	)
+
+	BeforeAll(func() {
+		adminToken := mintToken("test-admin", "complytime-locker", true, false)
+		registerSubject(adminToken, subjectID, "http://testjwks:8888", "test-publisher")
+	})
 
 	Describe("NATS subscriber", Ordered, func() {
 		var (

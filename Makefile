@@ -15,10 +15,10 @@ cedar-validate:
 build:
 	go build -o bin/locker ./cmd/locker
 	go build -o bin/gateway ./cmd/gateway
-	# go build -o bin/graph ./cmd/graph      # Plan 3
+	go build -o bin/graph ./cmd/graph
 
 .PHONY: build-fips
 build-fips:
 	GOFIPS140=latest go build -o bin/locker ./cmd/locker
 	GOFIPS140=latest go build -o bin/gateway ./cmd/gateway
-	# GOFIPS140=latest go build -o bin/graph ./cmd/graph      # Plan 3
+	GOFIPS140=latest go build -o bin/graph ./cmd/graph

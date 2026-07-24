@@ -32,6 +32,39 @@ func natsURL() string {
 	return "nats://localhost:4222"
 }
 
+func graphURL(path string) string {
+	return "http://localhost:8082" + path
+}
+
+func waitForGraphMaterialization(subjectID string, timeout time.Duration) {
+	Eventually(func() int64 {
+		req, err := newRequest("GET", graphURL("/api/subjects/"+subjectID), nil)
+		if err != nil {
+			return 0
+		}
+		token := graphServiceToken()
+		req.Header.Set("Authorization", "Bearer "+token)
+
+		resp, err := httpClient().Do(req)
+		if err != nil {
+			return 0
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return 0
+		}
+
+		var result struct {
+			EvidenceCount int64 `json:"evidenceCount"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return 0
+		}
+		return result.EvidenceCount
+	}, timeout, 500*time.Millisecond).Should(BeNumerically(">", 0), "Evidence should be materialized in graph")
+}
+
 func mintToken(sub, audience string, admin, service bool) string {
 	reqBody, err := json.Marshal(map[string]interface{}{
 		"sub":      sub,
@@ -161,6 +194,10 @@ func unwrapReceipt(entry []byte) []byte {
 
 func lockerServiceToken() string {
 	return mintToken("acceptance-test-consumer", "complytime-locker", false, true)
+}
+
+func graphServiceToken() string {
+	return mintToken("acceptance-test-consumer", "complytime-graph", false, true)
 }
 
 func newRequest(method, url string, body []byte) (*http.Request, error) {

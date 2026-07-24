@@ -1,0 +1,35 @@
+# Multi-stage build for graph service
+# Stage 1: Build
+FROM golang:1.26.5-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS builder
+
+WORKDIR /build
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY cmd cmd/
+COPY events events/
+COPY internal internal/
+
+# Build the binary
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o graph ./cmd/graph
+
+# Stage 2: Runtime
+FROM registry.access.redhat.com/ubi9/ubi-minimal@sha256:062c52ff973065752b0965787649db2bcf551a6c727a00e95a3eb42cebadbdab
+
+RUN microdnf install -y curl-minimal && microdnf clean all
+
+WORKDIR /app
+
+COPY --from=builder /build/graph /app/graph
+
+ENV GRAPH_LISTEN_ADDR=":8082" \
+    NATS_URL="nats://localhost:4222" \
+    LOCKER_URL="http://localhost:8081" \
+    MEMGRAPH_URL="bolt://localhost:7687"
+
+EXPOSE 8082
+
+USER 1001:1001
+
+ENTRYPOINT ["/app/graph"]

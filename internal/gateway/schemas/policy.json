@@ -57,13 +57,13 @@
         },
         "#Actor": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "contact": {
                     "$ref": "#/$defs/%23Contact"
                 }
             },
-            "$ref": "#/$defs/%23Entity"
+            "$ref": "#/$defs/%23Entity",
+            "unevaluatedProperties": false
         },
         "#Adherence": {
             "type": "object",
@@ -85,7 +85,6 @@
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "additionalProperties": false,
                         "properties": {
                             "type": {
                                 "$ref": "#/$defs/%23EnforcementMethodType"
@@ -94,12 +93,12 @@
                         "$ref": "#/$defs/%23AcceptedMethod",
                         "required": [
                             "type"
-                        ]
+                        ],
+                        "unevaluatedProperties": false
                     },
                     "prefixItems": [
                         {
                             "type": "object",
-                            "additionalProperties": false,
                             "properties": {
                                 "type": {
                                     "$ref": "#/$defs/%23EnforcementMethodType"
@@ -108,7 +107,8 @@
                             "$ref": "#/$defs/%23AcceptedMethod",
                             "required": [
                                 "type"
-                            ]
+                            ],
+                            "unevaluatedProperties": false
                         }
                     ],
                     "minItems": 1
@@ -117,7 +117,6 @@
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "additionalProperties": false,
                         "properties": {
                             "type": {
                                 "$ref": "#/$defs/%23EvaluationMethodType"
@@ -126,12 +125,12 @@
                         "$ref": "#/$defs/%23AcceptedMethod",
                         "required": [
                             "type"
-                        ]
+                        ],
+                        "unevaluatedProperties": false
                     },
                     "prefixItems": [
                         {
                             "type": "object",
-                            "additionalProperties": false,
                             "properties": {
                                 "type": {
                                     "$ref": "#/$defs/%23EvaluationMethodType"
@@ -140,7 +139,8 @@
                             "$ref": "#/$defs/%23AcceptedMethod",
                             "required": [
                                 "type"
-                            ]
+                            ],
+                            "unevaluatedProperties": false
                         }
                     ],
                     "minItems": 1
@@ -152,7 +152,6 @@
         },
         "#ArtifactMapping": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "reference-id": {
                     "type": "string"
@@ -190,7 +189,6 @@
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "additionalProperties": false,
                         "properties": {
                             "type": {
                                 "$ref": "#/$defs/%23EvaluationMethodType"
@@ -199,12 +197,12 @@
                         "$ref": "#/$defs/%23AcceptedMethod",
                         "required": [
                             "type"
-                        ]
+                        ],
+                        "unevaluatedProperties": false
                     },
                     "prefixItems": [
                         {
                             "type": "object",
-                            "additionalProperties": false,
                             "properties": {
                                 "type": {
                                     "$ref": "#/$defs/%23EvaluationMethodType"
@@ -213,7 +211,8 @@
                             "$ref": "#/$defs/%23AcceptedMethod",
                             "required": [
                                 "type"
-                            ]
+                            ],
+                            "unevaluatedProperties": false
                         }
                     ],
                     "minItems": 1
@@ -463,7 +462,6 @@
         },
         "#Entity": {
             "type": "object",
-            "additionalProperties": false,
             "properties": {
                 "description": {
                     "type": "string"

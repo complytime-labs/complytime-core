@@ -1,0 +1,580 @@
+openapi: 3.0.3
+info:
+  title: Graph Service API
+  description: HTTP API for the Graph Service query and analytics service
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8082
+    description: Local development server
+
+paths:
+  /healthz:
+    get:
+      summary: Health check endpoint
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /api/subjects:
+    get:
+      summary: List subjects with summary statistics
+      operationId: listSubjects
+      responses:
+        '200':
+          description: List of subjects
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - subjects
+                properties:
+                  subjects:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SubjectSummary'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/subjects/{id}:
+    get:
+      summary: Get subject detail with per-artifact-type freshness
+      operationId: getSubject
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Subject identifier
+      responses:
+        '200':
+          description: Subject details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectDetail'
+        '404':
+          description: Subject not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/subjects/{id}/threat-model:
+    get:
+      summary: Get assembled threat model (flat with provenance)
+      operationId: getThreatModel
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Subject identifier
+      responses:
+        '200':
+          description: Threat model
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreatModelResponse'
+        '404':
+          description: Subject not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/subjects/{id}/evidence:
+    get:
+      summary: Get paginated evidence list
+      operationId: getEvidence
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Subject identifier
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by artifact type
+        - name: since
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Filter evidence created after this timestamp
+        - name: before
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Filter evidence created before this timestamp
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Pagination cursor
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 500
+          description: Maximum number of results per page
+      responses:
+        '200':
+          description: Evidence list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceListResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Subject not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/subjects/{id}/coverage:
+    get:
+      summary: Get coverage report for a catalog
+      operationId: getCoverage
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Subject identifier
+        - name: catalog
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Catalog identifier (e.g., gemara:///com.example/catalog@1.0.0)
+      responses:
+        '200':
+          description: Coverage report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoverageResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Subject not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    SubjectSummary:
+      type: object
+      required:
+        - id
+        - artifactTypes
+        - evidenceCount
+        - publisherCount
+      properties:
+        id:
+          type: string
+          description: Subject identifier
+        artifactTypes:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ArtifactTypeSummary'
+          description: Map of artifact type to summary
+        evidenceCount:
+          type: integer
+          format: int64
+          description: Total evidence count
+        publisherCount:
+          type: integer
+          description: Number of unique publishers
+
+    SubjectDetail:
+      type: object
+      required:
+        - id
+        - artifactTypes
+        - evidenceCount
+        - publisherCount
+      properties:
+        id:
+          type: string
+          description: Subject identifier
+        artifactTypes:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ArtifactTypeSummary'
+          description: Map of artifact type to summary with freshness
+        evidenceCount:
+          type: integer
+          format: int64
+          description: Total evidence count
+        publisherCount:
+          type: integer
+          description: Number of unique publishers
+
+    ArtifactTypeSummary:
+      type: object
+      required:
+        - count
+        - lastUpdated
+      properties:
+        count:
+          type: integer
+          format: int64
+          description: Number of artifacts of this type
+        lastUpdated:
+          type: string
+          format: date-time
+          description: Timestamp of most recent artifact
+
+    ThreatModelResponse:
+      type: object
+      required:
+        - subjectId
+        - capabilities
+        - threats
+        - controls
+        - vectors
+      properties:
+        subjectId:
+          type: string
+          description: Subject identifier
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/ThreatModelCapability'
+          description: System capabilities
+        threats:
+          type: array
+          items:
+            $ref: '#/components/schemas/ThreatModelThreat'
+          description: Identified threats
+        controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/ThreatModelControl'
+          description: Security controls
+        vectors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ThreatModelVector'
+          description: Attack vectors
+
+    ThreatModelCapability:
+      type: object
+      required:
+        - id
+        - title
+        - description
+        - introduces
+        - source
+      properties:
+        id:
+          type: string
+          description: Capability identifier
+        title:
+          type: string
+          description: Capability title
+        description:
+          type: string
+          description: Capability description
+        introduces:
+          type: array
+          items:
+            type: string
+          description: IDs of threats this capability introduces
+        source:
+          $ref: '#/components/schemas/EvidenceSource'
+
+    ThreatModelThreat:
+      type: object
+      required:
+        - id
+        - title
+        - description
+        - leverages
+        - addressedBy
+        - source
+      properties:
+        id:
+          type: string
+          description: Threat identifier
+        title:
+          type: string
+          description: Threat title
+        description:
+          type: string
+          description: Threat description
+        leverages:
+          type: array
+          items:
+            type: string
+          description: IDs of capabilities this threat leverages
+        addressedBy:
+          type: array
+          items:
+            type: string
+          description: IDs of controls addressing this threat
+        source:
+          $ref: '#/components/schemas/EvidenceSource'
+
+    ThreatModelControl:
+      type: object
+      required:
+        - id
+        - title
+        - objective
+        - applies
+        - assessmentRequirements
+        - source
+      properties:
+        id:
+          type: string
+          description: Control identifier
+        title:
+          type: string
+          description: Control title
+        objective:
+          type: string
+          description: Control objective
+        applies:
+          type: array
+          items:
+            type: string
+          description: IDs of guidance this control applies to (e.g., guide-nist-ia-2)
+        assessmentRequirements:
+          type: array
+          items:
+            type: string
+          description: Assessment requirement descriptions
+        source:
+          $ref: '#/components/schemas/EvidenceSource'
+
+    ThreatModelVector:
+      type: object
+      required:
+        - id
+        - title
+        - description
+      properties:
+        id:
+          type: string
+          description: Vector identifier
+        title:
+          type: string
+          description: Vector title
+        description:
+          type: string
+          description: Vector description
+
+    EvidenceSource:
+      type: object
+      required:
+        - logIndex
+        - digest
+        - publisher
+        - sealed
+      properties:
+        logIndex:
+          type: integer
+          format: int64
+          description: Transparency log index
+        digest:
+          type: string
+          description: Receipt digest
+        publisher:
+          $ref: '#/components/schemas/PublisherIdentity'
+        sealed:
+          type: string
+          format: date-time
+          description: Seal timestamp
+
+    PublisherIdentity:
+      type: object
+      required:
+        - issuer
+        - sub
+      properties:
+        issuer:
+          type: string
+          description: OIDC issuer URL
+        sub:
+          type: string
+          description: OIDC subject claim
+
+    EvidenceListResponse:
+      type: object
+      required:
+        - subjectId
+        - evidence
+      properties:
+        subjectId:
+          type: string
+          description: Subject identifier
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceItem'
+          description: Evidence items
+        nextCursor:
+          type: string
+          description: Pagination cursor for next page
+
+    EvidenceItem:
+      type: object
+      required:
+        - logIndex
+        - digest
+        - artifactType
+        - status
+        - publisher
+        - sealed
+      properties:
+        logIndex:
+          type: integer
+          format: int64
+          description: Transparency log index
+        digest:
+          type: string
+          description: Receipt digest
+        artifactType:
+          type: string
+          description: Type of artifact
+        status:
+          type: string
+          description: Processing status
+        publisher:
+          $ref: '#/components/schemas/PublisherIdentity'
+        sealed:
+          type: string
+          format: date-time
+          description: Seal timestamp
+
+    CoverageResponse:
+      type: object
+      required:
+        - subjectId
+        - catalog
+        - catalogType
+        - covered
+        - total
+        - controls
+      properties:
+        subjectId:
+          type: string
+          description: Subject identifier
+        catalog:
+          type: string
+          description: Catalog identifier
+        catalogType:
+          type: string
+          description: Type of catalog
+        covered:
+          type: integer
+          description: Number of covered controls
+        total:
+          type: integer
+          description: Total number of controls
+        controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/CoverageControl'
+          description: Coverage details per control
+
+    CoverageControl:
+      type: object
+      required:
+        - id
+        - title
+        - status
+      properties:
+        id:
+          type: string
+          description: Control identifier
+        title:
+          type: string
+          description: Control title
+        status:
+          type: string
+          enum: [covered, uncovered]
+          description: Coverage status
+        latestEvidence:
+          type: string
+          format: date-time
+          description: Timestamp of latest evidence for this control
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error message

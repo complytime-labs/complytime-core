@@ -23,6 +23,7 @@ var _ = BeforeSuite(func() {
 		"gateway":  gatewayURL("/healthz"),
 		"locker":   lockerURL("/healthz"),
 		"testjwks": testjwksURL("/healthz"),
+		"graph":    graphURL("/healthz"),
 	}
 
 	for name, url := range services {
