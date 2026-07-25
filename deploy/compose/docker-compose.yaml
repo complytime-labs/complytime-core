@@ -38,14 +38,19 @@ services:
       - NATS_URL=nats://nats:4222
       - JWT_ISSUERS=http://testjwks:8888
       - JWT_AUDIENCE=complytime-locker
+      - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
+      - OTEL_PROMETHEUS_PORT=9091
     volumes:
       - locker-data:/data/ledgers
     ports:
       - "8081:8081"
+      - "9091:9091"
     depends_on:
       nats:
         condition: service_healthy
       testjwks:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8081/healthz"]
@@ -62,14 +67,19 @@ services:
       - JWT_ISSUERS=http://testjwks:8888
       - JWT_AUDIENCE=complytime-gateway
       - GATEWAY_LISTEN_ADDR=:8080
+      - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
+      - OTEL_PROMETHEUS_PORT=9090
     ports:
       - "8080:8080"
+      - "9090:9090"
     depends_on:
       nats:
         condition: service_healthy
       locker:
         condition: service_healthy
       testjwks:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/healthz"]
@@ -116,6 +126,19 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8082/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  jaeger:
+    image: jaegertracing/jaeger:2
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:16687/"]
       interval: 10s
       timeout: 5s
       retries: 3

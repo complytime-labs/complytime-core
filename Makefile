@@ -1,5 +1,7 @@
 .PHONY: generate lint test build cedar-validate
 
+VERSION ?= dev
+
 generate:
 	go generate ./...
 
@@ -13,12 +15,12 @@ cedar-validate:
 	cedar validate --schema internal/authz/policies/base.cedarschema --policies internal/authz/policies/base.cedar
 
 build:
-	go build -o bin/locker ./cmd/locker
-	go build -o bin/gateway ./cmd/gateway
-	go build -o bin/graph ./cmd/graph
+	go build -ldflags="-X main.version=$(VERSION)" -o bin/locker ./cmd/locker
+	go build -ldflags="-X main.version=$(VERSION)" -o bin/gateway ./cmd/gateway
+	go build -ldflags="-X main.version=$(VERSION)" -o bin/graph ./cmd/graph
 
 .PHONY: build-fips
 build-fips:
-	GOFIPS140=latest go build -o bin/locker ./cmd/locker
-	GOFIPS140=latest go build -o bin/gateway ./cmd/gateway
-	GOFIPS140=latest go build -o bin/graph ./cmd/graph
+	GOFIPS140=latest go build -ldflags="-X main.version=$(VERSION)" -o bin/locker ./cmd/locker
+	GOFIPS140=latest go build -ldflags="-X main.version=$(VERSION)" -o bin/gateway ./cmd/gateway
+	GOFIPS140=latest go build -ldflags="-X main.version=$(VERSION)" -o bin/graph ./cmd/graph
