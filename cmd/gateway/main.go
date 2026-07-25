@@ -20,13 +20,24 @@ import (
 	eventspkg "github.com/complytime-labs/complytime-core/internal/events"
 	"github.com/complytime-labs/complytime-core/internal/gateway"
 	natsinfra "github.com/complytime-labs/complytime-core/internal/nats"
+	ctotel "github.com/complytime-labs/complytime-core/internal/otel"
 	"github.com/complytime-labs/complytime-core/internal/trust"
 )
 
+var version = "dev"
+
 func main() {
-	// Initialize logger
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	slog.SetDefault(logger)
+	ctx := context.Background()
+
+	// Initialize OTel (sets up slog bridge)
+	otelShutdown, err := ctotel.Init(ctx, ctotel.Config{
+		ServiceName:    "complytime-gateway",
+		ServiceVersion: version,
+	})
+	if err != nil {
+		slog.Error("failed to initialize otel", "error", err)
+		os.Exit(1)
+	}
 
 	// Read configuration from environment
 	natsURL := os.Getenv("NATS_URL")
@@ -51,8 +62,6 @@ func main() {
 	if listenAddr == "" {
 		listenAddr = ":8080"
 	}
-
-	ctx := context.Background()
 
 	// Connect to NATS
 	slog.Info("connecting to nats", "url", natsURL)
@@ -172,6 +181,9 @@ func main() {
 		slog.Error("server shutdown error", "error", err)
 		os.Exit(1)
 	}
+
+	// Flush OTel providers
+	otelShutdown(shutdownCtx)
 
 	// Drain NATS
 	if err := nc.Drain(); err != nil {
