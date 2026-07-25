@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/propagation"
 
 	"github.com/complytime-labs/complytime-core/events"
 	"github.com/complytime-labs/complytime-core/internal/authz"
@@ -205,6 +206,11 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 		ArtifactType:  artifactType,
 		ReceiptBytes:  receiptBytes,
 	}
+
+	// Inject trace context for worker span linking
+	carrier := propagation.MapCarrier{}
+	otel.GetTextMapPropagator().Inject(ctx, carrier)
+	ingestRef.TraceParent = carrier.Get("traceparent")
 
 	refBytes, err := json.Marshal(ingestRef)
 	if err != nil {

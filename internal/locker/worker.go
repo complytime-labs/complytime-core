@@ -9,7 +9,10 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go/jetstream"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/complytime-labs/complytime-core/events"
 	eventspkg "github.com/complytime-labs/complytime-core/internal/events"
@@ -124,9 +127,6 @@ func (w *Worker) processMessages(ctx context.Context, consumer jetstream.Consume
 func (w *Worker) handleMessage(ctx context.Context, msg jetstream.Msg) {
 	initTelemetry()
 
-	ctx, span := lockerTracer.Start(ctx, "locker.worker.process")
-	defer span.End()
-
 	// Deserialize IngestRef
 	var ref ingest.IngestRef
 	if err := json.Unmarshal(msg.Data(), &ref); err != nil {
@@ -134,6 +134,18 @@ func (w *Worker) handleMessage(ctx context.Context, msg jetstream.Msg) {
 		_ = msg.Term()
 		return
 	}
+
+	// Link to original ingest span if trace context is available
+	var opts []trace.SpanStartOption
+	if ref.TraceParent != "" {
+		carrier := propagation.MapCarrier{"traceparent": ref.TraceParent}
+		linkedCtx := otel.GetTextMapPropagator().Extract(context.Background(), carrier)
+		remoteSpan := trace.SpanFromContext(linkedCtx)
+		opts = append(opts, trace.WithLinks(trace.Link{SpanContext: remoteSpan.SpanContext()}))
+	}
+
+	ctx, span := lockerTracer.Start(ctx, "locker.worker.process", opts...)
+	defer span.End()
 
 	span.SetAttributes(
 		attribute.String("jobId", ref.JobID),
