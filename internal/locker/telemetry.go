@@ -1,6 +1,7 @@
 package locker
 
 import (
+	"log/slog"
 	"sync"
 
 	"go.opentelemetry.io/otel"
@@ -39,7 +40,7 @@ func initTelemetry() {
 			metric.WithDescription("Total seal operations by subject ID"),
 		)
 		if err != nil {
-			panic("failed to create locker.seal.total: " + err.Error())
+			slog.Error("failed to create locker.seal.total", "error", err)
 		}
 
 		sealDuration, err = lockerMeter.Float64Histogram("locker.seal.duration",
@@ -47,7 +48,7 @@ func initTelemetry() {
 			metric.WithUnit("s"),
 		)
 		if err != nil {
-			panic("failed to create locker.seal.duration: " + err.Error())
+			slog.Error("failed to create locker.seal.duration", "error", err)
 		}
 
 		// Fetch metrics
@@ -55,7 +56,7 @@ func initTelemetry() {
 			metric.WithDescription("Total fetch operations by subject ID"),
 		)
 		if err != nil {
-			panic("failed to create locker.fetch.total: " + err.Error())
+			slog.Error("failed to create locker.fetch.total", "error", err)
 		}
 
 		fetchDuration, err = lockerMeter.Float64Histogram("locker.fetch.duration",
@@ -63,7 +64,7 @@ func initTelemetry() {
 			metric.WithUnit("s"),
 		)
 		if err != nil {
-			panic("failed to create locker.fetch.duration: " + err.Error())
+			slog.Error("failed to create locker.fetch.duration", "error", err)
 		}
 
 		// Verify metrics
@@ -71,7 +72,7 @@ func initTelemetry() {
 			metric.WithDescription("Total verify operations by found status"),
 		)
 		if err != nil {
-			panic("failed to create locker.verify.total: " + err.Error())
+			slog.Error("failed to create locker.verify.total", "error", err)
 		}
 	})
 }

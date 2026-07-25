@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"log/slog"
 	"sync"
 
 	"go.opentelemetry.io/otel"
@@ -8,8 +9,8 @@ import (
 )
 
 var (
-	gwTracer metric.Meter
-	gwOnce   sync.Once
+	gwMeter metric.Meter
+	gwOnce  sync.Once
 
 	// Ingest metrics
 	ingestTotal    metric.Int64Counter
@@ -20,24 +21,24 @@ var (
 // Called once via sync.Once from handler methods that use metrics.
 func initTelemetry() {
 	gwOnce.Do(func() {
-		gwTracer = otel.Meter("complytime-gateway")
+		gwMeter = otel.Meter("complytime-gateway")
 
 		var err error
 
 		// Ingest metrics
-		ingestTotal, err = gwTracer.Int64Counter("gateway.ingest.total",
+		ingestTotal, err = gwMeter.Int64Counter("gateway.ingest.total",
 			metric.WithDescription("Total ingest requests by status and artifact type"),
 		)
 		if err != nil {
-			panic("failed to create gateway.ingest.total: " + err.Error())
+			slog.Error("failed to create gateway.ingest.total", "error", err)
 		}
 
-		ingestDuration, err = gwTracer.Float64Histogram("gateway.ingest.duration",
+		ingestDuration, err = gwMeter.Float64Histogram("gateway.ingest.duration",
 			metric.WithDescription("Ingest request duration by artifact type"),
 			metric.WithUnit("s"),
 		)
 		if err != nil {
-			panic("failed to create gateway.ingest.duration: " + err.Error())
+			slog.Error("failed to create gateway.ingest.duration", "error", err)
 		}
 	})
 }

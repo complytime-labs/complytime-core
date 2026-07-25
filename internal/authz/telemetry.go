@@ -1,6 +1,7 @@
 package authz
 
 import (
+	"log/slog"
 	"sync"
 
 	"go.opentelemetry.io/otel"
@@ -29,7 +30,7 @@ func initTelemetry() {
 			metric.WithDescription("Total Cedar authorization decisions by decision and action"),
 		)
 		if err != nil {
-			panic("failed to create cedar.decision.total: " + err.Error())
+			slog.Error("failed to create cedar.decision.total", "error", err)
 		}
 
 		cedarDuration, err = authzMeter.Float64Histogram("cedar.duration",
@@ -37,7 +38,7 @@ func initTelemetry() {
 			metric.WithUnit("s"),
 		)
 		if err != nil {
-			panic("failed to create cedar.duration: " + err.Error())
+			slog.Error("failed to create cedar.duration", "error", err)
 		}
 	})
 }

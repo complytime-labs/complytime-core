@@ -185,7 +185,9 @@ func main() {
 	}
 
 	// Flush OTel providers
-	otelShutdown(shutdownCtx)
+	if err := otelShutdown(shutdownCtx); err != nil {
+		slog.Error("OTel shutdown error", "error", err)
+	}
 
 	// Drain NATS
 	if err := nc.Drain(); err != nil {

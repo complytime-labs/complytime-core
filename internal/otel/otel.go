@@ -33,7 +33,7 @@ type Config struct {
 // Init initializes OTel providers (traces, metrics, logs) and starts the
 // Prometheus /metrics HTTP server. Returns a shutdown function that flushes
 // all providers. Safe to call shutdown multiple times.
-func Init(ctx context.Context, cfg Config) (func(context.Context), error) {
+func Init(ctx context.Context, cfg Config) (func(context.Context) error, error) {
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceNameKey.String(cfg.ServiceName),
@@ -45,6 +45,17 @@ func Init(ctx context.Context, cfg Config) (func(context.Context), error) {
 	}
 
 	var shutdownFuncs []func(context.Context) error
+
+	// Cleanup on error: if we return early with an error, call accumulated shutdowns
+	defer func() {
+		if err != nil {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			for _, fn := range shutdownFuncs {
+				_ = fn(cleanupCtx)
+			}
+		}
+	}()
 
 	// TracerProvider
 	var tp *sdktrace.TracerProvider
@@ -109,20 +120,71 @@ func Init(ctx context.Context, cfg Config) (func(context.Context), error) {
 
 	// LoggerProvider (otelslog bridge)
 	lp := sdklog.NewLoggerProvider(sdklog.WithResource(res))
-	handler := otelslog.NewHandler(cfg.ServiceName, otelslog.WithLoggerProvider(lp))
-	slog.SetDefault(slog.New(handler))
+	otelHandler := otelslog.NewHandler(cfg.ServiceName, otelslog.WithLoggerProvider(lp))
+	stdoutHandler := slog.NewJSONHandler(os.Stdout, nil)
+	multiHandler := newMultiHandler(otelHandler, stdoutHandler)
+	slog.SetDefault(slog.New(multiHandler))
 	shutdownFuncs = append(shutdownFuncs, lp.Shutdown)
 
 	var once sync.Once
-	shutdown := func(ctx context.Context) {
+	shutdown := func(ctx context.Context) error {
+		var shutdownErr error
 		once.Do(func() {
 			for _, fn := range shutdownFuncs {
 				if err := fn(ctx); err != nil {
 					slog.Error("otel shutdown error", "error", err)
+					if shutdownErr == nil {
+						shutdownErr = err
+					}
 				}
 			}
 		})
+		return shutdownErr
 	}
 
 	return shutdown, nil
+}
+
+// multiHandler is a slog.Handler that fans out to multiple handlers.
+type multiHandler struct {
+	handlers []slog.Handler
+}
+
+func newMultiHandler(handlers ...slog.Handler) *multiHandler {
+	return &multiHandler{handlers: handlers}
+}
+
+func (h *multiHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	for _, handler := range h.handlers {
+		if handler.Enabled(ctx, level) {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *multiHandler) Handle(ctx context.Context, record slog.Record) error {
+	var firstErr error
+	for _, handler := range h.handlers {
+		if err := handler.Handle(ctx, record); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func (h *multiHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	handlers := make([]slog.Handler, len(h.handlers))
+	for i, handler := range h.handlers {
+		handlers[i] = handler.WithAttrs(attrs)
+	}
+	return &multiHandler{handlers: handlers}
+}
+
+func (h *multiHandler) WithGroup(name string) slog.Handler {
+	handlers := make([]slog.Handler, len(h.handlers))
+	for i, handler := range h.handlers {
+		handlers[i] = handler.WithGroup(name)
+	}
+	return &multiHandler{handlers: handlers}
 }

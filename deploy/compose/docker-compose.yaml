@@ -131,7 +131,7 @@ services:
       retries: 3
 
   jaeger:
-    image: jaegertracing/jaeger:2
+    image: docker.io/jaegertracing/jaeger:2.9.0
     ports:
       - "16686:16686"
       - "4317:4317"

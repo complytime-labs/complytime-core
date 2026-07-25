@@ -1,6 +1,7 @@
 package trust
 
 import (
+	"log/slog"
 	"sync"
 
 	"go.opentelemetry.io/otel"
@@ -30,14 +31,14 @@ func initTelemetry() {
 			metric.WithUnit("s"),
 		)
 		if err != nil {
-			panic("failed to create trust.lookup.duration: " + err.Error())
+			slog.Error("failed to create trust.lookup.duration", "error", err)
 		}
 
 		trustRejectionTotal, err = trustMeter.Int64Counter("trust.rejection.total",
 			metric.WithDescription("Total trust rejections by subject ID"),
 		)
 		if err != nil {
-			panic("failed to create trust.rejection.total: " + err.Error())
+			slog.Error("failed to create trust.rejection.total", "error", err)
 		}
 	})
 }
