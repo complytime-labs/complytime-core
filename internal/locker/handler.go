@@ -9,6 +9,7 @@ import (
 
 	"github.com/cedar-policy/cedar-go"
 	"github.com/go-chi/chi/v5"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/complytime-labs/complytime-core/internal/authn"
 	"github.com/complytime-labs/complytime-core/internal/authz"
@@ -36,6 +37,8 @@ func NewHandler(lk *Locker, auth authn.Authenticator, policySet *cedar.PolicySet
 	}
 
 	r := chi.NewRouter()
+
+	r.Use(otelhttp.NewMiddleware("complytime-locker"))
 
 	// If auth is provided, apply auth+authz middleware to all routes except /healthz
 	if auth != nil {

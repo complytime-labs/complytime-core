@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/nats-io/nats.go/jetstream"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/complytime-labs/complytime-core/internal/authn"
 	"github.com/complytime-labs/complytime-core/internal/authz"
@@ -124,6 +125,7 @@ func main() {
 	r := chi.NewRouter()
 
 	// Global middleware
+	r.Use(otelhttp.NewMiddleware("complytime-gateway"))
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 
