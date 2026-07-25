@@ -9,6 +9,10 @@ import (
 	"strings"
 	"sync"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/complytime-labs/complytime-core/internal/subjects"
 )
 
@@ -124,6 +128,60 @@ func (lk *Locker) Subjects() []string {
 		subjects = append(subjects, id)
 	}
 	return subjects
+}
+
+// RegisterGauges registers async gauge callbacks for locker metrics.
+// Call this after OpenExistingLedgers during startup.
+func (lk *Locker) RegisterGauges(ctx context.Context) error {
+	meter := otel.Meter("complytime-locker")
+
+	// Register gauge for total ledger count
+	_, err := meter.Int64ObservableGauge("locker.ledger.count",
+		metric.WithDescription("Number of active ledgers"),
+		metric.WithInt64Callback(func(_ context.Context, o metric.Int64Observer) error {
+			lk.mu.RLock()
+			count := len(lk.ledgers)
+			lk.mu.RUnlock()
+			o.Observe(int64(count))
+			return nil
+		}),
+	)
+	if err != nil {
+		return fmt.Errorf("registering locker.ledger.count: %w", err)
+	}
+
+	// Register gauge for per-subject entry counts
+	_, err = meter.Int64ObservableGauge("locker.ledger.entries",
+		metric.WithDescription("Number of entries in each ledger by subject ID"),
+		metric.WithInt64Callback(func(callbackCtx context.Context, o metric.Int64Observer) error {
+			lk.mu.RLock()
+			subjects := make([]string, 0, len(lk.ledgers))
+			ledgers := make([]*Ledger, 0, len(lk.ledgers))
+			for subjectID, ledger := range lk.ledgers {
+				subjects = append(subjects, subjectID)
+				ledgers = append(ledgers, ledger)
+			}
+			lk.mu.RUnlock()
+
+			// Iterate outside the lock to avoid holding it during I/O
+			for i, ledger := range ledgers {
+				size, err := ledger.integratedSize(callbackCtx)
+				if err != nil {
+					// Log but don't fail the callback
+					slog.Warn("failed to get ledger size for gauge", "subject", subjects[i], "error", err)
+					continue
+				}
+				o.Observe(int64(size), metric.WithAttributes(attribute.String("subjectId", subjects[i])))
+			}
+			return nil
+		}),
+	)
+	if err != nil {
+		return fmt.Errorf("registering locker.ledger.entries: %w", err)
+	}
+
+	slog.Info("registered locker gauge callbacks")
+	return nil
 }
 
 // Close gracefully shuts down all ledgers.

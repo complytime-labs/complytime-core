@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go/jetstream"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/complytime-labs/complytime-core/events"
 	eventspkg "github.com/complytime-labs/complytime-core/internal/events"
@@ -121,6 +122,11 @@ func (w *Worker) processMessages(ctx context.Context, consumer jetstream.Consume
 
 // handleMessage processes a single IngestRef message.
 func (w *Worker) handleMessage(ctx context.Context, msg jetstream.Msg) {
+	initTelemetry()
+
+	ctx, span := lockerTracer.Start(ctx, "locker.worker.process")
+	defer span.End()
+
 	// Deserialize IngestRef
 	var ref ingest.IngestRef
 	if err := json.Unmarshal(msg.Data(), &ref); err != nil {
@@ -128,6 +134,11 @@ func (w *Worker) handleMessage(ctx context.Context, msg jetstream.Msg) {
 		_ = msg.Term()
 		return
 	}
+
+	span.SetAttributes(
+		attribute.String("jobId", ref.JobID),
+		attribute.String("subjectId", ref.SubjectID),
+	)
 
 	slog.Info("processing ingest job", "jobId", ref.JobID, "subjectId", ref.SubjectID)
 

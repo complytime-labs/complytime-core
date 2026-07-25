@@ -82,6 +82,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Register gauge callbacks for locker metrics
+	if err := lk.RegisterGauges(ctx); err != nil {
+		slog.Error("failed to register locker gauges", "error", err)
+		os.Exit(1)
+	}
+
 	// Connect to NATS
 	slog.Info("connecting to nats", "url", natsURL)
 	nc, err := natsinfra.Connect(natsURL)
