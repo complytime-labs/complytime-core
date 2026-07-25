@@ -7,6 +7,7 @@ import (
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	natsgo "github.com/nats-io/nats.go"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/complytime-labs/complytime-core/events"
 	natsinfra "github.com/complytime-labs/complytime-core/internal/nats"
@@ -25,6 +26,16 @@ func NewEventPublisher(nc *natsgo.Conn, source string) *EventPublisher {
 
 // PublishEvidenceIngested publishes a CloudEvent when evidence is ingested (before sealing).
 func (p *EventPublisher) PublishEvidenceIngested(ctx context.Context, data events.EvidenceIngestedData) error {
+	initTelemetry()
+
+	ctx, span := eventsTracer.Start(ctx, "events.publish")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("event.type", events.TypeEvidenceIngested),
+		attribute.String("subject.id", data.SubjectID),
+	)
+
 	event := cloudevents.NewEvent()
 	event.SetType(events.TypeEvidenceIngested)
 	event.SetSource(p.source)
@@ -48,6 +59,16 @@ func (p *EventPublisher) PublishEvidenceIngested(ctx context.Context, data event
 
 // PublishEvidenceSealed publishes a CloudEvent when evidence is sealed into the locker.
 func (p *EventPublisher) PublishEvidenceSealed(ctx context.Context, data events.EvidenceSealedData) error {
+	initTelemetry()
+
+	ctx, span := eventsTracer.Start(ctx, "events.publish")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("event.type", events.TypeEvidenceSealed),
+		attribute.String("subject.id", data.SubjectID),
+	)
+
 	event := cloudevents.NewEvent()
 	event.SetType(events.TypeEvidenceSealed)
 	event.SetSource(p.source)
@@ -71,6 +92,16 @@ func (p *EventPublisher) PublishEvidenceSealed(ctx context.Context, data events.
 
 // PublishSubjectRegistered publishes a CloudEvent when a subject is registered.
 func (p *EventPublisher) PublishSubjectRegistered(ctx context.Context, subjectID string) error {
+	initTelemetry()
+
+	ctx, span := eventsTracer.Start(ctx, "events.publish")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("event.type", events.TypeSubjectRegistered),
+		attribute.String("subject.id", subjectID),
+	)
+
 	event := cloudevents.NewEvent()
 	event.SetType(events.TypeSubjectRegistered)
 	event.SetSource(p.source)

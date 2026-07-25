@@ -5,8 +5,12 @@ import (
 	"embed"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/cedar-policy/cedar-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 //go:embed policies/*.cedar
@@ -103,6 +107,8 @@ func LoadEmbeddedPolicies() (*cedar.PolicySet, error) {
 func Middleware(ps *cedar.PolicySet, trustLookup TrustLookupFunc) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			initTelemetry()
+
 			ctx := r.Context()
 
 			// Extract principal from context
@@ -195,8 +201,25 @@ func Middleware(ps *cedar.PolicySet, trustLookup TrustLookupFunc) func(http.Hand
 				Context:   cedar.NewRecord(cedar.RecordMap{}),
 			}
 
+			// Start Cedar authorization span
+			cedarCtx, cedarSpan := otel.Tracer("complytime-authz").Start(ctx, "authz.cedar")
+			cedarStart := time.Now()
+
 			// Authorize
 			decision, diagnostic := cedar.Authorize(ps, entities, req)
+
+			// Record Cedar metrics and span attributes
+			cedarSpan.SetAttributes(
+				attribute.String("action", action.String()),
+				attribute.String("decision", decision.String()),
+			)
+			cedarSpan.End()
+			cedarDuration.Record(cedarCtx, time.Since(cedarStart).Seconds())
+			cedarDecisionTotal.Add(cedarCtx, 1, metric.WithAttributes(
+				attribute.String("decision", decision.String()),
+				attribute.String("action", action.String()),
+			))
+
 			if decision != cedar.Allow {
 				slog.Debug("Cedar authorization denied",
 					"principal", principal.String(),
