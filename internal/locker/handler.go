@@ -189,7 +189,7 @@ func (h *APIHandler) SealReceipt(w http.ResponseWriter, r *http.Request, subject
 	// Record metrics and span attributes
 	span.SetAttributes(
 		attribute.String("subjectId", subjectID),
-		attribute.Int64("logIndex", int64(idx)),
+		attribute.Int64("logIndex", int64(idx)), //nolint:gosec // G115: log indices won't exceed int64 max
 		attribute.String("contentDigest", digest),
 	)
 	sealTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("subjectId", subjectID)))
@@ -243,7 +243,7 @@ func (h *APIHandler) FetchReceipt(w http.ResponseWriter, r *http.Request, subjec
 	// Return raw binary data
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(receipt); err != nil {
+	if _, err := w.Write(receipt); err != nil { //nolint:gosec // G705: writing binary receipt bytes to API response, not HTML
 		// Log the error but can't change response at this point
 		return
 	}

@@ -22,7 +22,7 @@ func TestInit_NoExporter(t *testing.T) {
 		ServiceVersion: "v0.0.1-test",
 	})
 	require.NoError(t, err)
-	defer shutdown(context.Background())
+	defer func() { _ = shutdown(context.Background()) }()
 }
 
 func TestInit_PrometheusEndpoint(t *testing.T) {
@@ -34,7 +34,7 @@ func TestInit_PrometheusEndpoint(t *testing.T) {
 		ServiceVersion: "v0.0.1-test",
 	})
 	require.NoError(t, err)
-	defer shutdown(context.Background())
+	defer func() { _ = shutdown(context.Background()) }()
 
 	// The Prometheus endpoint should be reachable.
 	// When port is "0", Init picks an ephemeral port. We verify via the
@@ -57,8 +57,8 @@ func TestInit_ShutdownIdempotent(t *testing.T) {
 	// Calling shutdown twice should not panic or error
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	shutdown(ctx)
+	_ = shutdown(ctx)
 	assert.NotPanics(t, func() {
-		shutdown(ctx)
+		_ = shutdown(ctx)
 	})
 }

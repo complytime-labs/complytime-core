@@ -289,7 +289,7 @@ func (l *Loader) fetchArtifact(ctx context.Context, storageRef string) ([]byte, 
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	resp, err := l.httpClient.Do(req)
+	resp, err := l.httpClient.Do(req) //nolint:gosec // G704: URL is operator-configured locker endpoint, not user input
 	if err != nil {
 		return nil, fmt.Errorf("fetching from locker: %w", err)
 	}

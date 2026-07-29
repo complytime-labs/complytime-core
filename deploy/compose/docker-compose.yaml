@@ -134,6 +134,7 @@ services:
     image: docker.io/jaegertracing/jaeger:2.9.0
     ports:
       - "16686:16686"
+      - "16687:16687"
       - "4317:4317"
     environment:
       - COLLECTOR_OTLP_ENABLED=true

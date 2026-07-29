@@ -171,7 +171,7 @@ func (lk *Locker) RegisterGauges(ctx context.Context) error {
 					slog.Warn("failed to get ledger size for gauge", "subject", subjects[i], "error", err)
 					continue
 				}
-				o.Observe(int64(size), metric.WithAttributes(attribute.String("subjectId", subjects[i])))
+				o.Observe(int64(size), metric.WithAttributes(attribute.String("subjectId", subjects[i]))) //nolint:gosec // G115: ledger size won't exceed int64 max
 			}
 			return nil
 		}),
