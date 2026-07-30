@@ -176,7 +176,9 @@ func (l *Ledger) TesseraStoragePath() string {
 
 // Close gracefully shuts down the ledger's Tessera appender.
 func (l *Ledger) Close(ctx context.Context) error {
-	shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	// Tessera's shutdown waits for a final checkpoint to be published.
+	// The checkpoint interval is 10s, so allow enough time for that cycle.
+	shutdownCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	return l.shutdown(shutdownCtx)
 }
