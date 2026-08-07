@@ -35,11 +35,17 @@ services:
     environment:
       - LOCKER_DATA_PATH=/data/ledgers
       - LOCKER_LISTEN_ADDR=:8081
-      - NATS_URL=nats://nats:4222
-      - JWT_ISSUERS=http://testjwks:8888
+      - NATS_URL=nats://locker:locker-dev-password@nats:4222
+
       - JWT_AUDIENCE=complytime-locker
+      - OIDC_ISSUER=http://keycloak:8080/realms/complytime
+      - OIDC_CLIENT_ID=complytime
+      - OIDC_EXPECTED_ISSUER=http://localhost:8080/realms/complytime
+      - OIDC_GROUP_CLAIM=realm_access.roles
     volumes:
       - locker-data:/data/ledgers
+      - ./locker.yaml:/app/locker.yaml:ro
+    command: ["-config", "/app/locker.yaml"]
     ports:
       - "8081:8081"
     depends_on:
@@ -47,6 +53,9 @@ services:
         condition: service_healthy
       testjwks:
         condition: service_healthy
+      keycloak:
+        condition: service_healthy
+        required: false
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8081/healthz"]
       interval: 10s
@@ -58,12 +67,19 @@ services:
       context: ../..
       dockerfile: Dockerfile.gateway
     environment:
-      - NATS_URL=nats://nats:4222
-      - JWT_ISSUERS=http://testjwks:8888
+      - NATS_URL=nats://gateway:gateway-dev-password@nats:4222
+
       - JWT_AUDIENCE=complytime-gateway
       - GATEWAY_LISTEN_ADDR=:8080
+      - OIDC_ISSUER=http://keycloak:8080/realms/complytime
+      - OIDC_CLIENT_ID=complytime
+      - OIDC_EXPECTED_ISSUER=http://localhost:8080/realms/complytime
+      - OIDC_GROUP_CLAIM=realm_access.roles
+    volumes:
+      - ./gateway.yaml:/app/gateway.yaml:ro
+    command: ["-config", "/app/gateway.yaml"]
     ports:
-      - "8080:8080"
+      - "8090:8080"
     depends_on:
       nats:
         condition: service_healthy
@@ -71,6 +87,9 @@ services:
         condition: service_healthy
       testjwks:
         condition: service_healthy
+      keycloak:
+        condition: service_healthy
+        required: false
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/healthz"]
       interval: 10s
@@ -89,18 +108,46 @@ services:
       timeout: 5s
       retries: 3
 
+  token-init:
+    image: alpine:3.20
+    profiles:
+      - keycloak
+    volumes:
+      - service-tokens:/tokens
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - |
+        apk add --no-cache curl jq -q
+        TOKEN=$(curl -sf -X POST http://keycloak:8080/realms/complytime/protocol/openid-connect/token \
+          -H "Content-Type: application/x-www-form-urlencoded" \
+          -d "client_id=complytime-graph" \
+          -d "client_secret=complytime-graph-secret" \
+          -d "grant_type=client_credentials" \
+          -d "scope=complytime:audit" | jq -r '.access_token')
+        echo -n "$TOKEN" > /tokens/graph-token
+        echo "graph-token written ($(wc -c < /tokens/graph-token) bytes)"
+    networks:
+      - complytime
+
   graph:
     build:
       context: ../..
       dockerfile: Dockerfile.graph
     environment:
-      - NATS_URL=nats://nats:4222
+      - NATS_URL=nats://graph:graph-dev-password@nats:4222
       - LOCKER_URL=http://locker:8081
       - TOKEN_FILE=/tokens/graph-token
       - MEMGRAPH_URL=bolt://memgraph:7687
-      - JWT_ISSUERS=http://testjwks:8888
+
       - JWT_AUDIENCE=complytime-graph
       - GRAPH_LISTEN_ADDR=:8082
+      - OIDC_ISSUER=http://keycloak:8080/realms/complytime
+      - OIDC_CLIENT_ID=complytime
+      - OIDC_EXPECTED_ISSUER=http://localhost:8080/realms/complytime
     volumes:
       - service-tokens:/tokens:ro
     ports:
@@ -114,14 +161,56 @@ services:
         condition: service_healthy
       testjwks:
         condition: service_healthy
+      keycloak:
+        condition: service_healthy
+        required: false
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8082/healthz"]
       interval: 10s
       timeout: 5s
       retries: 3
 
+  memgraph-lab:
+    image: memgraph/lab:latest
+    profiles:
+      - demo
+    ports:
+      - "3000:3000"
+    environment:
+      - QUICK_CONNECT_MG_HOST=memgraph
+      - QUICK_CONNECT_MG_PORT=7687
+    depends_on:
+      memgraph:
+        condition: service_healthy
+    networks:
+      - complytime
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    profiles:
+      - keycloak
+    command: ["start-dev", "--import-realm"]
+    environment:
+      - KEYCLOAK_ADMIN=admin
+      - KEYCLOAK_ADMIN_PASSWORD=admin
+    volumes:
+      - ./keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
+    ports:
+      - "8080:8080"
+    networks:
+      - complytime
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /realms/complytime/.well-known/openid-configuration HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q 'issuer' <&3 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 30s
+
 volumes:
   nats-data:
   locker-data:
   service-tokens:
   memgraph-data:
+
+networks:
+  complytime:

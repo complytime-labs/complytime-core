@@ -1,0 +1,29 @@
+# Locker service configuration
+# See deploy/config/gateway.yaml for env var mapping rules.
+
+nats:
+  url: nats://localhost:4222
+
+locker:
+  listen:
+    addr: ":8081"
+  data:
+    path: /data/ledgers
+
+jwt:
+  audience: ""   # required — Env: JWT_AUDIENCE
+
+cedar:
+  policy:
+    dir: ""      # Env: CEDAR_POLICY_DIR
+
+oidc:
+  issuer: ""     # required — Env: OIDC_ISSUER
+  client:
+    id: ""       # required — Env: OIDC_CLIENT_ID
+  expected:
+    issuer: ""   # optional — Env: OIDC_EXPECTED_ISSUER
+
+issuers:
+  enabled: []   # Env: ISSUERS_ENABLED=github_actions,gitlab,gcp
+  custom: []

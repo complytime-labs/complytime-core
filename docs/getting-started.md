@@ -35,7 +35,9 @@ This starts three services:
 - **Locker** on port 8081 (internal)
 - **Gateway** on port 8080
 
-The gateway requires JWT configuration. For local development, set `JWT_ISSUERS` and `JWT_AUDIENCE` in the Compose environment.
+The gateway requires JWT configuration. Set `OIDC_ISSUER` to your IdP's URL.
+
+**Authorization** supports two models — Cedar policies accept either. For most deployments with a centrally managed IdP, set `OIDC_GROUP_CLAIM` to the dot-path of the group claim in the JWT (e.g., `realm_access.roles` for Keycloak) and assign users to recognized roles. This requires no IdP-side scope configuration. Alternatively, configure custom OAuth2 scopes (`complytime:admin`, `complytime:audit`) if your IdP supports it. See the [E2E testing guide](dev/e2e-testing.md#group-based-authorization) for details.
 
 ### Verify Services
 

@@ -1,0 +1,58 @@
+# Gateway service configuration
+# Precedence: --config flag value > env var > this file > built-in default.
+#
+# Env var mapping: uppercase with underscores → lowercase dot-separated.
+# Example: NATS_URL → nats.url, OIDC_ISSUER → oidc.issuer
+
+# NATS connection URL (default: nats://localhost:4222)
+nats:
+  url: nats://localhost:4222
+
+# Gateway HTTP listen address (default: :8080)
+gateway:
+  listen:
+    addr: ":8080"
+
+# JWT audience claim expected on all tokens (required, no default)
+# Env: JWT_AUDIENCE
+jwt:
+  audience: ""
+
+# Directory for operator-supplied Cedar policy files (optional)
+# Env: CEDAR_POLICY_DIR
+cedar:
+  policy:
+    dir: ""
+
+# OIDC human IdP — the only issuer that grants Admin/Publisher/Auditor roles.
+# Required. Env: OIDC_ISSUER
+oidc:
+  issuer: ""
+  # Keycloak client ID. Required. Env: OIDC_CLIENT_ID
+  client:
+    id: ""
+  # Optional: override iss claim validation when internal Keycloak address
+  # differs from the token issuer (split-brain compose). Env: OIDC_EXPECTED_ISSUER
+  expected:
+    issuer: ""
+
+issuers:
+  # Built-in public CI/cloud issuers. Enable by shortname.
+  # Valid shortnames: github_actions, gitlab, gcp
+  # Env: ISSUERS_ENABLED=github_actions,gitlab
+  enabled: []
+
+  # Custom OIDC issuers registered at startup. YAML-only (no env var equivalent).
+  # type determines ValidateTrustEntry sub-format validation:
+  #   github → repo:owner/repo:filter:value
+  #   gitlab → project_path:group/project:ref_type:branch|tag:ref:name
+  #   gcp    → GCP workload identity or service account format
+  #   oidc   → any non-empty sub (generic)
+  custom: []
+  # custom:
+  #   - url: https://github.example.com
+  #     type: github
+  #   - url: https://gitlab.internal.com
+  #     type: gitlab
+  #   - url: https://oidc.example.com
+  #     type: oidc
