@@ -86,7 +86,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Write service tokens
+	// Write service tokens for internal services that authenticate via testjwks.
+	// graph-token is intentionally excluded: the graph loader uses a Keycloak
+	// service account token (complytime-graph client, complytime:audit scope)
+	// written by the token-init compose service at stack startup.
 	tokens := []struct {
 		filename string
 		sub      string
@@ -95,7 +98,6 @@ func main() {
 		service  bool
 	}{
 		{"gateway-token", "gateway-worker", "complytime-locker", true, true},
-		{"graph-token", "graph-loader", "complytime-locker", false, true},
 	}
 
 	for _, t := range tokens {
@@ -134,6 +136,7 @@ func main() {
 			Admin    bool     `json:"admin"`
 			Service  bool     `json:"service"`
 			TTL      string   `json:"ttl"`
+			Groups   []string `json:"groups"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -157,15 +160,18 @@ func main() {
 			ttl = parsed
 		}
 
-		tok, err := jwt.NewBuilder().
+		b := jwt.NewBuilder().
 			Issuer(issuerURL).
 			Subject(req.Sub).
 			Audience(req.Audience).
 			IssuedAt(time.Now()).
 			Expiration(time.Now().Add(ttl)).
 			Claim("admin", req.Admin).
-			Claim("service", req.Service).
-			Build()
+			Claim("service", req.Service)
+		if len(req.Groups) > 0 {
+			b = b.Claim("groups", req.Groups)
+		}
+		tok, err := b.Build()
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to build token: %v", err), http.StatusInternalServerError)
 			return

@@ -2,12 +2,11 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"flag"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -16,32 +15,35 @@ import (
 
 	"github.com/complytime-labs/complytime-core/internal/authn"
 	"github.com/complytime-labs/complytime-core/internal/authz"
+	appconfig "github.com/complytime-labs/complytime-core/internal/config"
 	"github.com/complytime-labs/complytime-core/internal/graph"
 	natsinfra "github.com/complytime-labs/complytime-core/internal/nats"
 )
 
 func main() {
-	// Required env vars
-	natsURL := requireEnv("NATS_URL")
-	lockerURL := requireEnv("LOCKER_URL")
-	tokenFile := requireEnv("TOKEN_FILE")
-	memgraphURL := requireEnv("MEMGRAPH_URL")
-	jwtIssuers := requireEnv("JWT_ISSUERS")
-	jwtAudience := requireEnv("JWT_AUDIENCE")
-
-	listenAddr := os.Getenv("GRAPH_LISTEN_ADDR")
-	if listenAddr == "" {
-		listenAddr = ":8082"
-	}
-
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
+
+	flags := flag.NewFlagSet("graph", flag.ExitOnError)
+	configPath := flags.String("config", "", "path to YAML config file")
+	flags.Parse(os.Args[1:]) //nolint:errcheck // ExitOnError never returns an error
+
+	k, err := appconfig.Load(*configPath, flags)
+	if err != nil {
+		slog.Error("failed to load configuration", "error", err)
+		os.Exit(1)
+	}
+
+	cfg, err := graph.LoadGraphConfig(k)
+	if err != nil {
+		slog.Error("invalid configuration", "error", err)
+		os.Exit(1)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Connect to Memgraph
-	driver, err := neo4j.NewDriverWithContext(memgraphURL, neo4j.NoAuth())
+	driver, err := neo4j.NewDriverWithContext(cfg.MemgraphURL, neo4j.NoAuth())
 	if err != nil {
 		slog.Error("failed to connect to memgraph", "error", err)
 		os.Exit(1)
@@ -50,8 +52,7 @@ func main() {
 
 	writer := graph.NewWriter(driver)
 
-	// Connect to NATS
-	nc, err := natsinfra.Connect(natsURL)
+	nc, err := natsinfra.Connect(cfg.NatsURL)
 	if err != nil {
 		slog.Error("failed to connect to nats", "error", err)
 		os.Exit(1)
@@ -69,29 +70,28 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create locker HTTP client with auth
-	tokenSource := authn.NewFileTokenSource(tokenFile)
+	tokenSource := authn.NewFileTokenSource(cfg.TokenFile)
 	lockerClient := &http.Client{
 		Transport: authn.NewTokenTransport(tokenSource, http.DefaultTransport),
 		Timeout:   30 * time.Second,
 	}
 
-	// Start loader
-	loader := graph.NewLoader(js, writer, lockerURL, lockerClient)
+	loader := graph.NewLoader(js, writer, cfg.LockerURL, lockerClient)
 	if err := loader.Start(ctx); err != nil {
 		slog.Error("failed to start loader", "error", err)
 		os.Exit(1)
 	}
 
-	// Set up HTTP server
-	issuerList := strings.Split(jwtIssuers, ",")
-	auth, err := authn.NewJWTAuthenticator(ctx, issuerList, jwtAudience)
+	primary, publishers, err := appconfig.BuildIssuers(ctx, cfg.Issuers)
 	if err != nil {
-		slog.Error("failed to create jwt authenticator", "error", err)
+		slog.Error("failed to build issuers", "error", err)
 		os.Exit(1)
 	}
 
-	policySet, err := authz.LoadEmbeddedPolicies()
+	// Graph service has no trust store — no JWK store or JTI store.
+	auth := authn.NewIssuerRegistry(primary, publishers, nil, nil, cfg.JWTAudience)
+
+	policySet, err := authz.LoadEmbeddedPolicies(cfg.CedarPolicyDir)
 	if err != nil {
 		slog.Error("failed to load cedar policies", "error", err)
 		os.Exit(1)
@@ -99,7 +99,7 @@ func main() {
 
 	handler := graph.NewHandler(writer, auth, policySet)
 	server := &http.Server{
-		Addr:              listenAddr,
+		Addr:              cfg.ListenAddr,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
@@ -107,7 +107,7 @@ func main() {
 	}
 
 	go func() {
-		slog.Info("graph service starting", "addr", listenAddr)
+		slog.Info("graph service starting", "addr", cfg.ListenAddr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("http server error", "error", err)
 		}
@@ -124,13 +124,4 @@ func main() {
 	if err := loader.Stop(); err != nil {
 		slog.Error("loader stop failed", "error", err)
 	}
-}
-
-func requireEnv(key string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		fmt.Fprintf(os.Stderr, "%s is required\n", key)
-		os.Exit(1)
-	}
-	return v
 }
