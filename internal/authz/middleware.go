@@ -3,8 +3,12 @@ package authz
 import (
 	"context"
 	"embed"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/cedar-policy/cedar-go"
 )
@@ -33,23 +37,46 @@ func SetPublisherContext(ctx context.Context, issuer, sub string) context.Contex
 	return ctx
 }
 
-// SetAdminContext adds admin flag to the context.
-// The JWT middleware can call this if the JWT claims include an admin flag.
-func SetAdminContext(ctx context.Context, isAdmin bool) context.Context {
-	return context.WithValue(ctx, contextKey("admin"), isAdmin)
+const publisherFlagKey contextKey = "publisher_flag"
+
+func SetPublisherFlagContext(ctx context.Context, isPublisher bool) context.Context {
+	return context.WithValue(ctx, publisherFlagKey, isPublisher)
 }
 
-const serviceKey contextKey = "service"
-
-func SetServiceContext(ctx context.Context, isService bool) context.Context {
-	return context.WithValue(ctx, serviceKey, isService)
-}
-
-func GetService(ctx context.Context) bool {
-	if v, ok := ctx.Value(serviceKey).(bool); ok {
+func GetPublisherFlag(ctx context.Context) bool {
+	if v, ok := ctx.Value(publisherFlagKey).(bool); ok {
 		return v
 	}
 	return false
+}
+
+const scopesKey contextKey = "scopes"
+
+// SetScopesContext adds OAuth2 scopes to the context.
+// The JWT middleware will call this after extracting scopes from the JWT.
+func SetScopesContext(ctx context.Context, scopes []string) context.Context {
+	return context.WithValue(ctx, scopesKey, scopes)
+}
+
+func GetScopes(ctx context.Context) []string {
+	if v, ok := ctx.Value(scopesKey).([]string); ok {
+		return v
+	}
+	return nil
+}
+
+const groupsKey contextKey = "groups"
+
+// SetGroupsContext adds IdP group memberships to the context.
+func SetGroupsContext(ctx context.Context, groups []string) context.Context {
+	return context.WithValue(ctx, groupsKey, groups)
+}
+
+func GetGroups(ctx context.Context) []string {
+	if v, ok := ctx.Value(groupsKey).([]string); ok {
+		return v
+	}
+	return nil
 }
 
 // GetPublisher retrieves publisher identity from the context.
@@ -79,16 +106,44 @@ func GetSubjectID(ctx context.Context) string {
 	return ""
 }
 
-// LoadEmbeddedPolicies reads the embedded Cedar policy files and returns a PolicySet.
-func LoadEmbeddedPolicies() (*cedar.PolicySet, error) {
+// LoadEmbeddedPolicies reads the embedded Cedar base policy and merges
+// any *.cedar files from policyDir (if non-empty) into one PolicySet.
+func LoadEmbeddedPolicies(policyDir string) (*cedar.PolicySet, error) {
 	data, err := policiesFS.ReadFile("policies/base.cedar")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading embedded base.cedar: %w", err)
 	}
 
 	ps, err := cedar.NewPolicySetFromBytes("base.cedar", data)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing base.cedar: %w", err)
+	}
+
+	if policyDir == "" {
+		return ps, nil
+	}
+
+	entries, err := os.ReadDir(policyDir)
+	if err != nil {
+		return nil, fmt.Errorf("reading CEDAR_POLICY_DIR %s: %w", policyDir, err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".cedar") {
+			continue
+		}
+		path := filepath.Join(policyDir, entry.Name())
+		fileData, err := os.ReadFile(path) //nolint:gosec // G304: path validated above
+		if err != nil {
+			return nil, fmt.Errorf("reading %s: %w", path, err)
+		}
+		extra, err := cedar.NewPolicySetFromBytes(entry.Name(), fileData)
+		if err != nil {
+			return nil, fmt.Errorf("parsing %s: %w", path, err)
+		}
+		for id, policy := range extra.Map() {
+			ps.Add(id, policy)
+		}
 	}
 
 	return ps, nil
@@ -126,13 +181,10 @@ func Middleware(ps *cedar.PolicySet, trustLookup TrustLookupFunc) func(http.Hand
 			if subjectID == "" {
 				// Admin actions and read operations can proceed without a subject ID.
 				// Admin: the subject may not exist yet. Read: job status is not subject-scoped.
-				// Locker manage: ledger create doesn't have a subject ID yet.
-				// Locker seal/verify: evidence operations don't require subject ID extraction.
 				// Query: graph service routes carry subject ID in URL path, not context header.
 				// The resource will be a placeholder and Cedar checks admin flag or permits reads.
-				if action == ActionRegisterSubject || action == ActionModifyTrust ||
-					action == ActionReadEvidence || action == ActionManageLedger ||
-					action == ActionSealEvidence || action == ActionVerifyEvidence ||
+				if action == ActionRequestRegistration || action == ActionRequestTrustModification ||
+					action == ActionReadEvidence || action == ActionVerifyEvidence ||
 					action == ActionQueryEvidence {
 					subjectID = "*"
 				} else {
@@ -143,9 +195,8 @@ func Middleware(ps *cedar.PolicySet, trustLookup TrustLookupFunc) func(http.Hand
 
 			// Look up trust status (skip for actions where subject may not exist or isn't relevant)
 			trusted := false
-			if action != ActionRegisterSubject && action != ActionModifyTrust &&
-				action != ActionReadEvidence && action != ActionManageLedger &&
-				action != ActionSealEvidence && action != ActionVerifyEvidence &&
+			if action != ActionRequestRegistration && action != ActionRequestTrustModification &&
+				action != ActionReadEvidence && action != ActionVerifyEvidence &&
 				action != ActionQueryEvidence {
 				if trustLookup != nil {
 					var err error
@@ -161,24 +212,28 @@ func Middleware(ps *cedar.PolicySet, trustLookup TrustLookupFunc) func(http.Hand
 			principal := PrincipalFromJWT(issuer, sub)
 			resource := SubjectResource(subjectID)
 
-			// For admin actions, check if publisher has admin flag
-			// In production, this would come from JWT claims or an admin registry
-			// For now, we check the context for an admin flag set by the JWT middleware
-			isAdmin := false
-			if adminVal := ctx.Value(contextKey("admin")); adminVal != nil {
-				if adminBool, ok := adminVal.(bool); ok {
-					isAdmin = adminBool
-				}
+			isPublisher := GetPublisherFlag(ctx)
+			rawScopes := GetScopes(ctx)
+			cedarScopes := make([]cedar.Value, len(rawScopes))
+			for i, s := range rawScopes {
+				cedarScopes[i] = cedar.String(s)
 			}
 
-			isService := GetService(ctx)
+			rawGroups := GetGroups(ctx)
+			cedarGroups := make([]cedar.Value, len(rawGroups))
+			for i, g := range rawGroups {
+				cedarGroups[i] = cedar.String(g)
+			}
 
 			entities := cedar.EntityMap{
 				principal: cedar.Entity{
 					UID: principal,
 					Attributes: cedar.NewRecord(cedar.RecordMap{
-						"admin":   cedar.Boolean(isAdmin),
-						"service": cedar.Boolean(isService),
+						"publisher": cedar.Boolean(isPublisher),
+						"scopes":    cedar.NewSet(cedarScopes...),
+						"groups":    cedar.NewSet(cedarGroups...),
+						"issuer":    cedar.String(issuer),
+						"sub":       cedar.String(sub),
 					}),
 				},
 				resource: cedar.Entity{
@@ -198,11 +253,13 @@ func Middleware(ps *cedar.PolicySet, trustLookup TrustLookupFunc) func(http.Hand
 			// Authorize
 			decision, diagnostic := cedar.Authorize(ps, entities, req)
 			if decision != cedar.Allow {
-				slog.Debug("Cedar authorization denied",
+				slog.Warn("Cedar authorization denied",
 					"principal", principal.String(),
 					"action", action.String(),
 					"resource", resource.String(),
 					"decision", decision.String(),
+					"scopes", rawScopes,
+					"groups", rawGroups,
 					"reasons", diagnostic.Reasons,
 					"errors", diagnostic.Errors)
 				http.Error(w, "Forbidden", http.StatusForbidden)
@@ -210,6 +267,10 @@ func Middleware(ps *cedar.PolicySet, trustLookup TrustLookupFunc) func(http.Hand
 			}
 
 			// Authorization passed
+			slog.Info("Cedar authorization allowed",
+				"principal", principal.String(),
+				"action", action.String(),
+				"resource", resource.String())
 			next.ServeHTTP(w, r)
 		})
 	}

@@ -9,6 +9,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -25,6 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/complytime-labs/complytime-core/internal/authn"
+	"github.com/complytime-labs/complytime-core/internal/authn/publisher"
 	"github.com/complytime-labs/complytime-core/internal/authz"
 	eventspkg "github.com/complytime-labs/complytime-core/internal/events"
 	"github.com/complytime-labs/complytime-core/internal/gateway"
@@ -32,6 +34,21 @@ import (
 	natsinfra "github.com/complytime-labs/complytime-core/internal/nats"
 	"github.com/complytime-labs/complytime-core/internal/trust"
 )
+
+// stubOIDCIssuer is a no-op primary OIDC issuer for integration tests.
+// Test tokens are publisher-class and never route through here.
+type stubOIDCIssuer struct{ url string }
+
+func (s *stubOIDCIssuer) URL() string { return s.url }
+func (s *stubOIDCIssuer) Authenticate(_ context.Context, _, _ string) (*authn.Principal, error) {
+	return nil, fmt.Errorf("stub OIDC issuer: no authentication in tests")
+}
+func (s *stubOIDCIssuer) ValidateTrustEntry(sub string) error {
+	if sub == "" {
+		return fmt.Errorf("sub required")
+	}
+	return nil
+}
 
 // TestGatewayIngest tests the simplified gateway flow:
 // - Submit artifact → get 202 with jobId
@@ -75,14 +92,14 @@ func TestGatewayIngest(t *testing.T) {
 
 	eventPublisher := eventspkg.NewEventPublisher(nc, "complytime-test")
 
-	policySet, err := authz.LoadEmbeddedPolicies()
+	policySet, err := authz.LoadEmbeddedPolicies("")
 	require.NoError(t, err)
 
 	// Load Gemara schemas
 	schemas, err := gateway.NewSchemaRegistry()
 	require.NoError(t, err)
 
-	gwHandler := gateway.NewHandler(trustStore, js, eventPublisher, schemas)
+	gwHandler := gateway.NewHandler(trustStore, js, nc, eventPublisher, schemas)
 
 	// Build gateway router
 	r := chi.NewRouter()
@@ -182,14 +199,14 @@ func TestGatewayDSSE(t *testing.T) {
 
 	eventPublisher := eventspkg.NewEventPublisher(nc, "complytime-test")
 
-	policySet, err := authz.LoadEmbeddedPolicies()
+	policySet, err := authz.LoadEmbeddedPolicies("")
 	require.NoError(t, err)
 
 	// Load Gemara schemas
 	schemas, err := gateway.NewSchemaRegistry()
 	require.NoError(t, err)
 
-	gwHandler := gateway.NewHandler(trustStore, js, eventPublisher, schemas)
+	gwHandler := gateway.NewHandler(trustStore, js, nc, eventPublisher, schemas)
 
 	// Build gateway router
 	r := chi.NewRouter()
@@ -266,13 +283,14 @@ func startEmbeddedNATS(t *testing.T) (*server.Server, jetstream.JetStream) {
 	return ns, js
 }
 
-func createTestJWTAuth(t *testing.T) (*ecdsa.PrivateKey, *authn.JWTAuthenticator, string) {
+func createTestJWTAuth(t *testing.T) (*ecdsa.PrivateKey, *authn.IssuerRegistry, string) {
 	t.Helper()
 
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 
-	// Serve JWKS
+	// JWKS server for the publisher-class test issuer.
+	// publisher.NewGenericOIDCIssuer fetches <url>/.well-known/jwks.json directly.
 	jwks := jwk.NewSet()
 	key, err := jwk.Import(privateKey.Public())
 	require.NoError(t, err)
@@ -284,16 +302,21 @@ func createTestJWTAuth(t *testing.T) (*ecdsa.PrivateKey, *authn.JWTAuthenticator
 		if r.URL.Path == "/.well-known/jwks.json" {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(jwks)
-		} else {
-			http.NotFound(w, r)
+			return
 		}
+		http.NotFound(w, r)
 	}))
 	t.Cleanup(jwksServer.Close)
 
-	auth, err := authn.NewJWTAuthenticator(context.Background(), []string{jwksServer.URL}, "complytime-gateway")
+	// Publisher-class issuer: tokens from this URL get Publisher=true via registry dispatch.
+	pubIssuer, err := publisher.NewGenericOIDCIssuer(context.Background(), jwksServer.URL)
 	require.NoError(t, err)
 
-	return privateKey, auth, jwksServer.URL
+	// Stub primary OIDC issuer at a different URL — test tokens never route here.
+	primary := &stubOIDCIssuer{url: "https://mock-primary.example.com"}
+
+	registry := authn.NewIssuerRegistry(primary, []publisher.PublisherIssuer{pubIssuer}, nil, nil, "complytime-gateway")
+	return privateKey, registry, jwksServer.URL
 }
 
 func createTestJWT(t *testing.T, privateKey *ecdsa.PrivateKey, issuer, sub string) string {

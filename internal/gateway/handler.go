@@ -9,10 +9,12 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+	natsgo "github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/oapi-codegen/runtime/types"
 
 	"github.com/complytime-labs/complytime-core/events"
+	"github.com/complytime-labs/complytime-core/internal/authn"
 	"github.com/complytime-labs/complytime-core/internal/authz"
 	eventspkg "github.com/complytime-labs/complytime-core/internal/events"
 	"github.com/complytime-labs/complytime-core/internal/gateway/receipt"
@@ -37,23 +39,33 @@ const (
 type GatewayHandler struct {
 	trustStore     *trust.TrustStore
 	js             jetstream.JetStream
+	nc             *natsgo.Conn
 	eventPublisher *eventspkg.EventPublisher
 	schemas        *SchemaRegistry
+	registry       *authn.IssuerRegistry
 }
 
 // NewHandler creates a new GatewayHandler with dependencies.
 func NewHandler(
 	trustStore *trust.TrustStore,
 	js jetstream.JetStream,
+	nc *natsgo.Conn,
 	eventPublisher *eventspkg.EventPublisher,
 	schemas *SchemaRegistry,
 ) *GatewayHandler {
 	return &GatewayHandler{
 		trustStore:     trustStore,
 		js:             js,
+		nc:             nc,
 		eventPublisher: eventPublisher,
 		schemas:        schemas,
 	}
+}
+
+// WithRegistry sets the IssuerRegistry for trust-entry validation.
+func (h *GatewayHandler) WithRegistry(registry *authn.IssuerRegistry) *GatewayHandler {
+	h.registry = registry
+	return h
 }
 
 // IngestArtifact handles POST /api/ingest

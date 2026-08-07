@@ -3,8 +3,6 @@ package locker
 import (
 	"encoding/json"
 	"errors"
-	"io"
-	"log/slog"
 	"net/http"
 
 	"github.com/cedar-policy/cedar-go"
@@ -13,8 +11,6 @@ import (
 	"github.com/complytime-labs/complytime-core/internal/authn"
 	"github.com/complytime-labs/complytime-core/internal/authz"
 	eventspkg "github.com/complytime-labs/complytime-core/internal/events"
-	"github.com/complytime-labs/complytime-core/internal/gateway/receipt"
-	"github.com/complytime-labs/complytime-core/internal/subjects"
 	"github.com/complytime-labs/complytime-core/internal/trust"
 )
 
@@ -85,41 +81,6 @@ func (h *APIHandler) ListLedgers(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, resp)
 }
 
-// CreateLedger creates a new ledger for a subject.
-func (h *APIHandler) CreateLedger(w http.ResponseWriter, r *http.Request) {
-	var req CreateLedgerRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	if req.SubjectId == "" {
-		respondError(w, http.StatusBadRequest, "subjectId is required")
-		return
-	}
-
-	if err := subjects.ValidateSubjectID(req.SubjectId); err != nil {
-		respondError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	ledger, err := h.locker.CreateLedger(r.Context(), req.SubjectId)
-	if err != nil {
-		if errors.Is(err, ErrLedgerExists) {
-			respondError(w, http.StatusConflict, err.Error())
-			return
-		}
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	resp := LedgerInfo{
-		SubjectId:   ledger.SubjectID(),
-		VerifierKey: ledger.VerifierKey(),
-	}
-	respondJSON(w, http.StatusCreated, resp)
-}
-
 // GetLedger returns information about a specific ledger.
 func (h *APIHandler) GetLedger(w http.ResponseWriter, r *http.Request, subjectID string) {
 	ledger, ok := h.locker.GetLedger(subjectID)
@@ -133,43 +94,6 @@ func (h *APIHandler) GetLedger(w http.ResponseWriter, r *http.Request, subjectID
 		VerifierKey: ledger.VerifierKey(),
 	}
 	respondJSON(w, http.StatusOK, resp)
-}
-
-// SealReceipt seals a receipt in the ledger.
-func (h *APIHandler) SealReceipt(w http.ResponseWriter, r *http.Request, subjectID string) {
-	ledger, ok := h.locker.GetLedger(subjectID)
-	if !ok {
-		respondError(w, http.StatusNotFound, "ledger not found")
-		return
-	}
-
-	// Limit request body size to 4MB (matching NATS max message size)
-	r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
-
-	// Read raw binary data from request body
-	receiptData, err := io.ReadAll(r.Body)
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "failed to read request body")
-		return
-	}
-
-	if len(receiptData) == 0 {
-		respondError(w, http.StatusBadRequest, "receipt is required")
-		return
-	}
-
-	idx, err := ledger.Seal(r.Context(), receiptData)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	digest := SHA256Hex(receiptData)
-	resp := SealResponse{
-		Index:  int64(idx), //nolint:gosec // G115: log indices won't exceed int64 max
-		Digest: digest,
-	}
-	respondJSON(w, http.StatusCreated, resp)
 }
 
 // FetchReceipt retrieves a sealed receipt by index.
@@ -233,143 +157,6 @@ func (h *APIHandler) VerifyReceipt(w http.ResponseWriter, r *http.Request, subje
 // HealthCheck returns the service health status.
 func (h *APIHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-}
-
-// RegisterSubject handles POST /admin/subjects
-func (h *APIHandler) RegisterSubject(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	// Parse request body
-	var req SubjectRegistrationRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	// Validate required fields
-	if req.SubjectId == "" {
-		respondError(w, http.StatusBadRequest, "missing subjectId")
-		return
-	}
-	if err := subjects.ValidateSubjectID(req.SubjectId); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid subjectId")
-		return
-	}
-	if len(req.TrustedPublishers) == 0 {
-		respondError(w, http.StatusBadRequest, "at least one trusted publisher required")
-		return
-	}
-
-	// Create ledger (direct call, no HTTP)
-	ledger, err := h.locker.CreateLedger(ctx, req.SubjectId)
-	if err != nil {
-		if errors.Is(err, ErrLedgerExists) {
-			respondError(w, http.StatusConflict, err.Error())
-			return
-		}
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	// Wrap registration as a receipt
-	regData := map[string]interface{}{
-		"subjectId":         req.SubjectId,
-		"trustedPublishers": req.TrustedPublishers,
-	}
-	regBytes, err := json.Marshal(regData)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to marshal registration")
-		return
-	}
-
-	// Use authenticated caller as the one performing registration
-	issuer, sub := authz.GetPublisher(ctx)
-	publisher := receipt.Publisher{
-		Issuer: issuer,
-		Sub:    sub,
-	}
-
-	receiptBytes, err := receipt.Wrap(regBytes, publisher, req.SubjectId, "subject-registration")
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to wrap registration receipt")
-		return
-	}
-
-	// Seal registration receipt (direct call)
-	_, err = ledger.Seal(ctx, receiptBytes)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to seal registration")
-		return
-	}
-
-	// Update trust store
-	trustEntries := make([]trust.TrustEntry, len(req.TrustedPublishers))
-	for i, tp := range req.TrustedPublishers {
-		trustEntries[i] = trust.TrustEntry(tp)
-	}
-
-	if err := h.trustStore.SetPublisherTrust(ctx, req.SubjectId, trustEntries); err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to update trust store")
-		return
-	}
-
-	// Register subject in subject registry
-	if err := h.trustStore.RegisterSubject(ctx, req.SubjectId); err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to register subject")
-		return
-	}
-
-	// Publish CloudEvent
-	if err := h.events.PublishSubjectRegistered(ctx, req.SubjectId); err != nil {
-		// Log error but don't fail the request
-		slog.Warn("failed to publish subject.registered event", "error", err, "subjectId", SanitizeLogValue(req.SubjectId))
-	}
-
-	// Return 201
-	respondJSON(w, http.StatusCreated, SubjectRegistrationResponse{
-		SubjectId: req.SubjectId,
-	})
-}
-
-// ModifyTrust handles PUT /admin/subjects/{subjectId}/trust
-func (h *APIHandler) ModifyTrust(w http.ResponseWriter, r *http.Request, subjectID string) {
-	ctx := r.Context()
-
-	// Parse request body
-	var req ModifyTrustRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	// Validate subject ID
-	if err := subjects.ValidateSubjectID(subjectID); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid subjectId")
-		return
-	}
-
-	// Verify subject exists
-	_, ok := h.locker.GetLedger(subjectID)
-	if !ok {
-		respondError(w, http.StatusNotFound, "subject not found")
-		return
-	}
-
-	// Update trust store
-	trustEntries := make([]trust.TrustEntry, len(req.TrustedPublishers))
-	for i, tp := range req.TrustedPublishers {
-		trustEntries[i] = trust.TrustEntry(tp)
-	}
-
-	if err := h.trustStore.SetPublisherTrust(ctx, subjectID, trustEntries); err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to update trust store")
-		return
-	}
-
-	// Return 200
-	respondJSON(w, http.StatusOK, ModifyTrustResponse{
-		SubjectId: subjectID,
-	})
 }
 
 // Helper functions

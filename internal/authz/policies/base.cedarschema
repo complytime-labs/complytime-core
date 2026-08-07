@@ -1,6 +1,8 @@
 entity Publisher = {
-  admin: Bool,
-  service: Bool,
+  publisher: Bool,
+  scopes: Set<String>,
+  issuer: String,
+  sub: String,
 };
 
 entity Subject = {
@@ -8,6 +10,16 @@ entity Subject = {
 };
 
 action "publish:artifact" appliesTo {
+  principal: [Publisher],
+  resource: [Subject],
+};
+
+action "admin:request-registration" appliesTo {
+  principal: [Publisher],
+  resource: [Subject],
+};
+
+action "admin:request-trust-modification" appliesTo {
   principal: [Publisher],
   resource: [Subject],
 };
