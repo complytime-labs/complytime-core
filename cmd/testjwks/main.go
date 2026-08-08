@@ -124,6 +124,14 @@ func main() {
 
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"issuer":   issuerURL,
+			"jwks_uri": issuerURL + "/.well-known/jwks.json",
+		})
+	})
+
 	mux.HandleFunc("GET /.well-known/jwks.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(jwks)
