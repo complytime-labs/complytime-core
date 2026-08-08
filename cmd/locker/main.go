@@ -19,8 +19,11 @@ import (
 	eventspkg "github.com/complytime-labs/complytime-core/internal/events"
 	"github.com/complytime-labs/complytime-core/internal/locker"
 	natsinfra "github.com/complytime-labs/complytime-core/internal/nats"
+	ctotel "github.com/complytime-labs/complytime-core/internal/otel"
 	"github.com/complytime-labs/complytime-core/internal/trust"
 )
+
+var version = "dev"
 
 func main() {
 	// Get configuration from environment
@@ -51,11 +54,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize logger
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	slog.SetDefault(logger)
-
 	ctx := context.Background()
+
+	// Initialize OTel (sets up slog bridge)
+	otelShutdown, err := ctotel.Init(ctx, ctotel.Config{
+		ServiceName:    "complytime-locker",
+		ServiceVersion: version,
+	})
+	if err != nil {
+		slog.Error("failed to initialize otel", "error", err)
+		os.Exit(1)
+	}
 
 	// Create locker
 	lk, err := locker.NewLocker(dataPath)
@@ -70,6 +79,12 @@ func main() {
 	cancel()
 	if err != nil {
 		slog.Error("failed to open existing ledgers", "error", err)
+		os.Exit(1)
+	}
+
+	// Register gauge callbacks for locker metrics
+	if err := lk.RegisterGauges(ctx); err != nil {
+		slog.Error("failed to register locker gauges", "error", err)
 		os.Exit(1)
 	}
 
@@ -177,6 +192,11 @@ func main() {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		slog.Error("server shutdown error", "error", err)
 		os.Exit(1)
+	}
+
+	// Flush OTel providers
+	if err := otelShutdown(shutdownCtx); err != nil {
+		slog.Error("OTel shutdown error", "error", err)
 	}
 
 	// Drain NATS

@@ -8,4 +8,5 @@ type IngestRef struct {
 	ContentDigest string `json:"contentDigest"`
 	ArtifactType  string `json:"artifactType"`
 	ReceiptBytes  []byte `json:"receiptBytes"`
+	TraceParent   string `json:"traceParent,omitempty"`
 }

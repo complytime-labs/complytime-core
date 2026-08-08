@@ -7,10 +7,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/oapi-codegen/runtime/types"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/propagation"
 
 	"github.com/complytime-labs/complytime-core/events"
 	"github.com/complytime-labs/complytime-core/internal/authz"
@@ -58,11 +64,17 @@ func NewHandler(
 
 // IngestArtifact handles POST /api/ingest
 func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	initTelemetry()
+
+	ctx, span := otel.Tracer("complytime-gateway").Start(r.Context(), "gateway.ingest")
+	defer span.End()
+
+	start := time.Now()
 
 	// Get publisher from context
 	issuer, sub := authz.GetPublisher(ctx)
 	if issuer == "" || sub == "" {
+		span.SetStatus(codes.Error, "missing publisher identity")
 		http.Error(w, "Unauthorized: missing publisher identity", http.StatusUnauthorized)
 		return
 	}
@@ -75,10 +87,14 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 	// Read body (limited to MaxBodySize)
 	body, err := io.ReadAll(io.LimitReader(r.Body, MaxBodySize))
 	if err != nil {
+		span.SetStatus(codes.Error, "failed to read request body")
+		ingestTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "rejected"), attribute.String("artifactType", "unknown")))
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
 		return
 	}
 	if len(body) == 0 {
+		span.SetStatus(codes.Error, "empty request body")
+		ingestTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "rejected"), attribute.String("artifactType", "unknown")))
 		http.Error(w, "Empty request body", http.StatusBadRequest)
 		return
 	}
@@ -92,10 +108,14 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 	// for Cedar authorization. We read it from the header here for use in receipt wrapping.
 	subjectID := r.Header.Get(HeaderSubjectID)
 	if subjectID == "" {
+		span.SetStatus(codes.Error, "missing subject ID")
+		ingestTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "rejected"), attribute.String("artifactType", "unknown")))
 		http.Error(w, "Missing X-Subject-ID header", http.StatusBadRequest)
 		return
 	}
 	if err := subjects.ValidateSubjectID(subjectID); err != nil {
+		span.SetStatus(codes.Error, "invalid subject ID")
+		ingestTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "rejected"), attribute.String("artifactType", "unknown")))
 		http.Error(w, fmt.Sprintf("Invalid subject ID: %v", err), http.StatusBadRequest)
 		return
 	}
@@ -111,6 +131,8 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 		// For JSON, parse body and verify subject ID matches the header
 		var artifact map[string]interface{}
 		if err := json.Unmarshal(body, &artifact); err != nil {
+			span.SetStatus(codes.Error, "invalid JSON")
+			ingestTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "rejected"), attribute.String("artifactType", "unknown")))
 			http.Error(w, "Invalid JSON", http.StatusBadRequest)
 			return
 		}
@@ -128,6 +150,8 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 		if bodySubjectID != "" && bodySubjectID != subjectID {
+			span.SetStatus(codes.Error, "subject ID mismatch")
+			ingestTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "rejected"), attribute.String("artifactType", "unknown")))
 			http.Error(w, "X-Subject-ID header does not match artifact body", http.StatusBadRequest)
 			return
 		}
@@ -148,6 +172,8 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 
 		// Validate Gemara artifacts (skip DSSE, which are opaque signed envelopes)
 		if err := h.schemas.Validate(body); err != nil {
+			span.SetStatus(codes.Error, "validation failed")
+			ingestTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "rejected"), attribute.String("artifactType", artifactType)))
 			if ve, ok := err.(*validationError); ok {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnprocessableEntity)
@@ -163,6 +189,8 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 	// Wrap as receipt (unified path for all artifact types)
 	receiptBytes, err := receipt.Wrap(body, publisher, subjectID, artifactType)
 	if err != nil {
+		span.SetStatus(codes.Error, "failed to wrap receipt")
+		ingestTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "rejected"), attribute.String("artifactType", artifactType)))
 		http.Error(w, fmt.Sprintf("Failed to wrap receipt: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -179,8 +207,15 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 		ReceiptBytes:  receiptBytes,
 	}
 
+	// Inject trace context for worker span linking
+	carrier := propagation.MapCarrier{}
+	otel.GetTextMapPropagator().Inject(ctx, carrier)
+	ingestRef.TraceParent = carrier.Get("traceparent")
+
 	refBytes, err := json.Marshal(ingestRef)
 	if err != nil {
+		span.SetStatus(codes.Error, "failed to marshal IngestRef")
+		ingestTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "rejected"), attribute.String("artifactType", artifactType)))
 		http.Error(w, "Failed to marshal IngestRef", http.StatusInternalServerError)
 		return
 	}
@@ -188,6 +223,8 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 	// Publish to JetStream
 	_, err = h.js.Publish(ctx, natsinfra.SubjectIngest, refBytes)
 	if err != nil {
+		span.SetStatus(codes.Error, "failed to publish to JetStream")
+		ingestTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "rejected"), attribute.String("artifactType", artifactType)))
 		http.Error(w, fmt.Sprintf("Failed to publish to JetStream: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -200,6 +237,15 @@ func (h *GatewayHandler) IngestArtifact(w http.ResponseWriter, r *http.Request) 
 		SubjectID:     subjectID,
 		Publisher:     events.PublisherIdentity{Issuer: issuer, Sub: sub},
 	})
+
+	// Record successful ingest metrics
+	span.SetAttributes(
+		attribute.String("subjectId", subjectID),
+		attribute.String("artifactType", artifactType),
+		attribute.String("contentDigest", contentDigest),
+	)
+	ingestTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "accepted"), attribute.String("artifactType", artifactType)))
+	ingestDuration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(attribute.String("artifactType", artifactType)))
 
 	// Return 202 with job ID (correlation ID for logs/CloudEvents)
 	w.Header().Set("Content-Type", "application/json")

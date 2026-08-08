@@ -24,6 +24,7 @@ var _ = BeforeSuite(func() {
 		"locker":   lockerURL("/healthz"),
 		"testjwks": testjwksURL("/healthz"),
 		"graph":    graphURL("/healthz"),
+		"jaeger":   "http://localhost:16687/",
 	}
 
 	for name, url := range services {

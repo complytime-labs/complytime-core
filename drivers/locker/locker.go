@@ -36,7 +36,7 @@ func (d *Driver) Fetch(ctx context.Context, source string) (io.ReadCloser, error
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	resp, err := d.client.Do(req)
+	resp, err := d.client.Do(req) //nolint:gosec // G704: URL is operator-configured locker endpoint, not user input
 	if err != nil {
 		return nil, fmt.Errorf("fetching from locker: %w", err)
 	}

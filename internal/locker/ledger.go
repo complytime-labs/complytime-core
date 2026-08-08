@@ -290,7 +290,7 @@ func generateAndPersist(path, origin string) (string, string, error) {
 	if err := tmp.Close(); err != nil {
 		return "", "", err
 	}
-	if err := os.Rename(tmp.Name(), path); err != nil {
+	if err := os.Rename(tmp.Name(), path); err != nil { //nolint:gosec // G703: path is derived from validated subjectID, not user input
 		return "", "", err
 	}
 	return skey, vkey, nil

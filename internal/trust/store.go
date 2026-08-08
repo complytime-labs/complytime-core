@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/nats-io/nats.go/jetstream"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	natsinfra "github.com/complytime-labs/complytime-core/internal/nats"
 )
@@ -51,12 +55,24 @@ func NewTrustStore(js jetstream.JetStream) (*TrustStore, error) {
 // This satisfies the authz.TrustLookupFunc interface:
 // func(ctx context.Context, subjectID, issuer, sub string) (bool, error)
 func (s *TrustStore) IsPublisherTrusted(ctx context.Context, subjectID, issuer, sub string) (bool, error) {
+	initTelemetry()
+
+	ctx, span := otel.Tracer("complytime-trust").Start(ctx, "trust.lookup")
+	defer span.End()
+
+	start := time.Now()
 	key := subjectKey(subjectID)
 
 	entry, err := s.publisherKV.Get(ctx, key)
 	if err != nil {
 		// Key not found means no trust configured for this subject
 		if errors.Is(err, jetstream.ErrKeyNotFound) {
+			span.SetAttributes(
+				attribute.String("subjectId", subjectID),
+				attribute.Bool("trusted", false),
+			)
+			trustLookupDuration.Record(ctx, time.Since(start).Seconds())
+			trustRejectionTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("subjectId", subjectID)))
 			return false, nil
 		}
 		// Any other error is a lookup failure — fail closed
@@ -70,13 +86,25 @@ func (s *TrustStore) IsPublisherTrusted(ctx context.Context, subjectID, issuer, 
 	}
 
 	// Check if issuer+sub combination is in the trust list
+	trusted := false
 	for _, t := range trustList {
 		if t.Issuer == issuer && t.Sub == sub {
-			return true, nil
+			trusted = true
+			break
 		}
 	}
 
-	return false, nil
+	span.SetAttributes(
+		attribute.String("subjectId", subjectID),
+		attribute.Bool("trusted", trusted),
+	)
+	trustLookupDuration.Record(ctx, time.Since(start).Seconds())
+
+	if !trusted {
+		trustRejectionTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("subjectId", subjectID)))
+	}
+
+	return trusted, nil
 }
 
 // SetPublisherTrust updates the trust list for a subject.

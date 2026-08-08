@@ -14,19 +14,31 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/nats-io/nats.go/jetstream"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/complytime-labs/complytime-core/internal/authn"
 	"github.com/complytime-labs/complytime-core/internal/authz"
 	eventspkg "github.com/complytime-labs/complytime-core/internal/events"
 	"github.com/complytime-labs/complytime-core/internal/gateway"
 	natsinfra "github.com/complytime-labs/complytime-core/internal/nats"
+	ctotel "github.com/complytime-labs/complytime-core/internal/otel"
 	"github.com/complytime-labs/complytime-core/internal/trust"
 )
 
+var version = "dev"
+
 func main() {
-	// Initialize logger
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	slog.SetDefault(logger)
+	ctx := context.Background()
+
+	// Initialize OTel (sets up slog bridge)
+	otelShutdown, err := ctotel.Init(ctx, ctotel.Config{
+		ServiceName:    "complytime-gateway",
+		ServiceVersion: version,
+	})
+	if err != nil {
+		slog.Error("failed to initialize otel", "error", err)
+		os.Exit(1)
+	}
 
 	// Read configuration from environment
 	natsURL := os.Getenv("NATS_URL")
@@ -51,8 +63,6 @@ func main() {
 	if listenAddr == "" {
 		listenAddr = ":8080"
 	}
-
-	ctx := context.Background()
 
 	// Connect to NATS
 	slog.Info("connecting to nats", "url", natsURL)
@@ -115,6 +125,7 @@ func main() {
 	r := chi.NewRouter()
 
 	// Global middleware
+	r.Use(otelhttp.NewMiddleware("complytime-gateway"))
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 
@@ -171,6 +182,11 @@ func main() {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		slog.Error("server shutdown error", "error", err)
 		os.Exit(1)
+	}
+
+	// Flush OTel providers
+	if err := otelShutdown(shutdownCtx); err != nil {
+		slog.Error("OTel shutdown error", "error", err)
 	}
 
 	// Drain NATS

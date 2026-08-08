@@ -6,9 +6,13 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/cedar-policy/cedar-go"
 	"github.com/go-chi/chi/v5"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/complytime-labs/complytime-core/internal/authn"
 	"github.com/complytime-labs/complytime-core/internal/authz"
@@ -36,6 +40,8 @@ func NewHandler(lk *Locker, auth authn.Authenticator, policySet *cedar.PolicySet
 	}
 
 	r := chi.NewRouter()
+
+	r.Use(otelhttp.NewMiddleware("complytime-locker"))
 
 	// If auth is provided, apply auth+authz middleware to all routes except /healthz
 	if auth != nil {
@@ -87,6 +93,11 @@ func (h *APIHandler) ListLedgers(w http.ResponseWriter, r *http.Request) {
 
 // CreateLedger creates a new ledger for a subject.
 func (h *APIHandler) CreateLedger(w http.ResponseWriter, r *http.Request) {
+	initTelemetry()
+
+	ctx, span := lockerTracer.Start(r.Context(), "locker.ledger.create")
+	defer span.End()
+
 	var req CreateLedgerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid request body")
@@ -103,7 +114,7 @@ func (h *APIHandler) CreateLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ledger, err := h.locker.CreateLedger(r.Context(), req.SubjectId)
+	ledger, err := h.locker.CreateLedger(ctx, req.SubjectId)
 	if err != nil {
 		if errors.Is(err, ErrLedgerExists) {
 			respondError(w, http.StatusConflict, err.Error())
@@ -112,6 +123,8 @@ func (h *APIHandler) CreateLedger(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	span.SetAttributes(attribute.String("subjectId", req.SubjectId))
 
 	resp := LedgerInfo{
 		SubjectId:   ledger.SubjectID(),
@@ -137,6 +150,13 @@ func (h *APIHandler) GetLedger(w http.ResponseWriter, r *http.Request, subjectID
 
 // SealReceipt seals a receipt in the ledger.
 func (h *APIHandler) SealReceipt(w http.ResponseWriter, r *http.Request, subjectID string) {
+	initTelemetry()
+
+	ctx, span := lockerTracer.Start(r.Context(), "locker.seal")
+	defer span.End()
+
+	start := time.Now()
+
 	ledger, ok := h.locker.GetLedger(subjectID)
 	if !ok {
 		respondError(w, http.StatusNotFound, "ledger not found")
@@ -158,13 +178,23 @@ func (h *APIHandler) SealReceipt(w http.ResponseWriter, r *http.Request, subject
 		return
 	}
 
-	idx, err := ledger.Seal(r.Context(), receiptData)
+	idx, err := ledger.Seal(ctx, receiptData)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	digest := SHA256Hex(receiptData)
+
+	// Record metrics and span attributes
+	span.SetAttributes(
+		attribute.String("subjectId", subjectID),
+		attribute.Int64("logIndex", int64(idx)), //nolint:gosec // G115: log indices won't exceed int64 max
+		attribute.String("contentDigest", digest),
+	)
+	sealTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("subjectId", subjectID)))
+	sealDuration.Record(ctx, time.Since(start).Seconds())
+
 	resp := SealResponse{
 		Index:  int64(idx), //nolint:gosec // G115: log indices won't exceed int64 max
 		Digest: digest,
@@ -174,6 +204,13 @@ func (h *APIHandler) SealReceipt(w http.ResponseWriter, r *http.Request, subject
 
 // FetchReceipt retrieves a sealed receipt by index.
 func (h *APIHandler) FetchReceipt(w http.ResponseWriter, r *http.Request, subjectID string, index int64) {
+	initTelemetry()
+
+	ctx, span := lockerTracer.Start(r.Context(), "locker.fetch")
+	defer span.End()
+
+	start := time.Now()
+
 	ledger, ok := h.locker.GetLedger(subjectID)
 	if !ok {
 		respondError(w, http.StatusNotFound, "ledger not found")
@@ -185,7 +222,7 @@ func (h *APIHandler) FetchReceipt(w http.ResponseWriter, r *http.Request, subjec
 		return
 	}
 
-	receipt, err := ledger.Fetch(r.Context(), uint64(index))
+	receipt, err := ledger.Fetch(ctx, uint64(index))
 	if err != nil {
 		if errors.Is(err, ErrIndexOutOfRange) {
 			respondError(w, http.StatusNotFound, "receipt not found")
@@ -195,10 +232,18 @@ func (h *APIHandler) FetchReceipt(w http.ResponseWriter, r *http.Request, subjec
 		return
 	}
 
+	// Record metrics and span attributes
+	span.SetAttributes(
+		attribute.String("subjectId", subjectID),
+		attribute.Int64("index", index),
+	)
+	fetchTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("subjectId", subjectID)))
+	fetchDuration.Record(ctx, time.Since(start).Seconds())
+
 	// Return raw binary data
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(receipt); err != nil {
+	if _, err := w.Write(receipt); err != nil { //nolint:gosec // G705: writing binary receipt bytes to API response, not HTML
 		// Log the error but can't change response at this point
 		return
 	}
@@ -206,6 +251,11 @@ func (h *APIHandler) FetchReceipt(w http.ResponseWriter, r *http.Request, subjec
 
 // VerifyReceipt checks if a receipt with the given digest exists.
 func (h *APIHandler) VerifyReceipt(w http.ResponseWriter, r *http.Request, subjectID string, digest string) {
+	initTelemetry()
+
+	ctx, span := lockerTracer.Start(r.Context(), "locker.verify")
+	defer span.End()
+
 	ledger, ok := h.locker.GetLedger(subjectID)
 	if !ok {
 		respondError(w, http.StatusNotFound, "ledger not found")
@@ -218,6 +268,17 @@ func (h *APIHandler) VerifyReceipt(w http.ResponseWriter, r *http.Request, subje
 	}
 
 	idx, found := ledger.VerifyDigest(digest)
+
+	// Record metrics and span attributes
+	foundStr := "false"
+	if found {
+		foundStr = "true"
+	}
+	span.SetAttributes(
+		attribute.String("subjectId", subjectID),
+		attribute.Bool("found", found),
+	)
+	verifyTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("found", foundStr)))
 
 	resp := VerifyResponse{
 		Found: found,

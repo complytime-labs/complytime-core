@@ -211,3 +211,18 @@ func newRequest(method, url string, body []byte) (*http.Request, error) {
 func httpClient() *http.Client {
 	return &http.Client{Timeout: 30 * time.Second}
 }
+
+func jaegerAPIURL(path string) string {
+	return "http://localhost:16686" + path
+}
+
+func prometheusURL(service string) string {
+	switch service {
+	case "gateway":
+		return "http://localhost:9090/metrics"
+	case "locker":
+		return "http://localhost:9091/metrics"
+	default:
+		return ""
+	}
+}
