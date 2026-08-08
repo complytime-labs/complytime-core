@@ -33,7 +33,7 @@ func testjwksOIDCURL(path string) string {
 }
 
 func natsURL() string {
-	return "nats://localhost:4222"
+	return "nats://acceptance-test:acceptance-test-password@localhost:4222"
 }
 
 func graphURL(path string) string {
