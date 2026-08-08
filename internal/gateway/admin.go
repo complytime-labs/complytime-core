@@ -199,7 +199,12 @@ func (h *GatewayHandler) ModifyTrust(w http.ResponseWriter, r *http.Request, sub
 		OperatorIssuer:    issuer,
 		OperatorSub:       sub,
 	}
-	sealPayload, _ := json.Marshal(sealReq)
+	sealPayload, err := json.Marshal(sealReq)
+	if err != nil {
+		slog.Error("failed to marshal trust seal request", "subjectId", logSubjectID, "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	sealCtx, sealCancel := context.WithTimeout(ctx, adminRequestTimeout)
 	defer sealCancel()
 	sealMsg, err := h.nc.RequestWithContext(sealCtx, natsinfra.SubjectAdminSealTrust, sealPayload)

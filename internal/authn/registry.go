@@ -81,7 +81,7 @@ func (r *IssuerRegistry) Authenticate(req *http.Request) (*Principal, error) {
 // ValidateTrustEntry validates that {issuerURL, sub} is a well-formed trust
 // entry for the configured issuer type. Returns a user-facing error if not.
 func (r *IssuerRegistry) ValidateTrustEntry(issuerURL, sub string) error {
-	if err := ValidateIssuerURL(issuerURL); err != nil {
+	if err := ValidateTrustEntryIssuerURL(issuerURL); err != nil {
 		return err
 	}
 	if issuerURL == r.oidc.URL() {
@@ -93,20 +93,51 @@ func (r *IssuerRegistry) ValidateTrustEntry(issuerURL, sub string) error {
 	return fmt.Errorf("issuer %q is not configured as a trusted publisher; add it to the service configuration or use scannerJwk for static JWK issuers", issuerURL)
 }
 
-// ValidateIssuerURL checks that the issuer URL's scheme and host are lowercase.
-// url.Parse silently lowercases the scheme, so we inspect the raw string.
-// Paths are excluded — AWS EKS issuers legitimately use uppercase in the path
-// (e.g. /id/ABCDEF123456).
+// ValidateIssuerURL checks that the issuer URL has a scheme and that
+// the scheme and host are lowercase. Paths are excluded because AWS EKS
+// issuers legitimately use uppercase in the path (e.g. /id/ABCDEF123456).
 func ValidateIssuerURL(issuer string) error {
+	i := strings.Index(issuer, "://")
+	if i < 0 {
+		return fmt.Errorf("issuer %q: missing scheme", issuer)
+	}
+
+	rest := issuer[i+3:]
 	schemeAndHost := issuer
-	if i := strings.Index(issuer, "://"); i >= 0 {
-		rest := issuer[i+3:]
-		if j := strings.Index(rest, "/"); j >= 0 {
-			schemeAndHost = issuer[:i+3+j]
-		}
+	if j := strings.Index(rest, "/"); j >= 0 {
+		schemeAndHost = issuer[:i+3+j]
 	}
 	if schemeAndHost != strings.ToLower(schemeAndHost) {
 		return fmt.Errorf("issuer %q: scheme and host must be lowercase", issuer)
+	}
+	return nil
+}
+
+// ValidateTrustEntryIssuerURL validates an issuer URL for use in trust entries.
+// In addition to the base ValidateIssuerURL checks, it requires HTTPS for
+// non-loopback addresses to prevent MITM on JWKS fetches in production.
+func ValidateTrustEntryIssuerURL(issuer string) error {
+	if err := ValidateIssuerURL(issuer); err != nil {
+		return err
+	}
+	i := strings.Index(issuer, "://")
+	scheme := issuer[:i]
+	if scheme != "https" {
+		rest := issuer[i+3:]
+		host := rest
+		if j := strings.Index(rest, "/"); j >= 0 {
+			host = rest[:j]
+		}
+		if strings.HasPrefix(host, "[") {
+			if ci := strings.Index(host, "]"); ci >= 0 {
+				host = host[1:ci]
+			}
+		} else if ci := strings.Index(host, ":"); ci >= 0 {
+			host = host[:ci]
+		}
+		if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+			return fmt.Errorf("issuer %q: HTTPS required for non-localhost issuers", issuer)
+		}
 	}
 	return nil
 }

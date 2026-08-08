@@ -208,7 +208,7 @@ func Middleware(ps *cedar.PolicySet, trustLookup TrustLookupFunc, cfg Middleware
 				// Query: graph service routes carry subject ID in URL path, not context header.
 				// The resource will be a placeholder and Cedar checks admin flag or permits reads.
 				if action == ActionRequestRegistration || action == ActionRequestTrustModification ||
-					action == ActionReadEvidence || action == ActionVerifyEvidence ||
+					action == ActionReadEvidence ||
 					action == ActionQueryEvidence {
 					subjectID = "*"
 				} else {
@@ -220,7 +220,7 @@ func Middleware(ps *cedar.PolicySet, trustLookup TrustLookupFunc, cfg Middleware
 			// Look up trust status (skip for actions where subject may not exist or isn't relevant)
 			trusted := false
 			if action != ActionRequestRegistration && action != ActionRequestTrustModification &&
-				action != ActionReadEvidence && action != ActionVerifyEvidence &&
+				action != ActionReadEvidence &&
 				action != ActionQueryEvidence {
 				if trustLookup != nil {
 					var err error

@@ -154,7 +154,7 @@ func TestMiddleware(t *testing.T) {
 			wantStatusCode: http.StatusOK,
 		},
 		{
-			name:        "denies untrusted publisher",
+			name:        "denies non-publisher even when trusted",
 			method:      "POST",
 			path:        "/api/ingest",
 			issuer:      "https://auth.example.com",
@@ -163,6 +163,21 @@ func TestMiddleware(t *testing.T) {
 			scopes:      nil,
 			groups:      nil,
 			isPublisher: false,
+			trustLookup: func(ctx context.Context, subjectID, issuer, sub string) (bool, error) {
+				return false, nil
+			},
+			wantStatusCode: http.StatusForbidden,
+		},
+		{
+			name:        "forbid floor blocks publisher without subject trust",
+			method:      "POST",
+			path:        "/api/ingest",
+			issuer:      "https://auth.example.com",
+			sub:         "user123",
+			subjectID:   "proj-1",
+			scopes:      nil,
+			groups:      nil,
+			isPublisher: true,
 			trustLookup: func(ctx context.Context, subjectID, issuer, sub string) (bool, error) {
 				return false, nil
 			},
