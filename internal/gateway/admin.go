@@ -134,13 +134,14 @@ func (h *GatewayHandler) RegisterSubject(w http.ResponseWriter, r *http.Request)
 	if body.ScannerJWK != nil {
 		logIssuerID := strings.ReplaceAll(strings.ReplaceAll(scannerIssuerID, "\n", ""), "\r", "")
 		if err := h.trustStore.StoreJWK(ctx, scannerIssuerID, body.ScannerJWK.JWK, body.ScannerJWK.NotAfter); err != nil {
+			logErr := strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\n", ""), "\r", "")
 			slog.Error("failed to store scanner JWK",
-				"subjectId", logSubjectID, "issuerID", logIssuerID, "error", err)
+				"subjectId", logSubjectID, "issuerID", logIssuerID, "error", logErr)
 			http.Error(w, "failed to store scanner JWK", http.StatusInternalServerError)
 			return
 		}
 		slog.Info("stored scanner JWK", "subjectId", logSubjectID, "issuerID", logIssuerID,
-			"notAfter", body.ScannerJWK.NotAfter)
+			"notAfter", scannerNotAfter)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

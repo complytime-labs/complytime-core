@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go/jetstream"
@@ -73,6 +74,7 @@ func NewTrustStore(js jetstream.JetStream) (*TrustStore, error) {
 // func(ctx context.Context, subjectID, issuer, sub string) (bool, error)
 func (s *TrustStore) IsPublisherTrusted(ctx context.Context, subjectID, issuer, sub string) (bool, error) {
 	key := subjectKey(subjectID)
+	logSubjectID := strings.ReplaceAll(strings.ReplaceAll(subjectID, "\n", ""), "\r", "")
 
 	entry, err := s.publisherKV.Get(ctx, key)
 	if err != nil {
@@ -81,13 +83,13 @@ func (s *TrustStore) IsPublisherTrusted(ctx context.Context, subjectID, issuer, 
 			return false, nil
 		}
 		// Any other error is a lookup failure — fail closed
-		return false, fmt.Errorf("trust lookup failed for subject %s: %w", subjectID, err)
+		return false, fmt.Errorf("trust lookup failed for subject %s: %w", logSubjectID, err)
 	}
 
 	// Parse trust list
 	var trustList []TrustEntry
 	if err := json.Unmarshal(entry.Value(), &trustList); err != nil {
-		return false, fmt.Errorf("parsing trust list for subject %s: %w", subjectID, err)
+		return false, fmt.Errorf("parsing trust list for subject %s: %w", logSubjectID, err)
 	}
 
 	// Check if issuer+sub combination is in the trust list
@@ -105,6 +107,7 @@ func (s *TrustStore) IsPublisherTrusted(ctx context.Context, subjectID, issuer, 
 // Returns an error on concurrent modification.
 func (s *TrustStore) SetPublisherTrust(ctx context.Context, subjectID string, publishers []TrustEntry) error {
 	key := subjectKey(subjectID)
+	logSubjectID := strings.ReplaceAll(strings.ReplaceAll(subjectID, "\n", ""), "\r", "")
 
 	data, err := json.Marshal(publishers)
 	if err != nil {
@@ -115,15 +118,15 @@ func (s *TrustStore) SetPublisherTrust(ctx context.Context, subjectID string, pu
 	if err != nil {
 		if errors.Is(err, jetstream.ErrKeyNotFound) {
 			if _, err := s.publisherKV.Create(ctx, key, data); err != nil {
-				return fmt.Errorf("creating trust for subject %s: %w", subjectID, err)
+				return fmt.Errorf("creating trust for subject %s: %w", logSubjectID, err)
 			}
 			return nil
 		}
-		return fmt.Errorf("reading current trust for subject %s: %w", subjectID, err)
+		return fmt.Errorf("reading current trust for subject %s: %w", logSubjectID, err)
 	}
 
 	if _, err := s.publisherKV.Update(ctx, key, data, entry.Revision()); err != nil {
-		return fmt.Errorf("updating trust for subject %s (concurrent modification): %w", subjectID, err)
+		return fmt.Errorf("updating trust for subject %s (concurrent modification): %w", logSubjectID, err)
 	}
 	return nil
 }
@@ -133,9 +136,10 @@ func (s *TrustStore) SetPublisherTrust(ctx context.Context, subjectID string, pu
 func (s *TrustStore) RegisterSubject(ctx context.Context, subjectID string) error {
 	// Store a minimal JSON object as the value
 	value := []byte("{}")
+	logSubjectID := strings.ReplaceAll(strings.ReplaceAll(subjectID, "\n", ""), "\r", "")
 
 	if _, err := s.subjectKV.Put(ctx, subjectID, value); err != nil {
-		return fmt.Errorf("registering subject %s: %w", subjectID, err)
+		return fmt.Errorf("registering subject %s: %w", logSubjectID, err)
 	}
 
 	return nil
@@ -143,12 +147,13 @@ func (s *TrustStore) RegisterSubject(ctx context.Context, subjectID string) erro
 
 // SubjectExists checks whether a subject has been registered in the subject registry.
 func (s *TrustStore) SubjectExists(ctx context.Context, subjectID string) (bool, error) {
+	logSubjectID := strings.ReplaceAll(strings.ReplaceAll(subjectID, "\n", ""), "\r", "")
 	_, err := s.subjectKV.Get(ctx, subjectID)
 	if err != nil {
 		if errors.Is(err, jetstream.ErrKeyNotFound) {
 			return false, nil
 		}
-		return false, fmt.Errorf("checking subject existence %s: %w", subjectID, err)
+		return false, fmt.Errorf("checking subject existence %s: %w", logSubjectID, err)
 	}
 	return true, nil
 }
