@@ -63,19 +63,25 @@ Set `OIDC_GROUP_CLAIM` to the dot-path of the group claim in your IdP's JWT. Com
 ```bash
 export OIDC_ISSUER="https://dex.example.com"
 export OIDC_GROUP_CLAIM="realm_access.roles"  # or "groups" for Dex/Okta
+
+# Optional — override default group names to match your IdP's role naming
+export OIDC_ADMIN_GROUP="complytime-admin"    # default
+export OIDC_AUDITOR_GROUP="complytime-auditor" # default
+
+# Optional — set to "audit" to log unrecognized groups without blocking access
+export OIDC_GROUP_MODE="enforce"  # default; "audit" for diagnostics
 ```
 
-When `OIDC_GROUP_CLAIM` is set, the gateway extracts group membership from the JWT, normalizes to lowercase, filters to recognized groups, and passes them to Cedar policies.
+When `OIDC_GROUP_CLAIM` is set, the gateway extracts group membership from the JWT, normalizes to lowercase, filters to configured group names, and passes them to Cedar policies as `context.admin_group` and `context.auditor_group`.
 
-| Group                   | Grants                                        |
-|-------------------------|-----------------------------------------------|
-| `complytime-admin`      | Subject registration, trust modification, evidence query |
-| `complytime-auditor`    | Evidence query (read-only)                    |
+| Group (default name)    | Env var               | Grants                                        |
+|-------------------------|-----------------------|-----------------------------------------------|
+| `complytime-admin`      | `OIDC_ADMIN_GROUP`    | Subject registration, trust modification, evidence query |
+| `complytime-auditor`    | `OIDC_AUDITOR_GROUP`  | Evidence query (read-only)                    |
 
-**Group name requirements:** These exact names are hardcoded in Cedar policies (`internal/authz/policies/base.cedar`) and enforced by an application-level allowlist. Groups not in this list are silently dropped. Case is normalized to lowercase (e.g., `ComplyTime-Admin` becomes `complytime-admin`). If your IdP uses different role names, either:
+**Group name configuration:** Group names default to `complytime-admin` and `complytime-auditor`. If your IdP uses different role names, set `OIDC_ADMIN_GROUP` and `OIDC_AUDITOR_GROUP` to match. Groups not matching the configured names are silently dropped; case is normalized to lowercase before comparison (e.g., `ComplyTime-Admin` matches `complytime-admin`).
 
-1. Rename the roles in your IdP to match, or
-2. Add custom Cedar policies in `CEDAR_POLICY_DIR` that recognize your role names.
+Use `OIDC_GROUP_MODE=audit` during initial setup to log which groups are extracted and which are dropped, without blocking access. Switch to `enforce` (the default) once the configuration is verified.
 
 Publisher access is **not** granted via groups. The `publisher` flag is set by the application based on the token's issuer URL (see `IssuerRegistry` in `internal/authn/registry.go`). Only tokens from configured publisher issuers (GitHub Actions, GitLab CI, GCP Workload Identity, Kubernetes service accounts, SPIFFE) can publish artifacts.
 

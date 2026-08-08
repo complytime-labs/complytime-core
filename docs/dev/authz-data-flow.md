@@ -116,8 +116,9 @@ Two issuer classes, routed by the `iss` claim in the JWT:
 **Human IdP (OIDCIssuer)** — a Dex or Keycloak instance configured via
 `OIDC_ISSUER`. Tokens carry OAuth2 scopes and/or IdP group claims.
 `ExtractScopes` filters scopes to the `complytime:` namespace; `ExtractGroups`
-normalizes to lowercase and filters to the `knownGroups` allowlist
-(`complytime-admin`, `complytime-auditor`). Cedar policies accept either.
+normalizes to lowercase and filters to configured group names (defaults:
+`complytime-admin`, `complytime-auditor`; overridden via `OIDC_ADMIN_GROUP` /
+`OIDC_AUDITOR_GROUP`). Cedar policies accept either.
 `Publisher` is false.
 
 **CI/CD Publisher (PublisherIssuer)** — GitHub Actions, GitLab CI, GCP
@@ -144,10 +145,15 @@ String), `groups` (Set of String), `issuer`, `sub`. On Resource:
 | Action | Gate |
 |--------|------|
 | `publish:artifact` | `publisher == true` AND `publisher_trusted == true` |
-| `admin:request-registration` | scopes contains `complytime:admin` OR groups contains `complytime-admin` |
-| `admin:request-trust-modification` | scopes contains `complytime:admin` OR groups contains `complytime-admin` |
-| `query:evidence` | scopes contains `complytime:audit`/`complytime:admin` OR groups contains `complytime-auditor`/`complytime-admin` |
-| `read:evidence` | scopes contains `complytime:audit`/`complytime:admin` OR groups contains `complytime-auditor`/`complytime-admin` |
+| `admin:request-registration` | scopes contains `complytime:admin` OR groups contains admin group |
+| `admin:request-trust-modification` | scopes contains `complytime:admin` OR groups contains admin group |
+| `query:evidence` | scopes contains `complytime:audit`/`complytime:admin` OR groups contains auditor/admin group |
+| `read:evidence` | scopes contains `complytime:audit`/`complytime:admin` OR groups contains auditor/admin group |
+
+Group names default to `complytime-admin` / `complytime-auditor`. Cedar policies
+read them from per-request context (`context.admin_group`, `context.auditor_group`)
+set by `MiddlewareConfig`, so renaming them requires only env var changes, not
+policy edits.
 
 A `forbid` safety floor blocks `publish:artifact` if `publisher_trusted`
 is false, regardless of other permits. Publisher access is never granted
