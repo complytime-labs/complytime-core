@@ -226,18 +226,20 @@ Publishers authenticate via workload identity (not Keycloak). The registry recog
 
 ### Publisher E2E Flow (local dev via testjwks)
 
+testjwks is configured as a `type: github` publisher issuer in `deploy/compose/gateway.yaml`. Sub values must follow the GitHub Actions format: `repo:{owner}/{repo}:{filter_type}:{value}`.
+
 1. **Get publisher token from testjwks**:
 
    ```bash
    PUBLISHER_TOKEN=$(curl -s -X POST http://localhost:8888/mint \
      -H "Content-Type: application/json" \
      -d '{
-       "sub": "test-publisher",
+       "sub": "repo:my-org/my-repo:ref:refs/heads/main",
        "audience": ["complytime-gateway"]
      }' | jq -r '.token')
    ```
 
-   Note: `audience` is an array. `sub` must match a registered trust entry for the target subject.
+   Note: `audience` is an array. `sub` must match a registered trust entry for the target subject — register with the same `sub` value when calling `POST /admin/subjects`.
 
 2. **Submit evidence** (in-toto statement):
 

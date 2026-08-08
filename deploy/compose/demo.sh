@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # ComplyTime demo: register subject → publish evidence → query graph → show Cedar deny
-# Usage:
+# Requires the full stack with Keycloak:
 #   cd deploy/compose
-#   docker compose up -d          # or --profile demo for Memgraph Lab
+#   podman-compose --profile keycloak up -d
 #   ./demo.sh
 
 set -euo pipefail
 
-GW=http://localhost:8080
+GW=http://localhost:8090
 GRAPH=http://localhost:8082
 JWKS=http://localhost:8888
+KEYCLOAK=http://localhost:8080
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -24,39 +25,62 @@ die()  { echo -e "${RED}✗ $*${NC}" >&2; exit 1; }
 # ── Preflight ──────────────────────────────────────────────────────────────
 step "Preflight: checking stack is up"
 
-curl -sf "$GW/healthz"    > /dev/null || die "Gateway not reachable at $GW — run: docker compose up -d"
-curl -sf "$JWKS/healthz"  > /dev/null || die "testjwks not reachable at $JWKS — run: docker compose up -d"
-curl -sf "$GRAPH/healthz" > /dev/null || die "Graph not reachable at $GRAPH — run: docker compose up -d"
+curl -sf "$GW/healthz"    > /dev/null || die "Gateway not reachable at $GW — run: podman-compose --profile keycloak up -d"
+curl -sf "$JWKS/healthz"  > /dev/null || die "testjwks not reachable at $JWKS — run: podman-compose --profile keycloak up -d"
+curl -sf "$GRAPH/healthz" > /dev/null || die "Graph not reachable at $GRAPH — run: podman-compose --profile keycloak up -d"
+curl -sf "$KEYCLOAK/realms/complytime/.well-known/openid-configuration" > /dev/null \
+  || die "Keycloak not reachable at $KEYCLOAK — run: podman-compose --profile keycloak up -d"
 
 ok "All services healthy"
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
-mint() {
+# keycloak_token username password scope
+keycloak_token() {
+  local user="$1" pass="$2" scope="$3"
+  local token
+  token=$(curl -sf -X POST \
+    "$KEYCLOAK/realms/complytime/protocol/openid-connect/token" \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    -d "client_id=complytime" \
+    -d "client_secret=complytime-secret" \
+    -d "username=$user" \
+    -d "password=$pass" \
+    -d "grant_type=password" \
+    -d "scope=$scope" | jq -r '.access_token')
+  [[ -n "$token" && "$token" != "null" ]] || die "Keycloak token request failed for user=$user scope=$scope"
+  echo "$token"
+}
+
+# publisher_token sub audience
+publisher_token() {
   local sub="$1" aud="$2"
-  shift 2
-  local groups=("$@")
-  local body token
-  body=$(printf '{"sub":"%s","audience":["%s"],"groups":[%s]}' \
-    "$sub" "$aud" "$(printf '"%s",' "${groups[@]}" | sed 's/,$//')")
-  token=$(curl -sf -X POST "$JWKS/mint" -H "Content-Type: application/json" -d "$body" \
-    | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
-  [[ -n "$token" ]] || die "mint failed for sub=$sub aud=$aud"
+  local token
+  token=$(curl -sf -X POST "$JWKS/mint" \
+    -H "Content-Type: application/json" \
+    -d "{\"sub\":\"$sub\",\"audience\":[\"$aud\"]}" | jq -r '.token')
+  [[ -n "$token" && "$token" != "null" ]] || die "mint failed for sub=$sub aud=$aud"
   echo "$token"
 }
 
 # ── Step 1: Admin registers a subject ──────────────────────────────────────
-step "Register subject (admin token → gateway front door)"
+step "Register subject (admin token → gateway)"
 
-ADMIN_TOKEN=$(mint "demo-admin" "complytime-gateway" "complytime-admin")
+ADMIN_TOKEN=$(keycloak_token "admin" "admin-password" "complytime:admin")
 
 REG_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$GW/admin/subjects" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"subjectId":"demo-app-v1","trustedPublishers":[{"issuer":"http://testjwks:8888","sub":"demo-publisher"}]}')
+  -d '{
+    "subjectId": "demo-app-v1",
+    "trustedPublishers": [{
+      "issuer": "http://testjwks:8888",
+      "sub": "repo:demo-org/demo-app:ref:refs/heads/main"
+    }]
+  }')
 
 if [[ "$REG_STATUS" == "201" || "$REG_STATUS" == "200" ]]; then
-  ok "demo-app-v1 registered with trusted publisher demo-publisher"
+  ok "demo-app-v1 registered — trusted publisher: testjwks / repo:demo-org/demo-app:ref:refs/heads/main"
 elif [[ "$REG_STATUS" == "500" ]]; then
   ok "demo-app-v1 already registered (re-run) — continuing"
 else
@@ -66,7 +90,7 @@ fi
 # ── Step 2: Publisher submits an EvaluationLog ────────────────────────────
 step "Publish compliance evidence (publisher token → gateway → locker)"
 
-PUB_TOKEN=$(mint "demo-publisher" "complytime-gateway" "complytime-publisher")
+PUB_TOKEN=$(publisher_token "repo:demo-org/demo-app:ref:refs/heads/main" "complytime-gateway")
 
 RECEIPT=$(curl -sf -X POST "$GW/api/ingest" \
   -H "Authorization: Bearer $PUB_TOKEN" \
@@ -99,15 +123,15 @@ RECEIPT=$(curl -sf -X POST "$GW/api/ingest" \
     "result": "Passed"
   }')
 
-JOB_ID=$(echo "$RECEIPT" | python3 -c "import sys,json; print(json.load(sys.stdin)['jobId'])")
-[[ -n "$JOB_ID" ]] || die "ingest response missing jobId: $RECEIPT"
+JOB_ID=$(echo "$RECEIPT" | jq -r '.jobId')
+[[ -n "$JOB_ID" && "$JOB_ID" != "null" ]] || die "ingest response missing jobId: $RECEIPT"
 ok "Evidence accepted — jobId: $JOB_ID"
 echo "   Gateway sealed the artifact in the append-only locker."
 
-# ── Step 3: Cedar blocks untrusted publish attempt ────────────────────────
+# ── Step 3: Cedar blocks auditor publish attempt ──────────────────────────
 step "Cedar authz deny: auditor cannot publish (policy enforcement)"
 
-AUDITOR_TOKEN=$(mint "demo-auditor" "complytime-gateway" "complytime-auditor")
+AUDITOR_TOKEN=$(keycloak_token "auditor" "auditor-password" "complytime:audit")
 
 HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$GW/api/ingest" \
   -H "Authorization: Bearer $AUDITOR_TOKEN" \
@@ -127,10 +151,10 @@ step "Query graph service (auditor token → compliance consumer view)"
 echo "   Waiting for graph loader to consume from NATS..."
 sleep 8
 
-GRAPH_TOKEN=$(mint "demo-auditor" "complytime-graph" "complytime-auditor")
+GRAPH_AUDITOR_TOKEN=$(keycloak_token "auditor" "auditor-password" "complytime:audit")
 
 echo ""
-curl -sf -H "Authorization: Bearer $GRAPH_TOKEN" "$GRAPH/api/subjects" | python3 -m json.tool
+curl -sf -H "Authorization: Bearer $GRAPH_AUDITOR_TOKEN" "$GRAPH/api/subjects" | jq .
 echo ""
 
 ok "Graph shows demo-app-v1 with EvaluationLog evidence"
@@ -147,9 +171,9 @@ echo "    // All subjects with evidence and publishers"
 echo "    MATCH (s:Subject)<-[:TARGETS]-(e:Evidence)-[:PUBLISHED_BY]->(p:Publisher)"
 echo "    RETURN s, e, p"
 echo ""
-echo "    // Zoom into demo-app-v1"
+echo '    // Zoom into demo-app-v1'
 echo '    MATCH path = (s:Subject {id: "demo-app-v1"})<-[:TARGETS]-(e:Evidence)-[:PUBLISHED_BY]->(p:Publisher)'
 echo "    RETURN path"
 echo ""
 echo "  To run with Memgraph Lab:"
-echo "    docker compose --profile demo up -d"
+echo "    podman-compose --profile demo --profile keycloak up -d"

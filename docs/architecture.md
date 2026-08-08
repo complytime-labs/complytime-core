@@ -69,7 +69,7 @@ Two distinct issuer classes. Each class has different trust assumptions and role
 | Layer | Mechanism |
 |:--|:--|
 | **OIDC issuer (primary)** | One IdP (e.g. Keycloak). Roles (`admin`, `publisher`, `auditor`) derived from group membership claims — no custom boolean claims required. Configured via `OIDC_ISSUER` + `OIDC_CLIENT_ID`. |
-| **Publisher issuers** | GitHub Actions, GitLab CI, GCP workload identity, generic OIDC, or static JWK. No role claims read — identity is `(issuer, sub)`. Per-subject trust registration required (out-of-band, by an admin). Enabled via `ISSUERS_ENABLED` shortnames or `issuers.custom` YAML. |
+| **Publisher issuers** | GitHub Actions, GitLab CI, GCP workload identity, Kubernetes service accounts, or SPIFFE/SVID. No role claims read — identity is `(issuer, sub)`. Each type enforces its own sub format at trust entry registration time. Per-subject trust registration required (out-of-band, by an admin). Enabled via `ISSUERS_ENABLED` shortnames or `issuers.custom` YAML with `type: github\|gitlab\|gcp\|kubernetes\|spiffe`. |
 | **Cedar middleware** | Default-deny. Route-to-action typed map. Unmapped routes return 403. |
 | **Publisher trust** | Per-subject allowlist in NATS KV. Fail-closed: reject if KV unavailable. |
 | **Forbid safety floors** | Untrusted publishers blocked by `forbid/unless` rule — no permit can override. |

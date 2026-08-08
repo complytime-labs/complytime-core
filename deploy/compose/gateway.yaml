@@ -1,4 +1,4 @@
 issuers:
   custom:
     - url: http://testjwks:8888
-      type: oidc
+      type: github

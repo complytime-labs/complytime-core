@@ -21,7 +21,7 @@ type OIDCConfig struct {
 	GroupMode      authn.GroupMode // OIDC_GROUP_MODE (optional — "audit" logs dropped groups)
 }
 
-// CustomIssuerConfig configures an operator-supplied OIDC issuer.
+// CustomIssuerConfig configures an operator-supplied publisher issuer.
 // Type determines which ValidateTrustEntry logic applies.
 // Valid types: github, gitlab, gcp, kubernetes, spiffe.
 type CustomIssuerConfig struct {
