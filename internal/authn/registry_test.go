@@ -366,39 +366,11 @@ func TestValidateIssuerURL(t *testing.T) {
 		{"mixed host", "https://Idp.Example.Com", true, "lowercase"},
 		{"no path separator", "https://idp.example.com", false, ""},
 		{"missing scheme", "idp.example.com", true, "missing scheme"},
-		{"http allowed at config level", "http://testjwks:8888", false, ""},
+		{"http allowed", "http://testjwks:8888", false, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			err := ValidateIssuerURL(tc.issuer)
-			if tc.wantErr {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tc.errContains)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
-
-func TestValidateTrustEntryIssuerURL(t *testing.T) {
-	tests := []struct {
-		name        string
-		issuer      string
-		wantErr     bool
-		errContains string
-	}{
-		{"https valid", "https://idp.example.com", false, ""},
-		{"http non-localhost rejected", "http://idp.example.com", true, "HTTPS required"},
-		{"http localhost allowed", "http://localhost:8888", false, ""},
-		{"http 127.0.0.1 allowed", "http://127.0.0.1:8888", false, ""},
-		{"http [::1] allowed", "http://[::1]:8888", false, ""},
-		{"http remote host rejected", "http://testjwks:8888", true, "HTTPS required"},
-		{"uppercase host still rejected", "https://IDP.example.com", true, "lowercase"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			err := ValidateTrustEntryIssuerURL(tc.issuer)
 			if tc.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.errContains)

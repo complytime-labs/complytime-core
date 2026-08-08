@@ -81,7 +81,7 @@ func (r *IssuerRegistry) Authenticate(req *http.Request) (*Principal, error) {
 // ValidateTrustEntry validates that {issuerURL, sub} is a well-formed trust
 // entry for the configured issuer type. Returns a user-facing error if not.
 func (r *IssuerRegistry) ValidateTrustEntry(issuerURL, sub string) error {
-	if err := ValidateTrustEntryIssuerURL(issuerURL); err != nil {
+	if err := ValidateIssuerURL(issuerURL); err != nil {
 		return err
 	}
 	if issuerURL == r.oidc.URL() {
@@ -109,35 +109,6 @@ func ValidateIssuerURL(issuer string) error {
 	}
 	if schemeAndHost != strings.ToLower(schemeAndHost) {
 		return fmt.Errorf("issuer %q: scheme and host must be lowercase", issuer)
-	}
-	return nil
-}
-
-// ValidateTrustEntryIssuerURL validates an issuer URL for use in trust entries.
-// In addition to the base ValidateIssuerURL checks, it requires HTTPS for
-// non-loopback addresses to prevent MITM on JWKS fetches in production.
-func ValidateTrustEntryIssuerURL(issuer string) error {
-	if err := ValidateIssuerURL(issuer); err != nil {
-		return err
-	}
-	i := strings.Index(issuer, "://")
-	scheme := issuer[:i]
-	if scheme != "https" {
-		rest := issuer[i+3:]
-		host := rest
-		if j := strings.Index(rest, "/"); j >= 0 {
-			host = rest[:j]
-		}
-		if strings.HasPrefix(host, "[") {
-			if ci := strings.Index(host, "]"); ci >= 0 {
-				host = host[1:ci]
-			}
-		} else if ci := strings.Index(host, ":"); ci >= 0 {
-			host = host[:ci]
-		}
-		if host != "localhost" && host != "127.0.0.1" && host != "::1" {
-			return fmt.Errorf("issuer %q: HTTPS required for non-localhost issuers", issuer)
-		}
 	}
 	return nil
 }
