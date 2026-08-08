@@ -141,7 +141,7 @@ func (h *GatewayHandler) RegisterSubject(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		slog.Info("stored scanner JWK", "subjectId", logSubjectID, "issuerID", logIssuerID,
-			"notAfter", scannerNotAfter)
+			"notAfter", body.ScannerJWK.NotAfter)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
