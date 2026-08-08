@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
@@ -18,6 +19,20 @@ import (
 )
 
 const adminRequestTimeout = 10 * time.Second
+
+// sanitizeLog strips newlines and control characters from a string before logging,
+// preventing log injection when user-supplied values are included in log entries.
+func sanitizeLog(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r == '\n' || r == '\r' || (r < 0x20 && r != '\t') {
+			b.WriteRune('_')
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
 
 // RegisterSubject handles POST /admin/subjects.
 func (h *GatewayHandler) RegisterSubject(w http.ResponseWriter, r *http.Request) {
@@ -118,13 +133,13 @@ func (h *GatewayHandler) RegisterSubject(w http.ResponseWriter, r *http.Request)
 
 	if err := h.trustStore.SetPublisherTrust(ctx, body.SubjectID, body.TrustedPublishers); err != nil {
 		slog.Error("registration partial failure: trust write failed after ledger creation",
-			"subjectId", body.SubjectID, "error", err)
+			"subjectId", sanitizeLog(body.SubjectID), "error", err)
 		http.Error(w, "failed to set publisher trust", http.StatusInternalServerError)
 		return
 	}
 	if err := h.trustStore.RegisterSubject(ctx, body.SubjectID); err != nil {
 		slog.Error("registration partial failure: registry write failed after trust set",
-			"subjectId", body.SubjectID, "error", err)
+			"subjectId", sanitizeLog(body.SubjectID), "error", err)
 		http.Error(w, "failed to register subject", http.StatusInternalServerError)
 		return
 	}
@@ -132,11 +147,11 @@ func (h *GatewayHandler) RegisterSubject(w http.ResponseWriter, r *http.Request)
 	if body.ScannerJWK != nil {
 		if err := h.trustStore.StoreJWK(ctx, scannerIssuerID, body.ScannerJWK.JWK, body.ScannerJWK.NotAfter); err != nil {
 			slog.Error("failed to store scanner JWK",
-				"subjectId", body.SubjectID, "issuerID", scannerIssuerID, "error", err)
+				"subjectId", sanitizeLog(body.SubjectID), "issuerID", sanitizeLog(scannerIssuerID), "error", err)
 			http.Error(w, "failed to store scanner JWK", http.StatusInternalServerError)
 			return
 		}
-		slog.Info("stored scanner JWK", "subjectId", body.SubjectID, "issuerID", scannerIssuerID,
+		slog.Info("stored scanner JWK", "subjectId", sanitizeLog(body.SubjectID), "issuerID", sanitizeLog(scannerIssuerID),
 			"notAfter", body.ScannerJWK.NotAfter)
 	}
 
@@ -200,12 +215,12 @@ func (h *GatewayHandler) ModifyTrust(w http.ResponseWriter, r *http.Request, sub
 	sealMsg, err := h.nc.RequestWithContext(sealCtx, natsinfra.SubjectAdminSealTrust, sealPayload)
 	if err != nil {
 		slog.Warn("failed to seal trust modification receipt",
-			"subjectId", subjectID, "error", err)
+			"subjectId", sanitizeLog(subjectID), "error", err)
 	} else {
 		var sealResp admin.SealTrustResponse
 		if err := json.Unmarshal(sealMsg.Data, &sealResp); err != nil || sealResp.Error != "" {
 			slog.Warn("trust modification receipt seal error",
-				"subjectId", subjectID, "error", sealResp.Error)
+				"subjectId", sanitizeLog(subjectID), "error", sealResp.Error)
 		}
 	}
 

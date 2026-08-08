@@ -28,6 +28,21 @@ services:
       timeout: 3s
       retries: 5
 
+  testjwks-oidc:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.testjwks
+    environment:
+      - TESTJWKS_LISTEN_ADDR=:8889
+      - ISSUER_URL=http://testjwks-oidc:8889
+    ports:
+      - "8889:8889"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8889/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   locker:
     build:
       context: ../..
@@ -38,10 +53,8 @@ services:
       - NATS_URL=nats://locker:locker-dev-password@nats:4222
 
       - JWT_AUDIENCE=complytime-locker
-      - OIDC_ISSUER=http://keycloak:8080/realms/complytime
-      - OIDC_CLIENT_ID=complytime
-      - OIDC_EXPECTED_ISSUER=http://localhost:8080/realms/complytime
-      - OIDC_GROUP_CLAIM=realm_access.roles
+      - OIDC_ISSUER=http://testjwks-oidc:8889
+      - OIDC_GROUP_CLAIM=groups
     volumes:
       - locker-data:/data/ledgers
       - ./locker.yaml:/app/locker.yaml:ro
@@ -53,9 +66,8 @@ services:
         condition: service_healthy
       testjwks:
         condition: service_healthy
-      keycloak:
+      testjwks-oidc:
         condition: service_healthy
-        required: false
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8081/healthz"]
       interval: 10s
@@ -71,10 +83,8 @@ services:
 
       - JWT_AUDIENCE=complytime-gateway
       - GATEWAY_LISTEN_ADDR=:8080
-      - OIDC_ISSUER=http://keycloak:8080/realms/complytime
-      - OIDC_CLIENT_ID=complytime
-      - OIDC_EXPECTED_ISSUER=http://localhost:8080/realms/complytime
-      - OIDC_GROUP_CLAIM=realm_access.roles
+      - OIDC_ISSUER=http://testjwks-oidc:8889
+      - OIDC_GROUP_CLAIM=groups
     volumes:
       - ./gateway.yaml:/app/gateway.yaml:ro
     command: ["-config", "/app/gateway.yaml"]
@@ -87,9 +97,8 @@ services:
         condition: service_healthy
       testjwks:
         condition: service_healthy
-      keycloak:
+      testjwks-oidc:
         condition: service_healthy
-        required: false
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/healthz"]
       interval: 10s
@@ -145,9 +154,7 @@ services:
 
       - JWT_AUDIENCE=complytime-graph
       - GRAPH_LISTEN_ADDR=:8082
-      - OIDC_ISSUER=http://keycloak:8080/realms/complytime
-      - OIDC_CLIENT_ID=complytime
-      - OIDC_EXPECTED_ISSUER=http://localhost:8080/realms/complytime
+      - OIDC_ISSUER=http://testjwks-oidc:8889
     volumes:
       - service-tokens:/tokens:ro
     ports:
@@ -161,9 +168,8 @@ services:
         condition: service_healthy
       testjwks:
         condition: service_healthy
-      keycloak:
+      testjwks-oidc:
         condition: service_healthy
-        required: false
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8082/healthz"]
       interval: 10s
