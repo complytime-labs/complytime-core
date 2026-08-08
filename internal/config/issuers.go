@@ -23,7 +23,7 @@ type OIDCConfig struct {
 
 // CustomIssuerConfig configures an operator-supplied publisher issuer.
 // Type determines which ValidateTrustEntry logic applies.
-// Valid types: github, gitlab, gcp, kubernetes, spiffe.
+// Valid types: github, gitlab, gcp, kubernetes, spiffe, workload.
 type CustomIssuerConfig struct {
 	URL  string `koanf:"url"`
 	Type string `koanf:"type"`
@@ -137,10 +137,10 @@ func BuildIssuers(ctx context.Context, cfg IssuersConfig) (*authn.OIDCIssuer, []
 // validateCustomIssuerType returns an error for unrecognised type strings.
 func validateCustomIssuerType(t string) error {
 	switch t {
-	case "github", "gitlab", "gcp", "kubernetes", "spiffe":
+	case "github", "gitlab", "gcp", "kubernetes", "spiffe", "workload":
 		return nil
 	default:
-		return fmt.Errorf("unknown type %q; valid types: github, gitlab, gcp, kubernetes, spiffe", t)
+		return fmt.Errorf("unknown type %q; valid types: github, gitlab, gcp, kubernetes, spiffe, workload", t)
 	}
 }
 
@@ -169,7 +169,9 @@ func buildCustomIssuer(ctx context.Context, c CustomIssuerConfig) (publisher.Pub
 		return publisher.NewKubernetesIssuer(ctx, c.URL)
 	case "spiffe":
 		return publisher.NewSPIFFEIssuer(ctx, c.URL)
+	case "workload":
+		return publisher.NewWorkloadIssuer(ctx, c.URL)
 	default:
-		return nil, fmt.Errorf("unknown type %q; valid types: github, gitlab, gcp, kubernetes, spiffe", c.Type)
+		return nil, fmt.Errorf("unknown type %q; valid types: github, gitlab, gcp, kubernetes, spiffe, workload", c.Type)
 	}
 }

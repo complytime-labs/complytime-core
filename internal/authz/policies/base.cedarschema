@@ -1,6 +1,7 @@
 entity Publisher = {
   publisher: Bool,
   scopes: Set<String>,
+  groups: Set<String>,
   issuer: String,
   sub: String,
 };
@@ -12,49 +13,89 @@ entity Subject = {
 action "publish:artifact" appliesTo {
   principal: [Publisher],
   resource: [Subject],
+  context: {
+    admin_group: String,
+    auditor_group: String,
+  }
 };
 
 action "admin:request-registration" appliesTo {
   principal: [Publisher],
   resource: [Subject],
+  context: {
+    admin_group: String,
+    auditor_group: String,
+  }
 };
 
 action "admin:request-trust-modification" appliesTo {
   principal: [Publisher],
   resource: [Subject],
+  context: {
+    admin_group: String,
+    auditor_group: String,
+  }
 };
 
 action "admin:register-subject" appliesTo {
   principal: [Publisher],
   resource: [Subject],
+  context: {
+    admin_group: String,
+    auditor_group: String,
+  }
 };
 
 action "admin:modify-trust" appliesTo {
   principal: [Publisher],
   resource: [Subject],
+  context: {
+    admin_group: String,
+    auditor_group: String,
+  }
 };
 
 action "read:evidence" appliesTo {
   principal: [Publisher],
   resource: [Subject],
+  context: {
+    admin_group: String,
+    auditor_group: String,
+  }
 };
 
 action "seal:evidence" appliesTo {
   principal: [Publisher],
   resource: [Subject],
+  context: {
+    admin_group: String,
+    auditor_group: String,
+  }
 };
 
 action "verify:evidence" appliesTo {
   principal: [Publisher],
   resource: [Subject],
+  context: {
+    admin_group: String,
+    auditor_group: String,
+  }
 };
 
 action "manage:ledger" appliesTo {
   principal: [Publisher],
   resource: [Subject],
+  context: {
+    admin_group: String,
+    auditor_group: String,
+  }
 };
 
 action "query:evidence" appliesTo {
   principal: [Publisher],
   resource: [Subject],
+  context: {
+    admin_group: String,
+    auditor_group: String,
+  }
 };

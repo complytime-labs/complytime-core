@@ -110,7 +110,7 @@ func TestGatewayIngest(t *testing.T) {
 	r.Group(func(r chi.Router) {
 		r.Use(authn.AuthMiddleware(jwtAuth))
 		r.Use(gateway.SubjectIDExtractor)
-		r.Use(authz.Middleware(policySet, trustStore.IsPublisherTrusted))
+		r.Use(authz.Middleware(policySet, trustStore.IsPublisherTrusted, authz.MiddlewareConfig{}))
 
 		r.Post("/api/ingest", gwHandler.IngestArtifact)
 	})
@@ -217,7 +217,7 @@ func TestGatewayDSSE(t *testing.T) {
 	r.Group(func(r chi.Router) {
 		r.Use(authn.AuthMiddleware(jwtAuth))
 		r.Use(gateway.SubjectIDExtractor)
-		r.Use(authz.Middleware(policySet, trustStore.IsPublisherTrusted))
+		r.Use(authz.Middleware(policySet, trustStore.IsPublisherTrusted, authz.MiddlewareConfig{}))
 
 		r.Post("/api/ingest", gwHandler.IngestArtifact)
 	})
@@ -309,7 +309,7 @@ func createTestJWTAuth(t *testing.T) (*ecdsa.PrivateKey, *authn.IssuerRegistry, 
 	t.Cleanup(jwksServer.Close)
 
 	// Publisher-class issuer: tokens from this URL get Publisher=true via registry dispatch.
-	pubIssuer, err := publisher.NewGenericOIDCIssuer(context.Background(), jwksServer.URL)
+	pubIssuer, err := publisher.NewWorkloadIssuer(context.Background(), jwksServer.URL)
 	require.NoError(t, err)
 
 	// Stub primary OIDC issuer at a different URL — test tokens never route here.

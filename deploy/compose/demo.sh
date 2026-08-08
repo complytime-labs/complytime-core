@@ -75,7 +75,7 @@ REG_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$GW/admin/subjects"
     "subjectId": "demo-app-v1",
     "trustedPublishers": [{
       "issuer": "http://testjwks:8888",
-      "sub": "repo:demo-org/demo-app:ref:refs/heads/main"
+      "sub": "demo-publisher"
     }]
   }')
 
@@ -90,7 +90,7 @@ fi
 # ── Step 2: Publisher submits an EvaluationLog ────────────────────────────
 step "Publish compliance evidence (publisher token → gateway → locker)"
 
-PUB_TOKEN=$(publisher_token "repo:demo-org/demo-app:ref:refs/heads/main" "complytime-gateway")
+PUB_TOKEN=$(publisher_token "demo-publisher" "complytime-gateway")
 
 RECEIPT=$(curl -sf -X POST "$GW/api/ingest" \
   -H "Authorization: Bearer $PUB_TOKEN" \

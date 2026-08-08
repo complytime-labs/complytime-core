@@ -226,7 +226,7 @@ Publishers authenticate via workload identity (not Keycloak). The registry recog
 
 ### Publisher E2E Flow (local dev via testjwks)
 
-testjwks is configured as a `type: github` publisher issuer in `deploy/compose/gateway.yaml`. Sub values must follow the GitHub Actions format: `repo:{owner}/{repo}:{filter_type}:{value}`.
+testjwks is configured as a `type: workload` publisher issuer in `deploy/compose/gateway.yaml`. Sub values can be any non-empty string — workload issuers place no format constraint on the subject identity.
 
 1. **Get publisher token from testjwks**:
 
@@ -234,7 +234,7 @@ testjwks is configured as a `type: github` publisher issuer in `deploy/compose/g
    PUBLISHER_TOKEN=$(curl -s -X POST http://localhost:8888/mint \
      -H "Content-Type: application/json" \
      -d '{
-       "sub": "repo:my-org/my-repo:ref:refs/heads/main",
+       "sub": "my-scanner",
        "audience": ["complytime-gateway"]
      }' | jq -r '.token')
    ```
