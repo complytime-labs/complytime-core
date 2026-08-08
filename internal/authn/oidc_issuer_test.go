@@ -6,6 +6,11 @@ import (
 	"github.com/complytime-labs/complytime-core/internal/authn"
 )
 
+var defaultKnownGroups = map[string]struct{}{
+	authn.DefaultAdminGroup:   {},
+	authn.DefaultAuditorGroup: {},
+}
+
 func TestExtractScopes_KnownScopes(t *testing.T) {
 	claims := map[string]any{
 		"scope": "complytime:admin complytime:audit openid profile",
@@ -63,7 +68,7 @@ func TestExtractGroups_FlatClaim(t *testing.T) {
 	claims := map[string]any{
 		"groups": []any{"complytime-admin", "complytime-auditor", "other-app-role"},
 	}
-	groups := authn.ExtractGroups(claims, "groups")
+	groups := authn.ExtractGroups(claims, "groups", defaultKnownGroups)
 	if len(groups) != 2 {
 		t.Fatalf("expected 2 known groups, got %v", groups)
 	}
@@ -81,7 +86,7 @@ func TestExtractGroups_NestedKeycloakClaim(t *testing.T) {
 			"roles": []any{"complytime-admin", "uma_authorization"},
 		},
 	}
-	groups := authn.ExtractGroups(claims, "realm_access.roles")
+	groups := authn.ExtractGroups(claims, "realm_access.roles", defaultKnownGroups)
 	if len(groups) != 1 || groups[0] != "complytime-admin" {
 		t.Fatalf("expected [complytime-admin] (uma_authorization filtered), got %v", groups)
 	}
@@ -91,7 +96,7 @@ func TestExtractGroups_CaseNormalization(t *testing.T) {
 	claims := map[string]any{
 		"groups": []any{"ComplyTime-Admin", "COMPLYTIME-AUDITOR"},
 	}
-	groups := authn.ExtractGroups(claims, "groups")
+	groups := authn.ExtractGroups(claims, "groups", defaultKnownGroups)
 	if len(groups) != 2 {
 		t.Fatalf("expected 2 groups after normalization, got %v", groups)
 	}
@@ -107,7 +112,7 @@ func TestExtractGroups_UnknownGroupsFiltered(t *testing.T) {
 	claims := map[string]any{
 		"groups": []any{"hr-payroll", "engineering", "other-app-admin"},
 	}
-	groups := authn.ExtractGroups(claims, "groups")
+	groups := authn.ExtractGroups(claims, "groups", defaultKnownGroups)
 	if len(groups) != 0 {
 		t.Fatalf("expected all unknown groups filtered, got %v", groups)
 	}
@@ -117,7 +122,7 @@ func TestExtractGroups_EmptyGroupClaim(t *testing.T) {
 	claims := map[string]any{
 		"groups": []any{"complytime-admin"},
 	}
-	groups := authn.ExtractGroups(claims, "")
+	groups := authn.ExtractGroups(claims, "", defaultKnownGroups)
 	if len(groups) != 0 {
 		t.Fatalf("expected nil when groupClaim is empty, got %v", groups)
 	}
@@ -125,7 +130,7 @@ func TestExtractGroups_EmptyGroupClaim(t *testing.T) {
 
 func TestExtractGroups_MissingClaim(t *testing.T) {
 	claims := map[string]any{"sub": "user1"}
-	groups := authn.ExtractGroups(claims, "groups")
+	groups := authn.ExtractGroups(claims, "groups", defaultKnownGroups)
 	if len(groups) != 0 {
 		t.Fatalf("expected nil for missing claim, got %v", groups)
 	}

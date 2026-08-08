@@ -149,13 +149,36 @@ func LoadEmbeddedPolicies(policyDir string) (*cedar.PolicySet, error) {
 	return ps, nil
 }
 
+// MiddlewareConfig carries operator-configured values injected into every
+// Cedar authorization context. Group names must match the Cedar base policy
+// and the IdP groups configured via OIDC_ADMIN_GROUP / OIDC_AUDITOR_GROUP.
+// Empty fields fall back to the Cedar base policy defaults.
+type MiddlewareConfig struct {
+	AdminGroup   string // default: "complytime-admin"
+	AuditorGroup string // default: "complytime-auditor"
+}
+
+func (c MiddlewareConfig) adminGroup() string {
+	if c.AdminGroup != "" {
+		return c.AdminGroup
+	}
+	return "complytime-admin"
+}
+
+func (c MiddlewareConfig) auditorGroup() string {
+	if c.AuditorGroup != "" {
+		return c.AuditorGroup
+	}
+	return "complytime-auditor"
+}
+
 // Middleware returns an HTTP middleware that performs Cedar authorization.
 // It extracts the principal from context, maps the route to an action,
 // looks up trust status, builds Cedar entities, and calls IsAuthorized.
 //
 // If authorization fails (deny or error), it returns 403 Forbidden.
 // If the route is not mapped to an action, it returns 403 Forbidden.
-func Middleware(ps *cedar.PolicySet, trustLookup TrustLookupFunc) func(http.Handler) http.Handler {
+func Middleware(ps *cedar.PolicySet, trustLookup TrustLookupFunc, cfg MiddlewareConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
@@ -247,7 +270,10 @@ func Middleware(ps *cedar.PolicySet, trustLookup TrustLookupFunc) func(http.Hand
 				Principal: principal,
 				Action:    action,
 				Resource:  resource,
-				Context:   cedar.NewRecord(cedar.RecordMap{}),
+				Context: cedar.NewRecord(cedar.RecordMap{
+					"admin_group":   cedar.String(cfg.adminGroup()),
+					"auditor_group": cedar.String(cfg.auditorGroup()),
+				}),
 			}
 
 			// Authorize

@@ -128,7 +128,11 @@ func main() {
 		}
 	}()
 
-	handler := locker.NewHandler(lk, auth, policySet, trustStore, eventPublisher)
+	authzCfg := authz.MiddlewareConfig{
+		AdminGroup:   cfg.Issuers.OIDC.AdminGroup,
+		AuditorGroup: cfg.Issuers.OIDC.AuditorGroup,
+	}
+	handler := locker.NewHandler(lk, auth, policySet, trustStore, eventPublisher, authzCfg)
 	server := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           handler,

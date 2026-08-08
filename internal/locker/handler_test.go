@@ -26,7 +26,7 @@ func TestHandler_ListLedgers(t *testing.T) {
 	require.NoError(t, err)
 	defer lk.Close(context.Background())
 
-	handler := NewHandler(lk, nil, nil, nil, nil)
+	handler := NewHandler(lk, nil, nil, nil, nil, authz.MiddlewareConfig{})
 
 	t.Run("returns empty list initially", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/ledgers", nil)
@@ -67,7 +67,7 @@ func TestHandler_GetLedger(t *testing.T) {
 	require.NoError(t, err)
 	defer lk.Close(context.Background())
 
-	handler := NewHandler(lk, nil, nil, nil, nil)
+	handler := NewHandler(lk, nil, nil, nil, nil, authz.MiddlewareConfig{})
 
 	t.Run("returns 404 for non-existent ledger", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/ledgers/missing", nil)
@@ -102,7 +102,7 @@ func TestHandler_FetchReceipt(t *testing.T) {
 	require.NoError(t, err)
 	defer lk.Close(context.Background())
 
-	handler := NewHandler(lk, nil, nil, nil, nil)
+	handler := NewHandler(lk, nil, nil, nil, nil, authz.MiddlewareConfig{})
 
 	t.Run("returns 404 for non-existent ledger", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/ledgers/missing/entry/0", nil)
@@ -160,7 +160,7 @@ func TestHandler_VerifyReceipt(t *testing.T) {
 	require.NoError(t, err)
 	defer lk.Close(context.Background())
 
-	handler := NewHandler(lk, nil, nil, nil, nil)
+	handler := NewHandler(lk, nil, nil, nil, nil, authz.MiddlewareConfig{})
 
 	t.Run("returns 404 for non-existent ledger", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/ledgers/missing/verify/abc123", nil)
@@ -231,7 +231,7 @@ func TestTileServer(t *testing.T) {
 	require.NoError(t, err)
 	defer lk.Close(context.Background())
 
-	handler := NewHandler(lk, nil, nil, nil, nil)
+	handler := NewHandler(lk, nil, nil, nil, nil, authz.MiddlewareConfig{})
 
 	ledger, err := lk.CreateLedger(context.Background(), "subject-1")
 	require.NoError(t, err)
@@ -281,7 +281,7 @@ func TestHandler_HealthzNoAuth(t *testing.T) {
 	defer lk.Close(context.Background())
 
 	// Even with nil auth, healthz should work
-	handler := NewHandler(lk, nil, nil, nil, nil)
+	handler := NewHandler(lk, nil, nil, nil, nil, authz.MiddlewareConfig{})
 
 	t.Run("healthz endpoint works without auth", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
@@ -315,7 +315,7 @@ func TestHandler_WithAuth(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create handler with auth and Cedar authorization enabled
-	handler := NewHandler(lk, auth, ps, nil, nil)
+	handler := NewHandler(lk, auth, ps, nil, nil, authz.MiddlewareConfig{})
 
 	t.Run("unauthenticated request to /ledgers returns 401", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/ledgers", nil)

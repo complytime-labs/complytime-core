@@ -97,7 +97,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	handler := graph.NewHandler(writer, auth, policySet)
+	authzCfg := authz.MiddlewareConfig{
+		AdminGroup:   cfg.Issuers.OIDC.AdminGroup,
+		AuditorGroup: cfg.Issuers.OIDC.AuditorGroup,
+	}
+	handler := graph.NewHandler(writer, auth, policySet, authzCfg)
 	server := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           handler,

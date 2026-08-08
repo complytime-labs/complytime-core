@@ -109,9 +109,14 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Get("/healthz", gwHandler.HealthCheck)
 
+	authzCfg := authz.MiddlewareConfig{
+		AdminGroup:   cfg.Issuers.OIDC.AdminGroup,
+		AuditorGroup: cfg.Issuers.OIDC.AuditorGroup,
+	}
+
 	r.Group(func(r chi.Router) {
 		r.Use(authn.AuthMiddleware(registry))
-		r.Use(authz.Middleware(policySet, trustStore.IsPublisherTrusted))
+		r.Use(authz.Middleware(policySet, trustStore.IsPublisherTrusted, authzCfg))
 		r.Post("/admin/subjects", gwHandler.RegisterSubject)
 		r.Put("/admin/subjects/{subjectId}/trust", func(w http.ResponseWriter, req *http.Request) {
 			subjectID := chi.URLParam(req, "subjectId")
@@ -122,7 +127,7 @@ func main() {
 	r.Group(func(r chi.Router) {
 		r.Use(authn.AuthMiddleware(registry))
 		r.Use(gateway.SubjectIDExtractor)
-		r.Use(authz.Middleware(policySet, trustStore.IsPublisherTrusted))
+		r.Use(authz.Middleware(policySet, trustStore.IsPublisherTrusted, authzCfg))
 		r.Post("/api/ingest", gwHandler.IngestArtifact)
 	})
 

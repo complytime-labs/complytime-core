@@ -23,13 +23,18 @@ type OIDCIssuer struct {
 	jwksURL        string
 	cache          *jwk.Cache
 	groupClaim     string
+	knownGroups    map[string]struct{}
+	groupMode      GroupMode
 }
 
 // OIDCIssuerConfig holds configuration for the human IdP.
 type OIDCIssuerConfig struct {
-	URL            string // required — OIDC discovery base URL (used for JWKS fetch)
-	ExpectedIssuer string // optional — overrides iss claim validation when internal URL ≠ token issuer
-	GroupClaim     string // optional — dot-path to group claim (e.g. "groups", "realm_access.roles")
+	URL            string    // required — OIDC discovery base URL (used for JWKS fetch)
+	ExpectedIssuer string    // optional — overrides iss claim validation when internal URL ≠ token issuer
+	GroupClaim     string    // optional — dot-path to group claim (e.g. "groups", "realm_access.roles")
+	AdminGroup     string    // optional — group name for admin role; defaults to DefaultAdminGroup
+	AuditorGroup   string    // optional — group name for auditor role; defaults to DefaultAuditorGroup
+	GroupMode      GroupMode // optional — "audit" logs dropped groups; default "enforce"
 }
 
 // knownScopes is the allowlist of scopes the application recognises.
@@ -56,30 +61,45 @@ func ExtractScopes(claims map[string]any) []string {
 	return out
 }
 
-// knownGroups is the allowlist of groups the application recognises.
-// Groups not in this set are silently dropped — defense-in-depth against
-// directory-sourced claims with a weaker trust model than OAuth2 scopes.
-var knownGroups = map[string]struct{}{
-	"complytime-admin":   {},
-	"complytime-auditor": {},
-}
+// GroupMode controls how unrecognized groups are handled.
+type GroupMode string
+
+const (
+	// GroupModeEnforce silently drops unrecognized groups. Default.
+	GroupModeEnforce GroupMode = "enforce"
+	// GroupModeAudit drops unrecognized groups but logs them for operator diagnostics.
+	GroupModeAudit GroupMode = "audit"
+)
+
+// DefaultAdminGroup and DefaultAuditorGroup are the group names used when
+// OIDC_ADMIN_GROUP / OIDC_AUDITOR_GROUP are not set. Cedar base policies
+// reference these same values; change both together.
+const (
+	DefaultAdminGroup   = "complytime-admin"
+	DefaultAuditorGroup = "complytime-auditor"
+)
 
 // ExtractGroups reads groups from the JWT claims using the configured dot-path,
-// normalizes to lowercase, and returns the subset that appears in knownGroups.
+// normalizes to lowercase, and returns the subset present in knownGroups.
 // Returns nil if groupClaim is empty or the claim is missing.
-func ExtractGroups(claims map[string]any, groupClaim string) []string {
+// knownGroups is the operator-configured set; build it from OIDCIssuerConfig.
+func ExtractGroups(claims map[string]any, groupClaim string, knownGroups map[string]struct{}) []string {
+	recognized, _ := extractGroupsWithDropped(claims, groupClaim, knownGroups)
+	return recognized
+}
+
+// extractGroupsWithDropped returns both recognized and dropped groups in one pass.
+func extractGroupsWithDropped(claims map[string]any, groupClaim string, knownGroups map[string]struct{}) (recognized, dropped []string) {
 	raw := ExtractClaimByPath(claims, groupClaim)
-	if len(raw) == 0 {
-		return nil
-	}
-	var out []string
 	for _, g := range raw {
 		normalized := strings.ToLower(g)
 		if _, known := knownGroups[normalized]; known {
-			out = append(out, normalized)
+			recognized = append(recognized, normalized)
+		} else {
+			dropped = append(dropped, normalized)
 		}
 	}
-	return out
+	return
 }
 
 // fetchJWKSURL fetches the OIDC discovery document and returns the jwks_uri.
@@ -133,9 +153,34 @@ func NewOIDCIssuer(ctx context.Context, cfg OIDCIssuerConfig) (*OIDCIssuer, erro
 		return nil, fmt.Errorf("fetching JWKS from %s: %w", jwksURL, err)
 	}
 
+	adminGroup := cfg.AdminGroup
+	if adminGroup == "" {
+		adminGroup = DefaultAdminGroup
+	}
+	auditorGroup := cfg.AuditorGroup
+	if auditorGroup == "" {
+		auditorGroup = DefaultAuditorGroup
+	}
+	knownGroups := map[string]struct{}{
+		adminGroup:   {},
+		auditorGroup: {},
+	}
+
+	groupMode := cfg.GroupMode
+	switch groupMode {
+	case GroupModeEnforce, GroupModeAudit:
+	case "":
+		groupMode = GroupModeEnforce
+	default:
+		return nil, fmt.Errorf("invalid OIDC_GROUP_MODE %q: must be %q or %q", cfg.GroupMode, GroupModeEnforce, GroupModeAudit)
+	}
+
 	if cfg.GroupClaim != "" {
 		slog.Info("group-based authorization enabled",
 			"claim_path", cfg.GroupClaim,
+			"admin_group", adminGroup,
+			"auditor_group", auditorGroup,
+			"mode", groupMode,
 			"issuer", issuerURL)
 	}
 
@@ -145,6 +190,8 @@ func NewOIDCIssuer(ctx context.Context, cfg OIDCIssuerConfig) (*OIDCIssuer, erro
 		jwksURL:        jwksURL,
 		cache:          cache,
 		groupClaim:     cfg.GroupClaim,
+		knownGroups:    knownGroups,
+		groupMode:      groupMode,
 	}, nil
 }
 
@@ -192,11 +239,20 @@ func (o *OIDCIssuer) Authenticate(ctx context.Context, tokenString, audience str
 	// Human IdP tokens carry OAuth2 scopes for access control.
 	// Publisher-class is set by the registry dispatch, never by this issuer.
 	principal.Scopes = ExtractScopes(claims)
-	principal.Groups = ExtractGroups(claims, o.groupClaim)
 
-	if o.groupClaim != "" && len(principal.Groups) == 0 {
-		slog.Warn("group claim configured but no recognized groups extracted",
-			"claim_path", o.groupClaim, "sub", sub)
+	if o.groupClaim != "" {
+		recognized, dropped := extractGroupsWithDropped(claims, o.groupClaim, o.knownGroups)
+		principal.Groups = recognized
+
+		if len(recognized) == 0 {
+			slog.Warn("group claim configured but no recognized groups extracted",
+				"claim_path", o.groupClaim, "sub", sub)
+		}
+		if o.groupMode == GroupModeAudit && len(dropped) > 0 {
+			slog.Warn("audit: groups in token not recognized — verify OIDC_ADMIN_GROUP / OIDC_AUDITOR_GROUP match your IdP",
+				"dropped", dropped, "recognized", recognized,
+				"claim_path", o.groupClaim, "sub", sub)
+		}
 	}
 
 	return principal, nil

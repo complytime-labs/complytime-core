@@ -13,9 +13,12 @@ import (
 
 // OIDCConfig holds settings for the human IdP.
 type OIDCConfig struct {
-	URL            string // OIDC_ISSUER
-	ExpectedIssuer string // OIDC_EXPECTED_ISSUER (optional)
-	GroupClaim     string // OIDC_GROUP_CLAIM (optional — dot-path to group claim)
+	URL            string          // OIDC_ISSUER
+	ExpectedIssuer string          // OIDC_EXPECTED_ISSUER (optional)
+	GroupClaim     string          // OIDC_GROUP_CLAIM (optional — dot-path to group claim)
+	AdminGroup     string          // OIDC_ADMIN_GROUP (optional — defaults to complytime-admin)
+	AuditorGroup   string          // OIDC_AUDITOR_GROUP (optional — defaults to complytime-auditor)
+	GroupMode      authn.GroupMode // OIDC_GROUP_MODE (optional — "audit" logs dropped groups)
 }
 
 // CustomIssuerConfig configures an operator-supplied OIDC issuer.
@@ -53,6 +56,9 @@ func UnmarshalIssuers(k *koanf.Koanf) (IssuersConfig, error) {
 			URL:            oidcURL,
 			ExpectedIssuer: k.String("oidc.expected.issuer"),
 			GroupClaim:     k.String("oidc.group.claim"),
+			AdminGroup:     k.String("oidc.admin.group"),
+			AuditorGroup:   k.String("oidc.auditor.group"),
+			GroupMode:      authn.GroupMode(k.String("oidc.group.mode")),
 		},
 	}
 
@@ -79,10 +85,16 @@ func UnmarshalIssuers(k *koanf.Koanf) (IssuersConfig, error) {
 // BuildIssuers constructs the OIDC issuer and all configured publisher issuers.
 // Connects to live OIDC endpoints — not suitable for unit tests.
 func BuildIssuers(ctx context.Context, cfg IssuersConfig) (*authn.OIDCIssuer, []publisher.PublisherIssuer, error) {
-	// Validate custom issuer config before making any network connections.
+	// Validate all issuer URLs before making any network connections.
+	if err := authn.ValidateIssuerURL(cfg.OIDC.URL); err != nil {
+		return nil, nil, fmt.Errorf("OIDC issuer: %w", err)
+	}
 	for _, c := range cfg.Custom {
 		if c.URL == "" {
 			return nil, nil, fmt.Errorf("custom issuer entry missing url")
+		}
+		if err := authn.ValidateIssuerURL(c.URL); err != nil {
+			return nil, nil, fmt.Errorf("custom issuer: %w", err)
 		}
 		if err := validateCustomIssuerType(c.Type); err != nil {
 			return nil, nil, err
@@ -93,6 +105,9 @@ func BuildIssuers(ctx context.Context, cfg IssuersConfig) (*authn.OIDCIssuer, []
 		URL:            cfg.OIDC.URL,
 		ExpectedIssuer: cfg.OIDC.ExpectedIssuer,
 		GroupClaim:     cfg.OIDC.GroupClaim,
+		AdminGroup:     cfg.OIDC.AdminGroup,
+		AuditorGroup:   cfg.OIDC.AuditorGroup,
+		GroupMode:      cfg.OIDC.GroupMode,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("OIDC issuer: %w", err)

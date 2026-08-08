@@ -320,7 +320,7 @@ func TestMiddleware(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 			})
 
-			middleware := Middleware(ps, tt.trustLookup)
+			middleware := Middleware(ps, tt.trustLookup, MiddlewareConfig{})
 			wrapped := middleware(handler)
 
 			req := httptest.NewRequest(tt.method, tt.path, nil)

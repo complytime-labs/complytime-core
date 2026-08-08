@@ -340,6 +340,42 @@ func TestRegistryValidateTrustEntry(t *testing.T) {
 	require.NoError(t, registry.ValidateTrustEntry("https://primary.example.com", "any-user"))
 	require.NoError(t, registry.ValidateTrustEntry("https://publisher.example.com", "some-sub"))
 	require.Error(t, registry.ValidateTrustEntry("https://unknown.example.com", "some-sub"))
+
+	// Uppercase scheme or host must be rejected with a clear error.
+	err := registry.ValidateTrustEntry("HTTPS://primary.example.com", "any-user")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "lowercase")
+
+	err = registry.ValidateTrustEntry("https://PRIMARY.example.com", "any-user")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "lowercase")
+}
+
+func TestValidateIssuerURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		issuer  string
+		wantErr bool
+	}{
+		{"valid lowercase", "https://idp.example.com", false},
+		{"valid with path", "https://idp.example.com/realms/main", false},
+		{"uppercase path allowed", "https://oidc.eks.us-east-1.amazonaws.com/id/ABCDEF123456", false},
+		{"uppercase scheme", "HTTPS://idp.example.com", true},
+		{"uppercase host", "https://IDP.example.com", true},
+		{"mixed host", "https://Idp.Example.Com", true},
+		{"no path separator", "https://idp.example.com", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateIssuerURL(tc.issuer)
+			if tc.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "lowercase")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
 
 // inMemJTIStore is a test-only in-memory JTI store.

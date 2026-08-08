@@ -29,7 +29,8 @@ unless {
   resource.publisher_trusted == true
 };
 
-// Admin scope OR admin group gates gateway admin operations
+// Admin scope OR admin group (from context.admin_group) gates gateway admin operations.
+// context.admin_group is set by MiddlewareConfig from OIDC_ADMIN_GROUP; default "complytime-admin".
 permit (
   principal,
   action == Action::"admin:request-registration",
@@ -37,7 +38,7 @@ permit (
 )
 when {
   principal.scopes.contains("complytime:admin") ||
-  principal.groups.contains("complytime-admin")
+  principal.groups.contains(context.admin_group)
 };
 
 permit (
@@ -47,10 +48,11 @@ permit (
 )
 when {
   principal.scopes.contains("complytime:admin") ||
-  principal.groups.contains("complytime-admin")
+  principal.groups.contains(context.admin_group)
 };
 
-// Audit scope/group (or admin scope/group) gates evidence queries
+// Audit scope/group (or admin scope/group) gates evidence queries.
+// context.auditor_group is set by MiddlewareConfig from OIDC_AUDITOR_GROUP; default "complytime-auditor".
 permit (
   principal,
   action == Action::"query:evidence",
@@ -59,8 +61,8 @@ permit (
 when {
   principal.scopes.contains("complytime:audit") ||
   principal.scopes.contains("complytime:admin") ||
-  principal.groups.contains("complytime-auditor") ||
-  principal.groups.contains("complytime-admin")
+  principal.groups.contains(context.auditor_group) ||
+  principal.groups.contains(context.admin_group)
 };
 
 // Audit or admin (scope or group) allows reading raw evidence from locker.
@@ -74,6 +76,6 @@ permit (
 when {
   principal.scopes.contains("complytime:audit") ||
   principal.scopes.contains("complytime:admin") ||
-  principal.groups.contains("complytime-auditor") ||
-  principal.groups.contains("complytime-admin")
+  principal.groups.contains(context.auditor_group) ||
+  principal.groups.contains(context.admin_group)
 };

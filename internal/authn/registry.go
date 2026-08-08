@@ -81,6 +81,9 @@ func (r *IssuerRegistry) Authenticate(req *http.Request) (*Principal, error) {
 // ValidateTrustEntry validates that {issuerURL, sub} is a well-formed trust
 // entry for the configured issuer type. Returns a user-facing error if not.
 func (r *IssuerRegistry) ValidateTrustEntry(issuerURL, sub string) error {
+	if err := ValidateIssuerURL(issuerURL); err != nil {
+		return err
+	}
 	if issuerURL == r.oidc.URL() {
 		return r.oidc.ValidateTrustEntry(sub)
 	}
@@ -88,6 +91,24 @@ func (r *IssuerRegistry) ValidateTrustEntry(issuerURL, sub string) error {
 		return pub.ValidateTrustEntry(sub)
 	}
 	return fmt.Errorf("issuer %q is not configured as a trusted publisher; add it to the service configuration or use scannerJwk for static JWK issuers", issuerURL)
+}
+
+// ValidateIssuerURL checks that the issuer URL's scheme and host are lowercase.
+// url.Parse silently lowercases the scheme, so we inspect the raw string.
+// Paths are excluded — AWS EKS issuers legitimately use uppercase in the path
+// (e.g. /id/ABCDEF123456).
+func ValidateIssuerURL(issuer string) error {
+	schemeAndHost := issuer
+	if i := strings.Index(issuer, "://"); i >= 0 {
+		rest := issuer[i+3:]
+		if j := strings.Index(rest, "/"); j >= 0 {
+			schemeAndHost = issuer[:i+3+j]
+		}
+	}
+	if schemeAndHost != strings.ToLower(schemeAndHost) {
+		return fmt.Errorf("issuer %q: scheme and host must be lowercase", issuer)
+	}
+	return nil
 }
 
 // peekIssuer extracts the iss claim from a JWT without validating the signature.
