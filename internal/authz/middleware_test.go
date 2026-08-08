@@ -340,6 +340,81 @@ func TestMiddleware(t *testing.T) {
 	}
 }
 
+func TestMiddlewareCustomGroupNames(t *testing.T) {
+	ps, err := LoadEmbeddedPolicies("")
+	require.NoError(t, err)
+
+	cfg := MiddlewareConfig{
+		AdminGroup:   "ops-admin",
+		AuditorGroup: "ops-auditor",
+	}
+	noTrust := func(ctx context.Context, subjectID, issuer, sub string) (bool, error) {
+		return false, nil
+	}
+
+	tests := []struct {
+		name           string
+		method         string
+		path           string
+		groups         []string
+		wantStatusCode int
+	}{
+		{
+			name:           "custom admin group grants admin access",
+			method:         "POST",
+			path:           "/admin/subjects",
+			groups:         []string{"ops-admin"},
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "custom auditor group grants query access",
+			method:         "GET",
+			path:           "/api/subjects",
+			groups:         []string{"ops-auditor"},
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "default admin group name rejected when custom name configured",
+			method:         "POST",
+			path:           "/admin/subjects",
+			groups:         []string{"complytime-admin"},
+			wantStatusCode: http.StatusForbidden,
+		},
+		{
+			name:           "default auditor group name rejected when custom name configured",
+			method:         "GET",
+			path:           "/api/subjects",
+			groups:         []string{"complytime-auditor"},
+			wantStatusCode: http.StatusForbidden,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})
+
+			middleware := Middleware(ps, noTrust, cfg)
+			wrapped := middleware(handler)
+
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			ctx := req.Context()
+			ctx = SetPublisherContext(ctx, "https://idp.example.com", "user")
+			ctx = SetSubjectIDContext(ctx, "")
+			ctx = SetScopesContext(ctx, nil)
+			ctx = SetGroupsContext(ctx, tt.groups)
+			ctx = SetPublisherFlagContext(ctx, false)
+			req = req.WithContext(ctx)
+
+			rec := httptest.NewRecorder()
+			wrapped.ServeHTTP(rec, req)
+
+			assert.Equal(t, tt.wantStatusCode, rec.Code)
+		})
+	}
+}
+
 func TestContextHelpers(t *testing.T) {
 	ctx := context.Background()
 
