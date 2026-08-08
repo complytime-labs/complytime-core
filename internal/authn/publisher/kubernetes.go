@@ -105,7 +105,7 @@ func (k *KubernetesIssuer) Authenticate(ctx context.Context, tokenString, audien
 		jwt.WithAcceptableSkew(30*time.Second),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("Kubernetes token validation failed: %w", err)
+		return nil, fmt.Errorf("kubernetes token validation failed: %w", err)
 	}
 	if iss, ok := tok.Issuer(); !ok || iss != k.url {
 		return nil, fmt.Errorf("issuer mismatch: got %q expected %q", iss, k.url)

@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -141,7 +142,7 @@ func LoadEmbeddedPolicies(policyDir string) (*cedar.PolicySet, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parsing %s: %w", path, err)
 		}
-		for id, policy := range extra.Map() {
+		for id, policy := range maps.Collect(extra.All()) {
 			ps.Add(id, policy)
 		}
 	}

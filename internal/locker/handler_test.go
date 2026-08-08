@@ -373,13 +373,14 @@ func setupJWKSServer(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey, *http
 	var serverURL string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/.well-known/openid-configuration" {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
 			_ = json.NewEncoder(w).Encode(map[string]string{
 				"jwks_uri": serverURL + "/.well-known/jwks.json",
 			})
-		} else if r.URL.Path == "/.well-known/jwks.json" {
+		case "/.well-known/jwks.json":
 			_ = json.NewEncoder(w).Encode(jwks)
-		} else {
+		default:
 			http.NotFound(w, r)
 		}
 	}))
@@ -397,7 +398,7 @@ func createServiceJWT(t *testing.T, privateKey ed25519.PrivateKey, issuer, sub s
 		Subject(sub).
 		Audience([]string{"complytime-locker"}).
 		IssuedAt(time.Now()).
-		Expiration(time.Now().Add(1*time.Hour)).
+		Expiration(time.Now().Add(1 * time.Hour)).
 		Build()
 	require.NoError(t, err)
 

@@ -36,8 +36,8 @@ var routeMappings = []routeMapping{
 	{"GET", "/api/subjects", ActionQueryEvidence},  // GET /api/subjects (list)
 	{"GET", "/api/subjects/", ActionQueryEvidence}, // GET /api/subjects/{id}... (detail, threat-model, evidence, coverage)
 	// Locker routes — read-only
-	{"GET", "/ledgers", ActionReadEvidence},   // GET /ledgers (exact — list)
-	{"GET", "/ledgers/", ActionReadEvidence},  // GET /ledgers/... (info, fetch, verify, tiles)
+	{"GET", "/ledgers", ActionReadEvidence},  // GET /ledgers (exact — list)
+	{"GET", "/ledgers/", ActionReadEvidence}, // GET /ledgers/... (info, fetch, verify, tiles)
 }
 
 // PrincipalFromJWT constructs a Cedar Publisher entity UID from JWT issuer and subject.

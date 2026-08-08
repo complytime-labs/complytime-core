@@ -103,9 +103,13 @@ func extractGroupsWithDropped(claims map[string]any, groupClaim string, knownGro
 }
 
 // fetchJWKSURL fetches the OIDC discovery document and returns the jwks_uri.
-func fetchJWKSURL(issuerURL string) (string, error) {
+func fetchJWKSURL(ctx context.Context, issuerURL string) (string, error) {
 	discoveryURL := issuerURL + "/.well-known/openid-configuration"
-	resp, err := http.Get(discoveryURL) //nolint:noctx
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, discoveryURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("building discovery request: %w", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("fetching discovery document: %w", err)
 	}
@@ -136,7 +140,7 @@ func NewOIDCIssuer(ctx context.Context, cfg OIDCIssuerConfig) (*OIDCIssuer, erro
 	if cfg.ExpectedIssuer != "" {
 		expectedIssuer = strings.TrimRight(strings.TrimSpace(cfg.ExpectedIssuer), "/")
 	}
-	jwksURL, err := fetchJWKSURL(issuerURL)
+	jwksURL, err := fetchJWKSURL(ctx, issuerURL)
 	if err != nil {
 		return nil, fmt.Errorf("OIDC discovery for %s: %w", issuerURL, err)
 	}
@@ -265,4 +269,3 @@ func (o *OIDCIssuer) ValidateTrustEntry(sub string) error {
 	}
 	return nil
 }
-

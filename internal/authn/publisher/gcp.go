@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	GCPWorkloadIssuerURL = "https://accounts.google.com"
+	GCPWorkloadIssuerURL = "https://accounts.google.com" //nolint:gosec // G101 false positive: public endpoint URL, not a credential
 	gcpDefaultJWKSURL    = "https://www.googleapis.com/oauth2/v3/certs"
 )
 

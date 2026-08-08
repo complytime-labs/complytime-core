@@ -15,7 +15,7 @@ import (
 type IssuerRegistry struct {
 	oidc       Issuer                               // OIDC_ISSUER — sets Publisher from claims, Scopes from scope claim
 	publishers map[string]publisher.PublisherIssuer // URL → trusted publisher Issuer
-	jwkStore   publisher.JWKLookup                 // runtime-registered static JWKs
+	jwkStore   publisher.JWKLookup                  // runtime-registered static JWKs
 	jtiStore   publisher.JTIStore
 	audience   string
 }
