@@ -35,6 +35,17 @@ oidc:
   # differs from the token issuer (split-brain compose). Env: OIDC_EXPECTED_ISSUER
   expected:
     issuer: ""
+  # Optional: dot-path to group claim in the JWT (e.g. "groups", "realm_access.roles").
+  # Required to enable group-based authorization. Env: OIDC_GROUP_CLAIM
+  group:
+    claim: ""
+    # Cedar admin group name. Default: complytime-admin. Env: OIDC_ADMIN_GROUP
+    admin: ""
+    # Cedar auditor group name. Default: complytime-auditor. Env: OIDC_AUDITOR_GROUP
+    auditor: ""
+    # "enforce" (default) silently drops unrecognized groups.
+    # "audit" drops them and logs for operator diagnostics. Env: OIDC_GROUP_MODE
+    mode: ""
 
 issuers:
   # Built-in public CI/cloud issuers. Enable by shortname.
@@ -44,15 +55,17 @@ issuers:
 
   # Custom OIDC issuers registered at startup. YAML-only (no env var equivalent).
   # type determines ValidateTrustEntry sub-format validation:
-  #   github → repo:owner/repo:filter:value
-  #   gitlab → project_path:group/project:ref_type:branch|tag:ref:name
-  #   gcp    → GCP workload identity or service account format
-  #   oidc   → any non-empty sub (generic)
+  #   github     → repo:owner/repo:filter:value
+  #   gitlab     → project_path:group/project:ref_type:branch|tag:ref:name
+  #   gcp        → GCP workload identity pool URL or service account email
+  #   kubernetes → system:serviceaccount:{namespace}:{name}
+  #   spiffe     → spiffe://{trust_domain}/{path}
+  #   workload   → any non-empty sub (generic OIDC-compatible endpoint)
   custom: []
   # custom:
   #   - url: https://github.example.com
   #     type: github
   #   - url: https://gitlab.internal.com
   #     type: gitlab
-  #   - url: https://oidc.example.com
-  #     type: oidc
+  #   - url: https://oidc.internal.com
+  #     type: workload
