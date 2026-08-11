@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"strings"
 	"time"
 
@@ -13,6 +12,8 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/lestrrat-go/jwx/v3/jwt"
+
+	"github.com/complytime-labs/complytime-core/internal/authn/publisher"
 )
 
 // OIDCIssuer handles the operator's human IdP. Validates JWTs via JWKS
@@ -102,33 +103,6 @@ func extractGroupsWithDropped(claims map[string]any, groupClaim string, knownGro
 	return
 }
 
-// fetchJWKSURL fetches the OIDC discovery document and returns the jwks_uri.
-func fetchJWKSURL(ctx context.Context, issuerURL string) (string, error) {
-	discoveryURL := issuerURL + "/.well-known/openid-configuration"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, discoveryURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("building discovery request: %w", err)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("fetching discovery document: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("discovery document returned status %d", resp.StatusCode)
-	}
-	var doc struct {
-		JWKSURI string `json:"jwks_uri"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
-		return "", fmt.Errorf("decoding discovery document: %w", err)
-	}
-	if doc.JWKSURI == "" {
-		return "", fmt.Errorf("jwks_uri not found in discovery document")
-	}
-	return doc.JWKSURI, nil
-}
-
 // NewOIDCIssuer creates an OIDCIssuer and pre-fetches JWKS.
 func NewOIDCIssuer(ctx context.Context, cfg OIDCIssuerConfig) (*OIDCIssuer, error) {
 	if cfg.URL == "" {
@@ -140,7 +114,7 @@ func NewOIDCIssuer(ctx context.Context, cfg OIDCIssuerConfig) (*OIDCIssuer, erro
 	if cfg.ExpectedIssuer != "" {
 		expectedIssuer = strings.TrimRight(strings.TrimSpace(cfg.ExpectedIssuer), "/")
 	}
-	jwksURL, err := fetchJWKSURL(ctx, issuerURL)
+	jwksURL, err := publisher.DiscoverJWKSURI(ctx, issuerURL)
 	if err != nil {
 		return nil, fmt.Errorf("OIDC discovery for %s: %w", issuerURL, err)
 	}
@@ -262,10 +236,10 @@ func (o *OIDCIssuer) Authenticate(ctx context.Context, tokenString, audience str
 	return principal, nil
 }
 
-// ValidateTrustEntry: any sub from the OIDC IdP is valid as a per-subject trusted publisher.
-func (o *OIDCIssuer) ValidateTrustEntry(sub string) error {
-	if sub == "" {
-		return fmt.Errorf("sub is required")
-	}
-	return nil
+// ValidateTrustEntry rejects OIDC subs as trusted publishers. OIDC tokens
+// carry human identity (scopes/groups) and always have Publisher=false in the
+// registry dispatch; a trust entry for an OIDC sub can never authorize a publish
+// operation. Use a publisher issuer or static JWK for workload publish access.
+func (o *OIDCIssuer) ValidateTrustEntry(_ string) error {
+	return fmt.Errorf("OIDC issuer %q cannot be used as a trusted publisher: use a configured publisher issuer (github_actions, gitlab, gcp, kubernetes, spiffe, workload) or register a static JWK", o.url)
 }

@@ -64,6 +64,9 @@ func (w *WorkloadIssuer) Authenticate(ctx context.Context, tokenString, audience
 	if err != nil {
 		return nil, fmt.Errorf("workload token validation failed: %w", err)
 	}
+	if iss, ok := tok.Issuer(); !ok || iss != w.url {
+		return nil, fmt.Errorf("issuer mismatch: got %q expected %q", iss, w.url)
+	}
 	sub, ok := tok.Subject()
 	if !ok || sub == "" {
 		return nil, fmt.Errorf("missing sub claim")

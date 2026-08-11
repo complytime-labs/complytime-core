@@ -9,12 +9,9 @@ import (
 // Cedar action entity UIDs
 var (
 	ActionPublishArtifact          = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("publish:artifact"))
-	ActionRegisterSubject          = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("admin:register-subject"))
-	ActionModifyTrust              = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("admin:modify-trust"))
 	ActionRequestRegistration      = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("admin:request-registration"))
 	ActionRequestTrustModification = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("admin:request-trust-modification"))
 	ActionReadEvidence             = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("read:evidence"))
-	ActionVerifyEvidence           = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("verify:evidence"))
 	ActionQueryEvidence            = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("query:evidence"))
 )
 

@@ -89,7 +89,11 @@ func main() {
 	}
 
 	// Graph service has no trust store — no JWK store or JTI store.
-	auth := authn.NewIssuerRegistry(primary, publishers, nil, nil, cfg.JWTAudience)
+	auth, err := authn.NewIssuerRegistry(primary, publishers, nil, nil, cfg.JWTAudience)
+	if err != nil {
+		slog.Error("failed to build issuer registry", "error", err)
+		os.Exit(1)
+	}
 
 	policySet, err := authz.LoadEmbeddedPolicies(cfg.CedarPolicyDir)
 	if err != nil {

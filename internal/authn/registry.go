@@ -21,7 +21,15 @@ type IssuerRegistry struct {
 }
 
 // NewIssuerRegistry builds a registry. oidc must be non-nil.
-func NewIssuerRegistry(oidc Issuer, publishers []publisher.PublisherIssuer, jwkStore publisher.JWKLookup, jtiStore publisher.JTIStore, audience string) *IssuerRegistry {
+// jwkStore and jtiStore must either both be set or both be nil: JTI replay
+// prevention is required whenever runtime-registered JWKs are in use.
+func NewIssuerRegistry(oidc Issuer, publishers []publisher.PublisherIssuer, jwkStore publisher.JWKLookup, jtiStore publisher.JTIStore, audience string) (*IssuerRegistry, error) {
+	if oidc == nil {
+		return nil, fmt.Errorf("oidc issuer is required")
+	}
+	if jwkStore != nil && jtiStore == nil {
+		return nil, fmt.Errorf("jtiStore is required when jwkStore is set: JTI replay prevention cannot be disabled")
+	}
 	m := make(map[string]publisher.PublisherIssuer, len(publishers))
 	for _, p := range publishers {
 		m[p.URL()] = p
@@ -32,7 +40,7 @@ func NewIssuerRegistry(oidc Issuer, publishers []publisher.PublisherIssuer, jwkS
 		jwkStore:   jwkStore,
 		jtiStore:   jtiStore,
 		audience:   audience,
-	}
+	}, nil
 }
 
 // Authenticate finds the issuer for the token's iss claim and delegates.

@@ -37,52 +37,7 @@ action "admin:request-trust-modification" appliesTo {
   }
 };
 
-action "admin:register-subject" appliesTo {
-  principal: [Publisher],
-  resource: [Subject],
-  context: {
-    admin_group: String,
-    auditor_group: String,
-  }
-};
-
-action "admin:modify-trust" appliesTo {
-  principal: [Publisher],
-  resource: [Subject],
-  context: {
-    admin_group: String,
-    auditor_group: String,
-  }
-};
-
 action "read:evidence" appliesTo {
-  principal: [Publisher],
-  resource: [Subject],
-  context: {
-    admin_group: String,
-    auditor_group: String,
-  }
-};
-
-action "seal:evidence" appliesTo {
-  principal: [Publisher],
-  resource: [Subject],
-  context: {
-    admin_group: String,
-    auditor_group: String,
-  }
-};
-
-action "verify:evidence" appliesTo {
-  principal: [Publisher],
-  resource: [Subject],
-  context: {
-    admin_group: String,
-    auditor_group: String,
-  }
-};
-
-action "manage:ledger" appliesTo {
   principal: [Publisher],
   resource: [Subject],
   context: {

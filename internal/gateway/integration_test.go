@@ -315,7 +315,8 @@ func createTestJWTAuth(t *testing.T) (*ecdsa.PrivateKey, *authn.IssuerRegistry, 
 	// Stub primary OIDC issuer at a different URL — test tokens never route here.
 	primary := &stubOIDCIssuer{url: "https://mock-primary.example.com"}
 
-	registry := authn.NewIssuerRegistry(primary, []publisher.PublisherIssuer{pubIssuer}, nil, nil, "complytime-gateway")
+	registry, err := authn.NewIssuerRegistry(primary, []publisher.PublisherIssuer{pubIssuer}, nil, nil, "complytime-gateway")
+	require.NoError(t, err)
 	return privateKey, registry, jwksServer.URL
 }
 

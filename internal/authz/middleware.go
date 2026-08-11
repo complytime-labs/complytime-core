@@ -150,27 +150,35 @@ func LoadEmbeddedPolicies(policyDir string) (*cedar.PolicySet, error) {
 	return ps, nil
 }
 
+// defaultAdminGroup and defaultAuditorGroup mirror authn.DefaultAdminGroup /
+// authn.DefaultAuditorGroup. They cannot be imported directly (circular dep:
+// authn → authz). Change both together.
+const (
+	defaultAdminGroup   = "complytime-admin"
+	defaultAuditorGroup = "complytime-auditor"
+)
+
 // MiddlewareConfig carries operator-configured values injected into every
 // Cedar authorization context. Group names must match the Cedar base policy
 // and the IdP groups configured via OIDC_ADMIN_GROUP / OIDC_AUDITOR_GROUP.
 // Empty fields fall back to the Cedar base policy defaults.
 type MiddlewareConfig struct {
-	AdminGroup   string // default: "complytime-admin"
-	AuditorGroup string // default: "complytime-auditor"
+	AdminGroup   string // default: complytime-admin
+	AuditorGroup string // default: complytime-auditor
 }
 
 func (c MiddlewareConfig) adminGroup() string {
 	if c.AdminGroup != "" {
 		return c.AdminGroup
 	}
-	return "complytime-admin"
+	return defaultAdminGroup
 }
 
 func (c MiddlewareConfig) auditorGroup() string {
 	if c.AuditorGroup != "" {
 		return c.AuditorGroup
 	}
-	return "complytime-auditor"
+	return defaultAuditorGroup
 }
 
 // Middleware returns an HTTP middleware that performs Cedar authorization.

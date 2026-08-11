@@ -2,10 +2,7 @@ package publisher
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"regexp"
 	"strings"
 	"time"
@@ -40,7 +37,7 @@ func NewKubernetesIssuer(ctx context.Context, issuerURL string) (*KubernetesIssu
 	}
 	issuerURL = strings.TrimRight(strings.TrimSpace(issuerURL), "/")
 
-	jwksURL, err := discoverJWKSURI(ctx, issuerURL)
+	jwksURL, err := DiscoverJWKSURI(ctx, issuerURL)
 	if err != nil {
 		return nil, fmt.Errorf("OIDC discovery for Kubernetes issuer %s: %w", issuerURL, err)
 	}
@@ -58,37 +55,6 @@ func NewKubernetesIssuer(ctx context.Context, issuerURL string) (*KubernetesIssu
 	}
 
 	return &KubernetesIssuer{url: issuerURL, jwksURL: jwksURL, cache: cache}, nil
-}
-
-// discoverJWKSURI fetches the OIDC discovery document and returns the jwks_uri.
-func discoverJWKSURI(ctx context.Context, issuerURL string) (string, error) {
-	discoveryURL := issuerURL + "/.well-known/openid-configuration"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, discoveryURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("building discovery request: %w", err)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("fetching %s: %w", discoveryURL, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("discovery endpoint %s returned %d", discoveryURL, resp.StatusCode)
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("reading discovery response: %w", err)
-	}
-	var doc struct {
-		JWKSURI string `json:"jwks_uri"`
-	}
-	if err := json.Unmarshal(body, &doc); err != nil {
-		return "", fmt.Errorf("parsing discovery document: %w", err)
-	}
-	if doc.JWKSURI == "" {
-		return "", fmt.Errorf("discovery document missing jwks_uri")
-	}
-	return doc.JWKSURI, nil
 }
 
 func (k *KubernetesIssuer) URL() string { return k.url }

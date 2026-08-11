@@ -308,7 +308,8 @@ func TestHandler_WithAuth(t *testing.T) {
 		URL: jwksServer.URL,
 	})
 	require.NoError(t, err)
-	auth := authn.NewIssuerRegistry(primary, nil, nil, nil, "complytime-locker")
+	auth, err := authn.NewIssuerRegistry(primary, nil, nil, nil, "complytime-locker")
+	require.NoError(t, err)
 
 	// Load Cedar policies from base + testdata service policies
 	ps, err := authz.LoadEmbeddedPolicies("testdata")

@@ -94,7 +94,11 @@ func main() {
 		return &publisher.StoredJWK{JWK: rec.JWK, NotAfter: rec.NotAfter}, nil
 	})
 
-	registry := authn.NewIssuerRegistry(primary, publishers, jwkLookup, trustStore, cfg.JWTAudience)
+	registry, err := authn.NewIssuerRegistry(primary, publishers, jwkLookup, trustStore, cfg.JWTAudience)
+	if err != nil {
+		slog.Error("failed to build issuer registry", "error", err)
+		os.Exit(1)
+	}
 
 	schemas, err := gateway.NewSchemaRegistry()
 	if err != nil {

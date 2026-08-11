@@ -135,7 +135,8 @@ func TestRegistryOIDCIssuerScopeExtraction(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	registry := NewIssuerRegistry(oidc, nil, nil, nil, "complytime")
+	registry, err := NewIssuerRegistry(oidc, nil, nil, nil, "complytime")
+	require.NoError(t, err)
 
 	tokenStr := mintRegistryToken(t, privKey, srv.URL, "complytime", map[string]any{
 		"scope": "complytime:admin complytime:audit openid",
@@ -160,7 +161,8 @@ func TestRegistryTrustedPublisherIdentityOnly(t *testing.T) {
 		principal: &publisher.Principal{Issuer: "https://publisher.example.com", Sub: "scanner-bot"},
 	}
 
-	registry := NewIssuerRegistry(primaryMock, []publisher.PublisherIssuer{publisherMock}, nil, nil, "complytime")
+	registry, err := NewIssuerRegistry(primaryMock, []publisher.PublisherIssuer{publisherMock}, nil, nil, "complytime")
+	require.NoError(t, err)
 
 	// Token from publisher issuer: registry must dispatch to publisherMock
 	// We can't easily mint a real token here without a JWKS server, so we test
@@ -200,7 +202,8 @@ func TestRegistryUnknownIssuerRejected(t *testing.T) {
 		principal: &Principal{Issuer: "https://primary.example.com", Sub: "user"},
 	}
 
-	registry := NewIssuerRegistry(primaryMock, nil, nil, nil, "complytime")
+	registry, err := NewIssuerRegistry(primaryMock, nil, nil, nil, "complytime")
+	require.NoError(t, err)
 
 	// Token from unknown issuer
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
@@ -257,7 +260,9 @@ func TestRegistryStaticJWKFromStore(t *testing.T) {
 		return nil, nil
 	})
 
-	registry := NewIssuerRegistry(primaryMock, nil, jwkStore, nil, "complytime")
+	jtiStore := &inMemJTIStore{seen: map[string]struct{}{}}
+	registry, err := NewIssuerRegistry(primaryMock, nil, jwkStore, jtiStore, "complytime")
+	require.NoError(t, err)
 
 	tok, err := jwt.NewBuilder().
 		Issuer(scannerIssuer).
@@ -308,7 +313,8 @@ func TestRegistryStaticJWKJTIReplay(t *testing.T) {
 	})
 
 	jtiStore := &inMemJTIStore{seen: map[string]struct{}{}}
-	registry := NewIssuerRegistry(primaryMock, nil, jwkStore, jtiStore, "complytime")
+	registry, err := NewIssuerRegistry(primaryMock, nil, jwkStore, jtiStore, "complytime")
+	require.NoError(t, err)
 
 	tok, err := jwt.NewBuilder().
 		Issuer(scannerIssuer).
@@ -335,14 +341,15 @@ func TestRegistryValidateTrustEntry(t *testing.T) {
 	primaryMock := &mockIssuer{url: "https://primary.example.com"}
 	publisherMock := &mockPublisherIssuer{url: "https://publisher.example.com"}
 
-	registry := NewIssuerRegistry(primaryMock, []publisher.PublisherIssuer{publisherMock}, nil, nil, "complytime")
+	registry, err := NewIssuerRegistry(primaryMock, []publisher.PublisherIssuer{publisherMock}, nil, nil, "complytime")
+	require.NoError(t, err)
 
 	require.NoError(t, registry.ValidateTrustEntry("https://primary.example.com", "any-user"))
 	require.NoError(t, registry.ValidateTrustEntry("https://publisher.example.com", "some-sub"))
 	require.Error(t, registry.ValidateTrustEntry("https://unknown.example.com", "some-sub"))
 
 	// Uppercase scheme or host must be rejected with a clear error.
-	err := registry.ValidateTrustEntry("HTTPS://primary.example.com", "any-user")
+	err = registry.ValidateTrustEntry("HTTPS://primary.example.com", "any-user")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "lowercase")
 
@@ -379,6 +386,25 @@ func TestValidateIssuerURL(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNewIssuerRegistryJWKStoreRequiresJTIStore(t *testing.T) {
+	oidc := &mockIssuer{url: "https://primary.example.com"}
+	jwkStore := publisher.JWKLookupFunc(func(_ context.Context, _ string) (*publisher.StoredJWK, error) {
+		return nil, nil
+	})
+	_, err := NewIssuerRegistry(oidc, nil, jwkStore, nil, "aud")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "jtiStore is required")
+}
+
+func TestOIDCIssuerValidateTrustEntryRejectsPublisher(t *testing.T) {
+	srv, _, _ := newRegistryTestJWKSServer(t)
+	oidc, err := NewOIDCIssuer(context.Background(), OIDCIssuerConfig{URL: srv.URL})
+	require.NoError(t, err)
+	err = oidc.ValidateTrustEntry("any-sub")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot be used as a trusted publisher")
 }
 
 // inMemJTIStore is a test-only in-memory JTI store.
