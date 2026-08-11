@@ -8,14 +8,11 @@ import (
 
 // Cedar action entity UIDs
 var (
-	ActionPublishArtifact = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("publish:artifact"))
-	ActionRegisterSubject = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("admin:register-subject"))
-	ActionModifyTrust     = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("admin:modify-trust"))
-	ActionReadEvidence    = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("read:evidence"))
-	ActionSealEvidence    = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("seal:evidence"))
-	ActionVerifyEvidence  = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("verify:evidence"))
-	ActionManageLedger    = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("manage:ledger"))
-	ActionQueryEvidence   = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("query:evidence"))
+	ActionPublishArtifact          = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("publish:artifact"))
+	ActionRequestRegistration      = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("admin:request-registration"))
+	ActionRequestTrustModification = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("admin:request-trust-modification"))
+	ActionReadEvidence             = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("read:evidence"))
+	ActionQueryEvidence            = cedar.NewEntityUID(cedar.EntityType("Action"), cedar.String("query:evidence"))
 )
 
 // routeMapping maps HTTP method + path patterns to Cedar actions
@@ -29,16 +26,15 @@ var routeMappings = []routeMapping{
 	// Gateway routes
 	{"POST", "/api/ingest", ActionPublishArtifact},
 	{"GET", "/api/evidence", ActionReadEvidence},
+	// Gateway admin routes (external boundary)
+	{"POST", "/admin/subjects", ActionRequestRegistration},      // Gateway: request subject registration
+	{"PUT", "/admin/subjects/", ActionRequestTrustModification}, // Gateway: request trust modification
 	// Graph routes
 	{"GET", "/api/subjects", ActionQueryEvidence},  // GET /api/subjects (list)
 	{"GET", "/api/subjects/", ActionQueryEvidence}, // GET /api/subjects/{id}... (detail, threat-model, evidence, coverage)
-	// Locker routes — order matters: longer prefixes first
-	{"POST", "/admin/subjects", ActionRegisterSubject}, // Locker subject registration
-	{"PUT", "/admin/subjects/", ActionModifyTrust},     // PUT /admin/subjects/{subjectId}/trust
-	{"POST", "/ledgers", ActionManageLedger},           // POST /ledgers (exact — create)
-	{"POST", "/ledgers/", ActionSealEvidence},          // POST /ledgers/{subjectId}/seal
-	{"GET", "/ledgers", ActionReadEvidence},            // GET /ledgers (exact — list)
-	{"GET", "/ledgers/", ActionReadEvidence},           // GET /ledgers/... (info, fetch, verify, tiles)
+	// Locker routes — read-only
+	{"GET", "/ledgers", ActionReadEvidence},  // GET /ledgers (exact — list)
+	{"GET", "/ledgers/", ActionReadEvidence}, // GET /ledgers/... (info, fetch, verify, tiles)
 }
 
 // PrincipalFromJWT constructs a Cedar Publisher entity UID from JWT issuer and subject.

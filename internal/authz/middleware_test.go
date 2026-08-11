@@ -58,10 +58,10 @@ func TestActionForRoute(t *testing.T) {
 			wantOK:     true,
 		},
 		{
-			name:       "POST /admin/subjects maps to admin:register-subject",
+			name:       "POST /admin/subjects maps to admin:request-registration",
 			method:     "POST",
 			path:       "/admin/subjects",
-			wantAction: ActionRegisterSubject,
+			wantAction: ActionRequestRegistration,
 			wantOK:     true,
 		},
 		{
@@ -103,13 +103,13 @@ func TestSubjectResource(t *testing.T) {
 }
 
 func TestLoadEmbeddedPolicies(t *testing.T) {
-	ps, err := LoadEmbeddedPolicies()
+	ps, err := LoadEmbeddedPolicies("")
 	require.NoError(t, err)
 	require.NotNil(t, ps)
 }
 
 func TestMiddleware(t *testing.T) {
-	ps, err := LoadEmbeddedPolicies()
+	ps, err := LoadEmbeddedPolicies("")
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -119,6 +119,9 @@ func TestMiddleware(t *testing.T) {
 		issuer         string
 		sub            string
 		subjectID      string
+		scopes         []string
+		groups         []string
+		isPublisher    bool
 		trustLookup    TrustLookupFunc
 		wantStatusCode int
 	}{
@@ -129,40 +132,67 @@ func TestMiddleware(t *testing.T) {
 			issuer:         "https://auth.example.com",
 			sub:            "user123",
 			subjectID:      "proj-1",
+			scopes:         nil,
+			groups:         nil,
+			isPublisher:    false,
 			trustLookup:    func(ctx context.Context, subjectID, issuer, sub string) (bool, error) { return true, nil },
 			wantStatusCode: http.StatusForbidden,
 		},
 		{
-			name:      "permits trusted publisher for ingest",
-			method:    "POST",
-			path:      "/api/ingest",
-			issuer:    "https://auth.example.com",
-			sub:       "user123",
-			subjectID: "proj-1",
+			name:        "permits trusted publisher for ingest",
+			method:      "POST",
+			path:        "/api/ingest",
+			issuer:      "https://auth.example.com",
+			sub:         "user123",
+			subjectID:   "proj-1",
+			scopes:      nil,
+			groups:      nil,
+			isPublisher: true,
 			trustLookup: func(ctx context.Context, subjectID, issuer, sub string) (bool, error) {
 				return true, nil
 			},
 			wantStatusCode: http.StatusOK,
 		},
 		{
-			name:      "denies untrusted publisher",
-			method:    "POST",
-			path:      "/api/ingest",
-			issuer:    "https://auth.example.com",
-			sub:       "user123",
-			subjectID: "proj-1",
+			name:        "denies non-publisher even when trusted",
+			method:      "POST",
+			path:        "/api/ingest",
+			issuer:      "https://auth.example.com",
+			sub:         "user123",
+			subjectID:   "proj-1",
+			scopes:      nil,
+			groups:      nil,
+			isPublisher: false,
 			trustLookup: func(ctx context.Context, subjectID, issuer, sub string) (bool, error) {
 				return false, nil
 			},
 			wantStatusCode: http.StatusForbidden,
 		},
 		{
-			name:      "trust lookup failure returns 403",
-			method:    "POST",
-			path:      "/api/ingest",
-			issuer:    "https://auth.example.com",
-			sub:       "user123",
-			subjectID: "proj-1",
+			name:        "forbid floor blocks publisher without subject trust",
+			method:      "POST",
+			path:        "/api/ingest",
+			issuer:      "https://auth.example.com",
+			sub:         "user123",
+			subjectID:   "proj-1",
+			scopes:      nil,
+			groups:      nil,
+			isPublisher: true,
+			trustLookup: func(ctx context.Context, subjectID, issuer, sub string) (bool, error) {
+				return false, nil
+			},
+			wantStatusCode: http.StatusForbidden,
+		},
+		{
+			name:        "trust lookup failure returns 403",
+			method:      "POST",
+			path:        "/api/ingest",
+			issuer:      "https://auth.example.com",
+			sub:         "user123",
+			subjectID:   "proj-1",
+			scopes:      nil,
+			groups:      nil,
+			isPublisher: false,
 			trustLookup: func(ctx context.Context, subjectID, issuer, sub string) (bool, error) {
 				return false, errors.New("trust store unavailable")
 			},
@@ -175,6 +205,9 @@ func TestMiddleware(t *testing.T) {
 			issuer:         "https://auth.example.com",
 			sub:            "user123",
 			subjectID:      "", // Empty subject ID
+			scopes:         nil,
+			groups:         nil,
+			isPublisher:    false,
 			trustLookup:    func(ctx context.Context, subjectID, issuer, sub string) (bool, error) { return true, nil },
 			wantStatusCode: http.StatusForbidden,
 		},
@@ -185,8 +218,114 @@ func TestMiddleware(t *testing.T) {
 			issuer:         "", // Empty issuer
 			sub:            "", // Empty sub
 			subjectID:      "proj-1",
+			scopes:         nil,
+			groups:         nil,
+			isPublisher:    false,
 			trustLookup:    func(ctx context.Context, subjectID, issuer, sub string) (bool, error) { return true, nil },
 			wantStatusCode: http.StatusUnauthorized,
+		},
+		// Gateway admin request-* actions — complytime:admin scope required
+		{
+			name:           "permits admin request-registration",
+			method:         "POST",
+			path:           "/admin/subjects",
+			issuer:         "https://auth.example.com",
+			sub:            "admin-operator",
+			subjectID:      "",
+			scopes:         []string{"complytime:admin"},
+			isPublisher:    false,
+			trustLookup:    func(ctx context.Context, subjectID, issuer, sub string) (bool, error) { return false, nil },
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "denies non-admin request-registration",
+			method:         "POST",
+			path:           "/admin/subjects",
+			issuer:         "https://auth.example.com",
+			sub:            "random-user",
+			subjectID:      "",
+			scopes:         nil,
+			isPublisher:    false,
+			trustLookup:    func(ctx context.Context, subjectID, issuer, sub string) (bool, error) { return false, nil },
+			wantStatusCode: http.StatusForbidden,
+		},
+		// query:evidence — requires complytime:audit or complytime:admin scope
+		{
+			name:           "auditor scope can query evidence",
+			method:         "GET",
+			path:           "/api/subjects",
+			issuer:         "https://idp.example.com",
+			sub:            "alice",
+			subjectID:      "",
+			scopes:         []string{"complytime:audit"},
+			isPublisher:    false,
+			trustLookup:    func(ctx context.Context, subjectID, issuer, sub string) (bool, error) { return false, nil },
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "admin scope can query evidence",
+			method:         "GET",
+			path:           "/api/subjects",
+			issuer:         "https://idp.example.com",
+			sub:            "alice",
+			subjectID:      "",
+			scopes:         []string{"complytime:admin"},
+			isPublisher:    false,
+			trustLookup:    func(ctx context.Context, subjectID, issuer, sub string) (bool, error) { return false, nil },
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "publisher flag flows into Cedar entity",
+			method:         "GET",
+			path:           "/api/subjects",
+			issuer:         "https://idp.example.com",
+			sub:            "publisher-1",
+			subjectID:      "",
+			scopes:         nil,
+			groups:         nil,
+			isPublisher:    true,
+			trustLookup:    func(ctx context.Context, subjectID, issuer, sub string) (bool, error) { return false, nil },
+			wantStatusCode: http.StatusForbidden,
+		},
+		// Group-based authorization tests
+		{
+			name:           "admin group grants admin access",
+			method:         "POST",
+			path:           "/admin/subjects",
+			issuer:         "https://idp.example.com",
+			sub:            "alice",
+			subjectID:      "",
+			scopes:         nil,
+			groups:         []string{"complytime-admin"},
+			isPublisher:    false,
+			trustLookup:    func(ctx context.Context, subjectID, issuer, sub string) (bool, error) { return false, nil },
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "audit group grants query access",
+			method:         "GET",
+			path:           "/api/subjects",
+			issuer:         "https://idp.example.com",
+			sub:            "bob",
+			subjectID:      "",
+			scopes:         nil,
+			groups:         []string{"complytime-auditor"},
+			isPublisher:    false,
+			trustLookup:    func(ctx context.Context, subjectID, issuer, sub string) (bool, error) { return false, nil },
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "no scopes no groups denies admin",
+			method:         "POST",
+			path:           "/admin/subjects",
+			issuer:         "https://idp.example.com",
+			sub:            "charlie",
+			subjectID:      "",
+			scopes:         nil,
+			groups:         nil,
+			isPublisher:    false,
+			trustLookup:    func(ctx context.Context, subjectID, issuer, sub string) (bool, error) { return false, nil },
+			wantStatusCode: http.StatusForbidden,
 		},
 	}
 
@@ -196,13 +335,91 @@ func TestMiddleware(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 			})
 
-			middleware := Middleware(ps, tt.trustLookup)
+			middleware := Middleware(ps, tt.trustLookup, MiddlewareConfig{})
 			wrapped := middleware(handler)
 
 			req := httptest.NewRequest(tt.method, tt.path, nil)
 			ctx := req.Context()
 			ctx = SetPublisherContext(ctx, tt.issuer, tt.sub)
 			ctx = SetSubjectIDContext(ctx, tt.subjectID)
+			ctx = SetScopesContext(ctx, tt.scopes)
+			ctx = SetGroupsContext(ctx, tt.groups)
+			ctx = SetPublisherFlagContext(ctx, tt.isPublisher)
+			req = req.WithContext(ctx)
+
+			rec := httptest.NewRecorder()
+			wrapped.ServeHTTP(rec, req)
+
+			assert.Equal(t, tt.wantStatusCode, rec.Code)
+		})
+	}
+}
+
+func TestMiddlewareCustomGroupNames(t *testing.T) {
+	ps, err := LoadEmbeddedPolicies("")
+	require.NoError(t, err)
+
+	cfg := MiddlewareConfig{
+		AdminGroup:   "ops-admin",
+		AuditorGroup: "ops-auditor",
+	}
+	noTrust := func(ctx context.Context, subjectID, issuer, sub string) (bool, error) {
+		return false, nil
+	}
+
+	tests := []struct {
+		name           string
+		method         string
+		path           string
+		groups         []string
+		wantStatusCode int
+	}{
+		{
+			name:           "custom admin group grants admin access",
+			method:         "POST",
+			path:           "/admin/subjects",
+			groups:         []string{"ops-admin"},
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "custom auditor group grants query access",
+			method:         "GET",
+			path:           "/api/subjects",
+			groups:         []string{"ops-auditor"},
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "default admin group name rejected when custom name configured",
+			method:         "POST",
+			path:           "/admin/subjects",
+			groups:         []string{"complytime-admin"},
+			wantStatusCode: http.StatusForbidden,
+		},
+		{
+			name:           "default auditor group name rejected when custom name configured",
+			method:         "GET",
+			path:           "/api/subjects",
+			groups:         []string{"complytime-auditor"},
+			wantStatusCode: http.StatusForbidden,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})
+
+			middleware := Middleware(ps, noTrust, cfg)
+			wrapped := middleware(handler)
+
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			ctx := req.Context()
+			ctx = SetPublisherContext(ctx, "https://idp.example.com", "user")
+			ctx = SetSubjectIDContext(ctx, "")
+			ctx = SetScopesContext(ctx, nil)
+			ctx = SetGroupsContext(ctx, tt.groups)
+			ctx = SetPublisherFlagContext(ctx, false)
 			req = req.WithContext(ctx)
 
 			rec := httptest.NewRecorder()
@@ -227,14 +444,20 @@ func TestContextHelpers(t *testing.T) {
 	subjectID := GetSubjectID(ctx)
 	assert.Equal(t, "proj-1", subjectID)
 
-	// Test admin context
-	ctx = SetAdminContext(ctx, true)
-	// Admin is retrieved via ctx.Value in middleware, tested there
+	// Test scopes context
+	ctx = SetScopesContext(ctx, []string{"complytime:admin", "complytime:audit"})
+	scopes := GetScopes(ctx)
+	assert.Equal(t, []string{"complytime:admin", "complytime:audit"}, scopes)
 
-	// Test service context
-	ctx = SetServiceContext(ctx, true)
-	isService := GetService(ctx)
-	assert.Equal(t, true, isService)
+	// Test publisher flag context
+	ctx = SetPublisherFlagContext(ctx, true)
+	isPublisher := GetPublisherFlag(ctx)
+	assert.Equal(t, true, isPublisher)
+
+	// Test groups context
+	ctx = SetGroupsContext(ctx, []string{"complytime-admin", "complytime-publisher"})
+	groups := GetGroups(ctx)
+	assert.Equal(t, []string{"complytime-admin", "complytime-publisher"}, groups)
 
 	// Test missing values
 	emptyCtx := context.Background()
@@ -245,6 +468,10 @@ func TestContextHelpers(t *testing.T) {
 	subjectID = GetSubjectID(emptyCtx)
 	assert.Equal(t, "", subjectID)
 
-	isService = GetService(emptyCtx)
-	assert.Equal(t, false, isService)
+	assert.Nil(t, GetScopes(emptyCtx))
+
+	isPublisher = GetPublisherFlag(emptyCtx)
+	assert.Equal(t, false, isPublisher)
+
+	assert.Nil(t, GetGroups(emptyCtx))
 }

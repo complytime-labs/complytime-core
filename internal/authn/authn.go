@@ -15,11 +15,16 @@ type Authenticator interface {
 	Authenticate(r *http.Request) (*Principal, error)
 }
 
+// Principal is the authenticated identity for any token class.
+// Publisher is true only for workload identity tokens (GitHub Actions, GCP, GitLab, static JWK).
+// Scopes are OAuth2 scope strings extracted from the JWT scope claim (human IdP tokens only).
+// Groups are extracted from the OIDC group claim (human IdP tokens only).
 type Principal struct {
-	Issuer  string
-	Sub     string
-	Admin   bool
-	Service bool
+	Issuer    string
+	Sub       string
+	Publisher bool
+	Scopes    []string
+	Groups    []string
 }
 
 func PrincipalFromContext(ctx context.Context) *Principal {
@@ -40,8 +45,9 @@ func AuthMiddleware(auth Authenticator) func(http.Handler) http.Handler {
 
 			ctx := context.WithValue(r.Context(), principalKey, p)
 			ctx = authz.SetPublisherContext(ctx, p.Issuer, p.Sub)
-			ctx = authz.SetAdminContext(ctx, p.Admin)
-			ctx = authz.SetServiceContext(ctx, p.Service)
+			ctx = authz.SetPublisherFlagContext(ctx, p.Publisher)
+			ctx = authz.SetScopesContext(ctx, p.Scopes)
+			ctx = authz.SetGroupsContext(ctx, p.Groups)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

@@ -1,0 +1,36 @@
+# Graph service configuration
+# See deploy/config/gateway.yaml for env var mapping rules.
+
+nats:
+  url: ""        # required — Env: NATS_URL
+
+locker:
+  url: ""        # required — e.g. http://locker:8081 — Env: LOCKER_URL
+
+token:
+  file: ""       # required — path to service account token file — Env: TOKEN_FILE
+
+memgraph:
+  url: ""        # required — e.g. bolt://memgraph:7687 — Env: MEMGRAPH_URL
+
+jwt:
+  audience: ""   # required — Env: JWT_AUDIENCE
+
+graph:
+  listen:
+    addr: ":8082"
+
+cedar:
+  policy:
+    dir: ""      # Env: CEDAR_POLICY_DIR
+
+oidc:
+  issuer: ""     # required — Env: OIDC_ISSUER
+  client:
+    id: ""       # required — Env: OIDC_CLIENT_ID
+  expected:
+    issuer: ""   # optional — Env: OIDC_EXPECTED_ISSUER
+
+issuers:
+  enabled: []   # Env: ISSUERS_ENABLED=github_actions,gitlab,gcp
+  custom: []

@@ -2,6 +2,7 @@ package trust_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -216,4 +217,117 @@ func TestTrustStore_UpdateTrustList(t *testing.T) {
 	trusted, err = store.IsPublisherTrusted(ctx, subjectID, "https://issuer.example.com", "pub-new")
 	require.NoError(t, err)
 	assert.True(t, trusted)
+}
+
+func TestSetPublisherTrustConcurrentUpdateReturnsError(t *testing.T) {
+	nc := startTestNATS(t)
+	js, err := jetstream.New(nc)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	require.NoError(t, natsinfra.EnsureInfrastructure(ctx, js))
+
+	store, err := trust.NewTrustStore(js)
+	require.NoError(t, err)
+
+	subjectID := "test-concurrent"
+	entries1 := []trust.TrustEntry{{Issuer: "https://a.example.com", Sub: "sub1"}}
+	entries2 := []trust.TrustEntry{{Issuer: "https://b.example.com", Sub: "sub2"}}
+
+	// First write creates the key
+	require.NoError(t, store.SetPublisherTrust(ctx, subjectID, entries1))
+
+	// Second call should succeed (reads fresh revision internally)
+	err = store.SetPublisherTrust(ctx, subjectID, entries2)
+	require.NoError(t, err)
+}
+
+func TestStoreAndGetJWK(t *testing.T) {
+	nc := startTestNATS(t)
+	js, err := jetstream.New(nc)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	err = natsinfra.EnsureInfrastructure(ctx, js)
+	require.NoError(t, err)
+
+	store, err := trust.NewTrustStore(js)
+	require.NoError(t, err)
+
+	notAfter := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
+	jwkData := json.RawMessage(`{"kty":"RSA","n":"abc","e":"AQAB"}`)
+
+	err = store.StoreJWK(ctx, "scanner-sast-prod", jwkData, notAfter)
+	require.NoError(t, err)
+
+	rec, err := store.GetJWK(ctx, "scanner-sast-prod")
+	require.NoError(t, err)
+	require.NotNil(t, rec)
+	assert.Equal(t, string(jwkData), string(rec.JWK))
+	assert.Equal(t, notAfter, rec.NotAfter)
+}
+
+func TestGetJWKNotFound(t *testing.T) {
+	nc := startTestNATS(t)
+	js, err := jetstream.New(nc)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	err = natsinfra.EnsureInfrastructure(ctx, js)
+	require.NoError(t, err)
+
+	store, err := trust.NewTrustStore(js)
+	require.NoError(t, err)
+
+	rec, err := store.GetJWK(ctx, "nonexistent-issuer")
+	require.NoError(t, err)
+	assert.Nil(t, rec)
+}
+
+func TestSubjectExists(t *testing.T) {
+	nc := startTestNATS(t)
+	js, err := jetstream.New(nc)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	err = natsinfra.EnsureInfrastructure(ctx, js)
+	require.NoError(t, err)
+
+	store, err := trust.NewTrustStore(js)
+	require.NoError(t, err)
+
+	// Not registered yet
+	exists, err := store.SubjectExists(ctx, "test-subject")
+	require.NoError(t, err)
+	assert.False(t, exists)
+
+	// Register
+	require.NoError(t, store.RegisterSubject(ctx, "test-subject"))
+
+	// Now exists
+	exists, err = store.SubjectExists(ctx, "test-subject")
+	require.NoError(t, err)
+	assert.True(t, exists)
+}
+
+func TestGetJWKExpired(t *testing.T) {
+	nc := startTestNATS(t)
+	js, err := jetstream.New(nc)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	err = natsinfra.EnsureInfrastructure(ctx, js)
+	require.NoError(t, err)
+
+	store, err := trust.NewTrustStore(js)
+	require.NoError(t, err)
+
+	pastTime := time.Now().Add(-1 * time.Hour)
+	jwkData := json.RawMessage(`{"kty":"RSA","n":"abc","e":"AQAB"}`)
+	err = store.StoreJWK(ctx, "expired-issuer", jwkData, pastTime)
+	require.NoError(t, err)
+
+	rec, err := store.GetJWK(ctx, "expired-issuer")
+	require.NoError(t, err)
+	assert.Nil(t, rec, "expired JWK must not be returned")
 }

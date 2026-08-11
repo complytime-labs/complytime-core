@@ -1,0 +1,33 @@
+// service-policies.cedar.example
+//
+// Operator-supplied Cedar policies for service identity authorization.
+// Copy this file to CEDAR_POLICY_DIR as service-policies.cedar and edit
+// to match your deployment's service identities.
+//
+// Load at runtime: set CEDAR_POLICY_DIR=/path/to/dir
+//
+// These policies are NOT shipped with the binary. Each deployment
+// configures its own service identities here.
+
+// Gateway can seal evidence into the locker
+permit (principal, action == Action::"seal:evidence", resource)
+when { principal.issuer == "https://idp.internal" && principal.sub == "complytime-gateway" };
+
+// Gateway can read evidence from the locker
+permit (principal, action == Action::"read:evidence", resource)
+when { principal.issuer == "https://idp.internal" && principal.sub like "complytime-*" };
+
+// Gateway can manage ledgers
+permit (principal, action == Action::"manage:ledger", resource)
+when { principal.issuer == "https://idp.internal" && principal.sub == "complytime-gateway" };
+
+// Gateway can verify evidence
+permit (principal, action == Action::"verify:evidence", resource)
+when { principal.issuer == "https://idp.internal" && principal.sub == "complytime-gateway" };
+
+// Internal locker admin (NATS path — defense in depth)
+permit (principal, action == Action::"admin:register-subject", resource)
+when { principal.issuer == "https://idp.internal" && principal.sub == "complytime-gateway" };
+
+permit (principal, action == Action::"admin:modify-trust", resource)
+when { principal.issuer == "https://idp.internal" && principal.sub == "complytime-gateway" };

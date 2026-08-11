@@ -40,9 +40,11 @@ func TestHandler_ListSubjects_Empty(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusOK, rr.Code)
 
-	var resp []SubjectSummary
+	var resp struct {
+		Subjects []SubjectSummary `json:"subjects"`
+	}
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	assert.Empty(t, resp)
+	assert.Empty(t, resp.Subjects)
 }
 
 func TestHandler_ListSubjects_WithData(t *testing.T) {
@@ -63,11 +65,13 @@ func TestHandler_ListSubjects_WithData(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusOK, rr.Code)
 
-	var resp []SubjectSummary
+	var resp struct {
+		Subjects []SubjectSummary `json:"subjects"`
+	}
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	require.Len(t, resp, 1)
-	assert.Equal(t, "my-app-v1", resp[0].Id)
-	assert.Equal(t, int64(1), resp[0].EvidenceCount)
+	require.Len(t, resp.Subjects, 1)
+	assert.Equal(t, "my-app-v1", resp.Subjects[0].Id)
+	assert.Equal(t, int64(1), resp.Subjects[0].EvidenceCount)
 }
 
 func TestHandler_GetSubject(t *testing.T) {

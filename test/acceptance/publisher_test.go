@@ -18,8 +18,8 @@ var _ = Describe("Publisher", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-		publisherToken = mintToken("test-publisher", "complytime-gateway", false, false)
-		adminToken := mintToken("test-admin", "complytime-locker", true, false)
+		publisherToken = mintToken("test-publisher", "complytime-gateway")
+		adminToken := mintOIDCToken("test-admin", "complytime-gateway", []string{"complytime-admin"})
 		registerSubject(adminToken, subjectID, "http://testjwks:8888", "test-publisher")
 	})
 
@@ -115,7 +115,7 @@ var _ = Describe("Publisher", Ordered, func() {
 
 	Describe("authenticated but untrusted", func() {
 		It("rejects evidence submission with 403", func() {
-			untrustedToken := mintToken("untrusted-publisher", "complytime-gateway", false, false)
+			untrustedToken := mintToken("untrusted-publisher", "complytime-gateway")
 
 			artifact := map[string]interface{}{"type": "test", "data": "should be rejected"}
 			body, err := json.Marshal(artifact)

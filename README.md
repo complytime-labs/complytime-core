@@ -45,7 +45,7 @@ Publisher (scanner, CI pipeline)
 POST /api/ingest → Gateway :8080
     │
     ├── JWT/OIDC authentication
-    ├── Cedar authorization (per-subject publisher trust)
+    ├── Cedar authorization (scopes or [group-based](docs/dev/e2e-testing.md#group-based-authorization))
     ├── Validate against Gemara JSON Schema (422 if invalid)
     ├── Wrap in in-toto v1 receipt (publisher identity + timestamp)
     ├── Write job status (pending) to NATS KV

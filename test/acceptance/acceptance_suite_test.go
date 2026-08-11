@@ -20,10 +20,11 @@ func TestAcceptance(t *testing.T) {
 var _ = BeforeSuite(func() {
 	By("verifying all services are healthy")
 	services := map[string]string{
-		"gateway":  gatewayURL("/healthz"),
-		"locker":   lockerURL("/healthz"),
-		"testjwks": testjwksURL("/healthz"),
-		"graph":    graphURL("/healthz"),
+		"gateway":       gatewayURL("/healthz"),
+		"locker":        lockerURL("/healthz"),
+		"testjwks":      testjwksURL("/healthz"),
+		"testjwks-oidc": testjwksOIDCURL("/healthz"),
+		"graph":         graphURL("/healthz"),
 	}
 
 	for name, url := range services {
@@ -39,6 +40,6 @@ var _ = BeforeSuite(func() {
 	}
 
 	By("registering a test subject with a trusted publisher")
-	adminToken := mintToken("test-admin", "complytime-locker", true, false)
+	adminToken := mintOIDCToken("test-admin", "complytime-gateway", []string{"complytime-admin"})
 	registerSubject(adminToken, "acceptance-test-subject", "http://testjwks:8888", "test-publisher")
 })

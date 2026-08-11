@@ -18,6 +18,14 @@ const (
 
 	// SubjectMappingImported is published when a MappingDocument is ingested.
 	SubjectMappingImported = "core.mapping.imported"
+
+	// SubjectAdminRegisterSubject is the NATS core request-reply subject for subject registration.
+	// Gateway publishes; locker handles.
+	SubjectAdminRegisterSubject = "core.admin.subjects.register"
+
+	// SubjectAdminSealTrust is the NATS core request-reply subject for trust receipt sealing.
+	// Gateway publishes; locker handles.
+	SubjectAdminSealTrust = "core.admin.trust.seal"
 )
 
 // EvidenceIngestedSubject returns the full NATS subject for an evidence-ingested event.

@@ -42,53 +42,28 @@ func TestLockerBasicOperations(t *testing.T) {
 	const subjectID = "test-subject"
 	testReceipt := []byte("test-receipt-data")
 
-	// Step 1: Create ledger
+	// Step 1: Create ledger via internal API
 	t.Run("create ledger", func(t *testing.T) {
-		reqBody := CreateLedgerRequest{SubjectId: subjectID}
-		body, err := json.Marshal(reqBody)
+		ledger, err := lk.CreateLedger(ctx, subjectID)
 		require.NoError(t, err)
-
-		req := httptest.NewRequest(http.MethodPost, "/ledgers", bytes.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-
-		handler.ServeHTTP(w, req)
-
-		assert.Equal(t, http.StatusCreated, w.Code)
-
-		var ledgerInfo LedgerInfo
-		err = json.NewDecoder(w.Body).Decode(&ledgerInfo)
-		require.NoError(t, err)
-		assert.Equal(t, subjectID, ledgerInfo.SubjectId)
-		assert.NotEmpty(t, ledgerInfo.VerifierKey)
+		assert.Equal(t, subjectID, ledger.SubjectID())
+		assert.NotEmpty(t, ledger.VerifierKey())
 	})
 
-	// Step 2: Seal a receipt
-	var sealedIndex int64
+	// Step 2: Seal a receipt via internal API
+	var sealedIndex uint64
 	t.Run("seal receipt", func(t *testing.T) {
-		req := httptest.NewRequest(
-			http.MethodPost,
-			"/ledgers/"+subjectID+"/seal",
-			bytes.NewReader(testReceipt),
-		)
-		req.Header.Set("Content-Type", "application/octet-stream")
-		w := httptest.NewRecorder()
-
-		handler.ServeHTTP(w, req)
-
-		assert.Equal(t, http.StatusCreated, w.Code)
-
-		var sealResp SealResponse
-		err := json.NewDecoder(w.Body).Decode(&sealResp)
+		ledger, ok := lk.GetLedger(subjectID)
+		require.True(t, ok)
+		idx, err := ledger.Seal(ctx, testReceipt)
 		require.NoError(t, err)
-		assert.GreaterOrEqual(t, sealResp.Index, int64(0))
-		assert.NotEmpty(t, sealResp.Digest)
-		sealedIndex = sealResp.Index
+		assert.GreaterOrEqual(t, idx, uint64(0))
+		sealedIndex = idx
 	})
 
 	// Step 3: Fetch the receipt
 	t.Run("fetch receipt", func(t *testing.T) {
-		url := fmt.Sprintf("/ledgers/%s/entry/%d", subjectID, sealedIndex)
+		url := fmt.Sprintf("/ledgers/%s/entry/%d", subjectID, int64(sealedIndex))
 		req := httptest.NewRequest(http.MethodGet, url, nil)
 		w := httptest.NewRecorder()
 

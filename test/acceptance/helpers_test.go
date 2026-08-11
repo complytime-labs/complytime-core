@@ -17,7 +17,7 @@ import (
 )
 
 func gatewayURL(path string) string {
-	return "http://localhost:8080" + path
+	return "http://localhost:8090" + path
 }
 
 func lockerURL(path string) string {
@@ -28,8 +28,12 @@ func testjwksURL(path string) string {
 	return "http://localhost:8888" + path
 }
 
+func testjwksOIDCURL(path string) string {
+	return "http://localhost:8889" + path
+}
+
 func natsURL() string {
-	return "nats://localhost:4222"
+	return "nats://acceptance-test:acceptance-test-password@localhost:4222"
 }
 
 func graphURL(path string) string {
@@ -65,16 +69,38 @@ func waitForGraphMaterialization(subjectID string, timeout time.Duration) {
 	}, timeout, 500*time.Millisecond).Should(BeNumerically(">", 0), "Evidence should be materialized in graph")
 }
 
-func mintToken(sub, audience string, admin, service bool) string {
+// mintToken mints a workload publisher token from testjwks (port 8888).
+// Use this for publisher identities that will be registered as trusted publishers.
+func mintToken(sub, audience string) string {
 	reqBody, err := json.Marshal(map[string]interface{}{
 		"sub":      sub,
 		"audience": []string{audience},
-		"admin":    admin,
-		"service":  service,
 	})
 	Expect(err).NotTo(HaveOccurred())
 
 	resp, err := http.Post(testjwksURL("/mint"), "application/json", bytes.NewReader(reqBody))
+	Expect(err).NotTo(HaveOccurred())
+	defer resp.Body.Close()
+	Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+	var result struct {
+		Token string `json:"token"`
+	}
+	Expect(json.NewDecoder(resp.Body).Decode(&result)).To(Succeed())
+	return result.Token
+}
+
+// mintOIDCToken mints a token from testjwks-oidc (port 8889), the primary OIDC issuer.
+// groups controls group membership; use authn.DefaultAdminGroup or authn.DefaultAuditorGroup.
+func mintOIDCToken(sub, audience string, groups []string) string {
+	reqBody, err := json.Marshal(map[string]interface{}{
+		"sub":      sub,
+		"audience": []string{audience},
+		"groups":   groups,
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	resp, err := http.Post(testjwksOIDCURL("/mint"), "application/json", bytes.NewReader(reqBody))
 	Expect(err).NotTo(HaveOccurred())
 	defer resp.Body.Close()
 	Expect(resp.StatusCode).To(Equal(http.StatusOK))
@@ -112,7 +138,7 @@ func registerSubject(adminToken, subjectID, issuer, sub string) {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	resp := authenticatedRequest("POST", lockerURL("/admin/subjects"), adminToken, reqBody)
+	resp := authenticatedRequest("POST", gatewayURL("/admin/subjects"), adminToken, reqBody)
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusConflict {
@@ -193,11 +219,11 @@ func unwrapReceipt(entry []byte) []byte {
 }
 
 func lockerServiceToken() string {
-	return mintToken("acceptance-test-consumer", "complytime-locker", false, true)
+	return mintOIDCToken("acceptance-test-consumer", "complytime-locker", []string{"complytime-auditor"})
 }
 
 func graphServiceToken() string {
-	return mintToken("acceptance-test-consumer", "complytime-graph", false, true)
+	return mintOIDCToken("acceptance-test-consumer", "complytime-graph", []string{"complytime-auditor"})
 }
 
 func newRequest(method, url string, body []byte) (*http.Request, error) {

@@ -19,7 +19,7 @@ type APIHandler struct {
 // NewHandler creates a new HTTP handler for the graph API.
 // It returns a Chi router with all routes registered.
 // If auth is non-nil, all routes except /healthz require JWT+Cedar authentication.
-func NewHandler(writer *Writer, auth authn.Authenticator, policySet *cedar.PolicySet) http.Handler {
+func NewHandler(writer *Writer, auth authn.Authenticator, policySet *cedar.PolicySet, authzCfg authz.MiddlewareConfig) http.Handler {
 	h := &APIHandler{
 		writer: writer,
 	}
@@ -30,7 +30,7 @@ func NewHandler(writer *Writer, auth authn.Authenticator, policySet *cedar.Polic
 	if auth != nil {
 		// Build the middleware chain once at init time
 		authChain := func(next http.Handler) http.Handler {
-			return authn.AuthMiddleware(auth)(authz.Middleware(policySet, nil)(next))
+			return authn.AuthMiddleware(auth)(authz.Middleware(policySet, nil, authzCfg)(next))
 		}
 
 		r.Use(func(next http.Handler) http.Handler {
