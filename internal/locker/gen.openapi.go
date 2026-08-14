@@ -11,12 +11,6 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
-// CreateLedgerRequest defines model for CreateLedgerRequest.
-type CreateLedgerRequest struct {
-	// SubjectId Unique identifier for the subject
-	SubjectId string `json:"subjectId"`
-}
-
 // Error defines model for Error.
 type Error struct {
 	// Error Error message
@@ -37,18 +31,6 @@ type LedgerList struct {
 	Ledgers []LedgerInfo `json:"ledgers"`
 }
 
-// ModifyTrustRequest defines model for ModifyTrustRequest.
-type ModifyTrustRequest struct {
-	// TrustedPublishers List of trusted OIDC publishers for this subject
-	TrustedPublishers []TrustedPublisher `json:"trustedPublishers"`
-}
-
-// ModifyTrustResponse defines model for ModifyTrustResponse.
-type ModifyTrustResponse struct {
-	// SubjectId Subject identifier
-	SubjectId string `json:"subjectId"`
-}
-
 // SealResponse defines model for SealResponse.
 type SealResponse struct {
 	// Digest Hex-encoded SHA-256 digest of the receipt
@@ -56,30 +38,6 @@ type SealResponse struct {
 
 	// Index Log index assigned to the sealed receipt
 	Index int64 `json:"index"`
-}
-
-// SubjectRegistrationRequest defines model for SubjectRegistrationRequest.
-type SubjectRegistrationRequest struct {
-	// SubjectId Unique identifier for the subject
-	SubjectId string `json:"subjectId"`
-
-	// TrustedPublishers List of trusted OIDC publishers for this subject
-	TrustedPublishers []TrustedPublisher `json:"trustedPublishers"`
-}
-
-// SubjectRegistrationResponse defines model for SubjectRegistrationResponse.
-type SubjectRegistrationResponse struct {
-	// SubjectId Subject identifier
-	SubjectId string `json:"subjectId"`
-}
-
-// TrustedPublisher defines model for TrustedPublisher.
-type TrustedPublisher struct {
-	// Issuer OIDC issuer URL
-	Issuer string `json:"issuer"`
-
-	// Sub OIDC subject claim pattern
-	Sub string `json:"sub"`
 }
 
 // VerifyResponse defines model for VerifyResponse.
@@ -91,41 +49,20 @@ type VerifyResponse struct {
 	Index *int64 `json:"index,omitempty"`
 }
 
-// RegisterSubjectJSONRequestBody defines body for RegisterSubject for application/json ContentType.
-type RegisterSubjectJSONRequestBody = SubjectRegistrationRequest
-
-// ModifyTrustJSONRequestBody defines body for ModifyTrust for application/json ContentType.
-type ModifyTrustJSONRequestBody = ModifyTrustRequest
-
-// CreateLedgerJSONRequestBody defines body for CreateLedger for application/json ContentType.
-type CreateLedgerJSONRequestBody = CreateLedgerRequest
-
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// Register subject with trusted publishers
-	// (POST /admin/subjects)
-	RegisterSubject(w http.ResponseWriter, r *http.Request)
-	// Update trusted publishers for a subject
-	// (PUT /admin/subjects/{subjectId}/trust)
-	ModifyTrust(w http.ResponseWriter, r *http.Request, subjectId string)
 	// Health check endpoint
 	// (GET /healthz)
 	HealthCheck(w http.ResponseWriter, r *http.Request)
 	// List all ledgers
 	// (GET /ledgers)
 	ListLedgers(w http.ResponseWriter, r *http.Request)
-	// Create a new ledger
-	// (POST /ledgers)
-	CreateLedger(w http.ResponseWriter, r *http.Request)
 	// Get ledger information
 	// (GET /ledgers/{subjectId})
 	GetLedger(w http.ResponseWriter, r *http.Request, subjectId string)
 	// Fetch a sealed receipt by index
 	// (GET /ledgers/{subjectId}/entry/{index})
 	FetchReceipt(w http.ResponseWriter, r *http.Request, subjectId string, index int64)
-	// Seal a receipt in the ledger
-	// (POST /ledgers/{subjectId}/seal)
-	SealReceipt(w http.ResponseWriter, r *http.Request, subjectId string)
 	// Verify a receipt exists by digest
 	// (GET /ledgers/{subjectId}/verify/{digest})
 	VerifyReceipt(w http.ResponseWriter, r *http.Request, subjectId string, digest string)
@@ -134,18 +71,6 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
-
-// Register subject with trusted publishers
-// (POST /admin/subjects)
-func (_ Unimplemented) RegisterSubject(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Update trusted publishers for a subject
-// (PUT /admin/subjects/{subjectId}/trust)
-func (_ Unimplemented) ModifyTrust(w http.ResponseWriter, r *http.Request, subjectId string) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
 
 // Health check endpoint
 // (GET /healthz)
@@ -159,12 +84,6 @@ func (_ Unimplemented) ListLedgers(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Create a new ledger
-// (POST /ledgers)
-func (_ Unimplemented) CreateLedger(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
 // Get ledger information
 // (GET /ledgers/{subjectId})
 func (_ Unimplemented) GetLedger(w http.ResponseWriter, r *http.Request, subjectId string) {
@@ -174,12 +93,6 @@ func (_ Unimplemented) GetLedger(w http.ResponseWriter, r *http.Request, subject
 // Fetch a sealed receipt by index
 // (GET /ledgers/{subjectId}/entry/{index})
 func (_ Unimplemented) FetchReceipt(w http.ResponseWriter, r *http.Request, subjectId string, index int64) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Seal a receipt in the ledger
-// (POST /ledgers/{subjectId}/seal)
-func (_ Unimplemented) SealReceipt(w http.ResponseWriter, r *http.Request, subjectId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -197,46 +110,6 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
-
-// RegisterSubject operation middleware
-func (siw *ServerInterfaceWrapper) RegisterSubject(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.RegisterSubject(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ModifyTrust operation middleware
-func (siw *ServerInterfaceWrapper) ModifyTrust(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "subjectId" -------------
-	var subjectId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "subjectId", chi.URLParam(r, "subjectId"), &subjectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subjectId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ModifyTrust(w, r, subjectId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
 
 // HealthCheck operation middleware
 func (siw *ServerInterfaceWrapper) HealthCheck(w http.ResponseWriter, r *http.Request) {
@@ -257,20 +130,6 @@ func (siw *ServerInterfaceWrapper) ListLedgers(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListLedgers(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// CreateLedger operation middleware
-func (siw *ServerInterfaceWrapper) CreateLedger(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateLedger(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -332,32 +191,6 @@ func (siw *ServerInterfaceWrapper) FetchReceipt(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.FetchReceipt(w, r, subjectId, index)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// SealReceipt operation middleware
-func (siw *ServerInterfaceWrapper) SealReceipt(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "subjectId" -------------
-	var subjectId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "subjectId", chi.URLParam(r, "subjectId"), &subjectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subjectId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SealReceipt(w, r, subjectId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -516,28 +349,16 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/admin/subjects", wrapper.RegisterSubject)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/admin/subjects/{subjectId}/trust", wrapper.ModifyTrust)
-	})
-	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/healthz", wrapper.HealthCheck)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/ledgers", wrapper.ListLedgers)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/ledgers", wrapper.CreateLedger)
-	})
-	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/ledgers/{subjectId}", wrapper.GetLedger)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/ledgers/{subjectId}/entry/{index}", wrapper.FetchReceipt)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/ledgers/{subjectId}/seal", wrapper.SealReceipt)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/ledgers/{subjectId}/verify/{digest}", wrapper.VerifyReceipt)

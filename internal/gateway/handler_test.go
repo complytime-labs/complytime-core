@@ -61,7 +61,7 @@ func setupTestHandler(t *testing.T, js jetstream.JetStream, nc *natsgo.Conn) *Ga
 	schemas, err := NewSchemaRegistry()
 	require.NoError(t, err)
 
-	handler := NewHandler(trustStore, js, eventPublisher, schemas)
+	handler := NewHandler(trustStore, js, nc, eventPublisher, schemas)
 	return handler
 }
 

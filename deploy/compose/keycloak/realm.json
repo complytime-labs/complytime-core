@@ -1,0 +1,189 @@
+{
+  "realm": "complytime",
+  "enabled": true,
+  "requiredCredentials": ["password"],
+  "requiredActions": [
+    {
+      "alias": "VERIFY_PROFILE",
+      "name": "Verify Profile",
+      "providerId": "VERIFY_PROFILE",
+      "enabled": false,
+      "defaultAction": false,
+      "priority": 90,
+      "config": {}
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "complytime:admin",
+      "description": "ComplyTime administrator operations",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "false" }
+    },
+    {
+      "name": "complytime:audit",
+      "description": "ComplyTime audit and evidence query operations",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "false" }
+    },
+    {
+      "name": "complytime:read",
+      "description": "ComplyTime read operations",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "false" }
+    }
+  ],
+  "roles": {
+    "client": {
+      "complytime": [
+        { "name": "complytime-admin", "composite": false, "clientRole": true },
+        { "name": "complytime-publisher", "composite": false, "clientRole": true },
+        { "name": "complytime-auditor", "composite": false, "clientRole": true }
+      ]
+    }
+  },
+  "clients": [
+    {
+      "clientId": "complytime",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "complytime-secret",
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
+      "optionalClientScopes": ["complytime:admin", "complytime:audit", "complytime:read"],
+      "protocolMappers": [
+        {
+          "name": "gateway-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "included.custom.audience": "complytime-gateway"
+          }
+        },
+        {
+          "name": "locker-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "included.custom.audience": "complytime-locker"
+          }
+        },
+        {
+          "name": "graph-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "included.custom.audience": "complytime-graph"
+          }
+        },
+        {
+          "name": "sub",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-sub-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "client-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "usermodel.clientRoleMapping.clientId": "complytime"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "complytime-graph",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "complytime-graph-secret",
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "optionalClientScopes": ["complytime:audit"],
+      "attributes": { "access.token.lifespan": "28800" },
+      "protocolMappers": [
+        {
+          "name": "locker-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "included.custom.audience": "complytime-locker"
+          }
+        },
+        {
+          "name": "sub",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-sub-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "enabled": true,
+      "email": "admin@complytime.dev",
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        { "type": "password", "value": "admin-password", "temporary": false }
+      ],
+      "clientRoles": {
+        "complytime": ["complytime-admin"]
+      }
+    },
+    {
+      "username": "publisher",
+      "enabled": true,
+      "email": "publisher@complytime.dev",
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        { "type": "password", "value": "publisher-password", "temporary": false }
+      ],
+      "clientRoles": {
+        "complytime": ["complytime-publisher"]
+      }
+    },
+    {
+      "username": "auditor",
+      "enabled": true,
+      "email": "auditor@complytime.dev",
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        { "type": "password", "value": "auditor-password", "temporary": false }
+      ],
+      "clientRoles": {
+        "complytime": ["complytime-auditor"]
+      }
+    }
+  ]
+}

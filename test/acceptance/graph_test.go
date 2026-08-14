@@ -20,11 +20,11 @@ var _ = Describe("graph service", Ordered, Label("graph"), func() {
 
 	BeforeAll(func() {
 		By("registering graph test subject")
-		adminToken := mintToken("graph-test-admin", "complytime-locker", true, false)
+		adminToken := mintOIDCToken("graph-test-admin", "complytime-gateway", []string{"complytime-admin"})
 		registerSubject(adminToken, subjectID, "http://testjwks:8888", "graph-test-publisher")
 
 		By("minting publisher token")
-		publisherToken = mintToken("graph-test-publisher", "complytime-gateway", false, false)
+		publisherToken = mintToken("graph-test-publisher", "complytime-gateway")
 	})
 
 	Describe("end-to-end graph materialization", func() {

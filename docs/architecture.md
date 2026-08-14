@@ -44,7 +44,7 @@ Public-facing service. Controls what enters the locker.
 | Concern | Implementation |
 |:--|:--|
 | HTTP | Chi — OpenAPI-first with oapi-codegen |
-| Authentication | JWT/OIDC via go-chi/jwtauth with JWKS discovery |
+| Authentication | Two-class issuers: OIDC primary (group-based roles) + publisher issuers (GitHub Actions, GitLab CI, GCP, generic OIDC, static JWK) |
 | Authorization | Cedar policies — default-deny middleware with forbid safety floors |
 | Receipt wrapping | in-toto v1 Statements with JCS canonicalization (RFC 8785) |
 | Async ingest | JetStream durable consumer — seal to locker, publish CloudEvent |
@@ -64,9 +64,12 @@ Internal WORM storage. Not exposed to the public network.
 
 ## Authentication and Authorization
 
+Two distinct issuer classes. Each class has different trust assumptions and role derivation.
+
 | Layer | Mechanism |
 |:--|:--|
-| **JWT/OIDC** | Gateway verifies bearer tokens via JWKS discovery. `JWT_AUDIENCE` required (fail-closed at startup). |
+| **OIDC issuer (primary)** | One IdP (e.g. Keycloak). Roles (`admin`, `publisher`, `auditor`) derived from group membership claims — no custom boolean claims required. Configured via `OIDC_ISSUER` + `OIDC_CLIENT_ID`. |
+| **Publisher issuers** | GitHub Actions, GitLab CI, GCP workload identity, Kubernetes service accounts, or SPIFFE/SVID. No role claims read — identity is `(issuer, sub)`. Each type enforces its own sub format at trust entry registration time. Per-subject trust registration required (out-of-band, by an admin). Enabled via `ISSUERS_ENABLED` shortnames or `issuers.custom` YAML with `type: github\|gitlab\|gcp\|kubernetes\|spiffe`. |
 | **Cedar middleware** | Default-deny. Route-to-action typed map. Unmapped routes return 403. |
 | **Publisher trust** | Per-subject allowlist in NATS KV. Fail-closed: reject if KV unavailable. |
 | **Forbid safety floors** | Untrusted publishers blocked by `forbid/unless` rule — no permit can override. |
@@ -145,8 +148,10 @@ Both are materialized views. Rebuildable from the locker if lost.
 | `NATS_URL` | Yes | NATS connection URL |
 | `LOCKER_URL` | Yes (gateway) | Internal locker HTTP URL |
 | `LOCKER_SECRET` | Yes | Shared secret for gateway→locker auth |
-| `JWT_ISSUERS` | Yes (gateway) | Comma-separated OIDC issuer URLs |
-| `JWT_AUDIENCE` | Yes (gateway) | Expected JWT audience (fail-closed) |
+| `OIDC_ISSUER` | Yes (gateway) | OIDC issuer URL for the primary IdP (e.g. Keycloak) |
+| `OIDC_CLIENT_ID` | Yes (gateway) | Client ID for audience validation |
+| `OIDC_EXPECTED_ISSUER` | No (gateway) | Override `iss` claim check (split-brain compose) |
+| `ISSUERS_ENABLED` | No (gateway) | Comma-separated shortnames: `github_actions`, `gitlab`, `gcp` |
 | `GATEWAY_LISTEN_ADDR` | No | Gateway listen address (default: `:8080`) |
 | `LOCKER_DATA_PATH` | No | Locker storage directory (default: `/data/ledgers`) |
 | `LOCKER_LISTEN_ADDR` | No | Locker listen address (default: `:8081`) |
@@ -169,10 +174,10 @@ docker compose -f deploy/compose/docker-compose.yaml up --build
 
 ## Related
 
-| Doc | Topic |
-|:--|:--|
-| [ADRs](../adrs/) | Architecture decisions |
-| [ADR-0003](../adrs/0003-receipt-model.md) | Receipt model (in-toto + JCS + two-entry DSSE) |
-| [ADR-0004](../adrs/0004-cedar-authorization.md) | Cedar authorization middleware |
-| [Gateway OpenAPI](../api/gateway/openapi.yaml) | Gateway API spec |
-| [Locker OpenAPI](../api/locker/openapi.yaml) | Locker API spec |
+| Doc                                             | Topic                                          |
+|:------------------------------------------------|:-----------------------------------------------|
+| [ADRs](../adrs/)                                | Architecture decisions                         |
+| [ADR-0003](../adrs/0003-receipt-model.md)       | Receipt model (in-toto + JCS + two-entry DSSE) |
+| [ADR-0004](../adrs/0004-cedar-authorization.md) | Cedar authorization middleware                 |
+| [Gateway OpenAPI](../api/gateway/openapi.yaml)  | Gateway API spec                               |
+| [Locker OpenAPI](../api/locker/openapi.yaml)    | Locker API spec                                |

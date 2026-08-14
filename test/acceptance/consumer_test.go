@@ -18,7 +18,7 @@ var _ = Describe("Consumer", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-		adminToken := mintToken("test-admin", "complytime-locker", true, false)
+		adminToken := mintOIDCToken("test-admin", "complytime-gateway", []string{"complytime-admin"})
 		registerSubject(adminToken, subjectID, "http://testjwks:8888", "test-publisher")
 	})
 
@@ -55,7 +55,7 @@ var _ = Describe("Consumer", Ordered, func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			publisherToken = mintToken("test-publisher", "complytime-gateway", false, false)
+			publisherToken = mintToken("test-publisher", "complytime-gateway")
 
 			submittedBody, _ = json.Marshal(map[string]interface{}{
 				"type":      "nats-test-artifact",
@@ -160,7 +160,7 @@ var _ = Describe("Consumer", Ordered, func() {
 
 		BeforeAll(func() {
 			serviceToken = lockerServiceToken()
-			publisherToken := mintToken("test-publisher", "complytime-gateway", false, false)
+			publisherToken := mintToken("test-publisher", "complytime-gateway")
 
 			body, _ := json.Marshal(map[string]interface{}{
 				"type":   "locker-verify-test",

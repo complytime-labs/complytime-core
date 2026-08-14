@@ -1,0 +1,34 @@
+# Locker service configuration
+# See deploy/config/gateway.yaml for env var mapping rules.
+
+nats:
+  url: nats://localhost:4222
+
+locker:
+  listen:
+    addr: ":8081"
+  data:
+    path: /data/ledgers
+
+jwt:
+  audience: ""   # required — Env: JWT_AUDIENCE
+
+cedar:
+  policy:
+    dir: ""      # Env: CEDAR_POLICY_DIR
+
+oidc:
+  issuer: ""     # required — Env: OIDC_ISSUER
+  client:
+    id: ""       # required — Env: OIDC_CLIENT_ID
+  expected:
+    issuer: ""   # optional — Env: OIDC_EXPECTED_ISSUER
+  group:
+    claim: ""    # optional — dot-path to group claim (e.g. "groups", "realm_access.roles") — Env: OIDC_GROUP_CLAIM
+    admin: ""    # optional — Cedar admin group name; default: complytime-admin — Env: OIDC_ADMIN_GROUP
+    auditor: ""  # optional — Cedar auditor group name; default: complytime-auditor — Env: OIDC_AUDITOR_GROUP
+    mode: ""     # optional — "enforce" (default) or "audit" (logs dropped groups) — Env: OIDC_GROUP_MODE
+
+issuers:
+  enabled: []   # Env: ISSUERS_ENABLED=github_actions,gitlab,gcp
+  custom: []    # See deploy/config/gateway.yaml for type list and examples

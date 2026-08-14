@@ -27,6 +27,60 @@ paths:
                     type: string
                     example: ok
 
+  /admin/subjects:
+    post:
+      operationId: RegisterSubject
+      summary: Register a new subject for compliance tracking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubjectRegistrationRequest'
+      responses:
+        '201':
+          description: Subject registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectRegistrationResponse'
+        '400':
+          description: Invalid request
+        '403':
+          description: Not authorized (admin required)
+      security:
+        - bearerAuth: []
+
+  /admin/subjects/{subjectId}/trust:
+    put:
+      operationId: ModifyTrust
+      summary: Modify trusted publishers for a subject
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModifyTrustRequest'
+      responses:
+        '200':
+          description: Trust updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModifyTrustResponse'
+        '400':
+          description: Invalid request
+        '403':
+          description: Not authorized (admin required)
+      security:
+        - bearerAuth: []
+
   /api/ingest:
     post:
       summary: Submit artifact for ingestion
@@ -88,7 +142,78 @@ paths:
                 $ref: '#/components/schemas/Error'
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
+    SubjectRegistrationRequest:
+      type: object
+      required:
+        - subjectId
+        - trustedPublishers
+      properties:
+        subjectId:
+          type: string
+          description: Package URL identifying the subject
+        trustedPublishers:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrustedPublisher'
+        scannerJwk:
+          $ref: '#/components/schemas/ScannerJWK'
+          description: Optional static JWK for scanner issuers without OIDC
+
+    ScannerJWK:
+      type: object
+      required:
+        - jwk
+        - not_after
+      properties:
+        jwk:
+          type: object
+          description: JWK public key (RFC 7517)
+          additionalProperties: true
+        not_after:
+          type: string
+          format: date-time
+          description: Key expiry timestamp (RFC 3339)
+
+    TrustedPublisher:
+      type: object
+      required:
+        - issuer
+        - sub
+      properties:
+        issuer:
+          type: string
+        sub:
+          type: string
+
+    SubjectRegistrationResponse:
+      type: object
+      properties:
+        subjectId:
+          type: string
+
+    ModifyTrustRequest:
+      type: object
+      required:
+        - trustedPublishers
+      properties:
+        trustedPublishers:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrustedPublisher'
+
+    ModifyTrustResponse:
+      type: object
+      properties:
+        subjectId:
+          type: string
+
     IngestResponse:
       type: object
       required:

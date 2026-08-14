@@ -4,12 +4,18 @@
 package gateway
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
+)
+
+const (
+	BearerAuthScopes bearerAuthContextKey = "bearerAuth.Scopes"
 )
 
 // Error defines model for Error.
@@ -24,6 +30,45 @@ type IngestResponse struct {
 	JobId openapi_types.UUID `json:"jobId"`
 }
 
+// ModifyTrustRequest defines model for ModifyTrustRequest.
+type ModifyTrustRequest struct {
+	TrustedPublishers []TrustedPublisher `json:"trustedPublishers"`
+}
+
+// ModifyTrustResponse defines model for ModifyTrustResponse.
+type ModifyTrustResponse struct {
+	SubjectId *string `json:"subjectId,omitempty"`
+}
+
+// ScannerJWK defines model for ScannerJWK.
+type ScannerJWK struct {
+	// Jwk JWK public key (RFC 7517)
+	Jwk map[string]interface{} `json:"jwk"`
+
+	// NotAfter Key expiry timestamp (RFC 3339)
+	NotAfter time.Time `json:"not_after"`
+}
+
+// SubjectRegistrationRequest defines model for SubjectRegistrationRequest.
+type SubjectRegistrationRequest struct {
+	ScannerJwk *ScannerJWK `json:"scannerJwk,omitempty"`
+
+	// SubjectId Package URL identifying the subject
+	SubjectId         string             `json:"subjectId"`
+	TrustedPublishers []TrustedPublisher `json:"trustedPublishers"`
+}
+
+// SubjectRegistrationResponse defines model for SubjectRegistrationResponse.
+type SubjectRegistrationResponse struct {
+	SubjectId *string `json:"subjectId,omitempty"`
+}
+
+// TrustedPublisher defines model for TrustedPublisher.
+type TrustedPublisher struct {
+	Issuer string `json:"issuer"`
+	Sub    string `json:"sub"`
+}
+
 // ValidationError defines model for ValidationError.
 type ValidationError struct {
 	// ArtifactType Type of artifact that failed validation
@@ -35,6 +80,9 @@ type ValidationError struct {
 	// Error Error message
 	Error string `json:"error"`
 }
+
+// bearerAuthContextKey is the context key for bearerAuth security scheme
+type bearerAuthContextKey string
 
 // IngestArtifactJSONBody defines parameters for IngestArtifact.
 type IngestArtifactJSONBody = map[string]interface{}
@@ -48,6 +96,12 @@ type IngestArtifactParams struct {
 	XSubjectID string `json:"X-Subject-ID"`
 }
 
+// RegisterSubjectJSONRequestBody defines body for RegisterSubject for application/json ContentType.
+type RegisterSubjectJSONRequestBody = SubjectRegistrationRequest
+
+// ModifyTrustJSONRequestBody defines body for ModifyTrust for application/json ContentType.
+type ModifyTrustJSONRequestBody = ModifyTrustRequest
+
 // IngestArtifactJSONRequestBody defines body for IngestArtifact for application/json ContentType.
 type IngestArtifactJSONRequestBody = IngestArtifactJSONBody
 
@@ -56,6 +110,12 @@ type IngestArtifactApplicationVndDssePlusJSONRequestBody = IngestArtifactApplica
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Register a new subject for compliance tracking
+	// (POST /admin/subjects)
+	RegisterSubject(w http.ResponseWriter, r *http.Request)
+	// Modify trusted publishers for a subject
+	// (PUT /admin/subjects/{subjectId}/trust)
+	ModifyTrust(w http.ResponseWriter, r *http.Request, subjectId string)
 	// Submit artifact for ingestion
 	// (POST /api/ingest)
 	IngestArtifact(w http.ResponseWriter, r *http.Request, params IngestArtifactParams)
@@ -67,6 +127,18 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// Register a new subject for compliance tracking
+// (POST /admin/subjects)
+func (_ Unimplemented) RegisterSubject(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Modify trusted publishers for a subject
+// (PUT /admin/subjects/{subjectId}/trust)
+func (_ Unimplemented) ModifyTrust(w http.ResponseWriter, r *http.Request, subjectId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // Submit artifact for ingestion
 // (POST /api/ingest)
@@ -88,6 +160,58 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// RegisterSubject operation middleware
+func (siw *ServerInterfaceWrapper) RegisterSubject(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RegisterSubject(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ModifyTrust operation middleware
+func (siw *ServerInterfaceWrapper) ModifyTrust(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "subjectId" -------------
+	var subjectId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "subjectId", chi.URLParam(r, "subjectId"), &subjectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subjectId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ModifyTrust(w, r, subjectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // IngestArtifact operation middleware
 func (siw *ServerInterfaceWrapper) IngestArtifact(w http.ResponseWriter, r *http.Request) {
@@ -261,6 +385,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/subjects", wrapper.RegisterSubject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/admin/subjects/{subjectId}/trust", wrapper.ModifyTrust)
+	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/ingest", wrapper.IngestArtifact)
 	})

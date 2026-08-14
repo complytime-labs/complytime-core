@@ -16,6 +16,8 @@ const (
 	// KV bucket names
 	PublisherTrustBucket  = "publisher-trust"
 	SubjectRegistryBucket = "subjects-registry"
+	StaticJWKBucket       = "static-jwks"
+	JTIReplayBucket       = "jti-replay"
 
 	// Consumer names
 	ConsumerIngestWorker = "ingest-worker"
@@ -112,6 +114,29 @@ func SubjectRegistryKVConfig() jetstream.KeyValueConfig {
 	}
 }
 
+// StaticJWKKVConfig returns the KV bucket configuration for static JWK storage.
+func StaticJWKKVConfig() jetstream.KeyValueConfig {
+	return jetstream.KeyValueConfig{
+		Bucket:      StaticJWKBucket,
+		Description: "Static JWK records for scanner issuers without OIDC",
+		Storage:     jetstream.FileStorage,
+		History:     1,
+		Replicas:    1,
+	}
+}
+
+// JTIReplayKVConfig returns the KV bucket configuration for JTI replay prevention.
+// TTL of 15 minutes covers the 10-minute max token lifetime with buffer.
+func JTIReplayKVConfig() jetstream.KeyValueConfig {
+	return jetstream.KeyValueConfig{
+		Bucket:      JTIReplayBucket,
+		Description: "JTI replay prevention — claimed token IDs for static JWK issuers",
+		Storage:     jetstream.FileStorage,
+		TTL:         15 * time.Minute,
+		Replicas:    1,
+	}
+}
+
 // EnsureInfrastructure creates or updates all NATS streams and KV buckets.
 // Idempotent — safe to call on every service startup.
 func EnsureInfrastructure(ctx context.Context, js jetstream.JetStream) error {
@@ -126,6 +151,8 @@ func EnsureInfrastructure(ctx context.Context, js jetstream.JetStream) error {
 	for _, kv := range []jetstream.KeyValueConfig{
 		PublisherTrustKVConfig(),
 		SubjectRegistryKVConfig(),
+		StaticJWKKVConfig(),
+		JTIReplayKVConfig(),
 	} {
 		if _, err := js.CreateOrUpdateKeyValue(ctx, kv); err != nil {
 			return fmt.Errorf("ensuring KV bucket %s: %w", kv.Bucket, err)
