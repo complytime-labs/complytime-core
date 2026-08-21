@@ -15,7 +15,7 @@ COPY internal internal/
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o locker ./cmd/locker
 
 # Stage 2: Runtime
-FROM registry.access.redhat.com/ubi9/ubi-minimal@sha256:062c52ff973065752b0965787649db2bcf551a6c727a00e95a3eb42cebadbdab
+FROM registry.access.redhat.com/ubi9/ubi-minimal@sha256:8eb2830d0936237fc13a1f2f7e45aecf90d69043380ad167fad0343632937f41
 
 RUN microdnf install -y curl-minimal && microdnf clean all
 
