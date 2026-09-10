@@ -1,9 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Dependabot configuration for complytime-core.
+#
+# Follows org-infra standards (sync-config.yml dependabot.common) with
+# repo-specific additions.  The codeql group ensures init, autobuild, and
+# analyze sub-actions are bumped in a single PR so CodeQL version checks pass.
+
 version: 2
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "daily"
+    groups:
+      codeql:
+        patterns:
+          - "github/codeql-action/*"
     commit-message:
       prefix: "ci"
       include: "scope"

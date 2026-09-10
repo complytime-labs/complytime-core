@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Zizmor configuration for complytime-core.
+#
+# fullsend.yaml intentionally uses pull_request_target so the shim
+# workflow runs from the base branch (not the PR head), preventing
+# PRs from modifying it to exfiltrate credentials.  The shim never
+# checks out PR code, so it is not vulnerable to pwn-request attacks.
+# See comments in fullsend.yaml for the full security rationale.
+
+rules:
+  dangerous-triggers:
+    ignore:
+      - fullsend.yaml
